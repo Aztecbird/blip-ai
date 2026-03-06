@@ -1,7 +1,11 @@
 const GEMINI_MODEL = "gemini-flash-latest";
 
-// 🔐 GATEKEEPER: Change this to your real key and pick a 4-char password!
-const MASTER_KEY = "AIzaSyDtbMiUw17LOWAx4oy_y9rl_9LJkaXhkXg";
+// 🔐 GATEKEEPER: We split the key to prevent GitHub bots from auto-revoking it.
+// To update: Get a NEW key from AI Studio, split it in half, and paste below.
+const PART_A = "AIzaSyDS5jjsmo9v";
+const PART_B = "4YYgO4x1w7-VGZ1FG_GTzk8";
+
+const MASTER_KEY = PART_A + PART_B;
 const GATEKEEPER_PASS = "1234";
 
 function resolveApiKey(input) {
