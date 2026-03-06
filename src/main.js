@@ -120,6 +120,7 @@ async function init() {
         state.voiceEngine = e.target.value;
         localStorage.setItem('blip_voice_engine', state.voiceEngine);
         updateVoiceToggles();
+        toggleGeminiInput();
     };
 
     geminiVoiceSelect.onchange = (e) => {
@@ -142,7 +143,8 @@ async function init() {
     }
 
     function toggleGeminiInput() {
-        if (state.selectedModel.startsWith('gemini')) {
+        const needsKey = state.selectedModel.startsWith('gemini') || state.voiceEngine === 'gemini';
+        if (needsKey) {
             geminiKeyContainer.style.display = 'block';
         } else {
             geminiKeyContainer.style.display = 'none';

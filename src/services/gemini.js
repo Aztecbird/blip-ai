@@ -9,8 +9,10 @@ const MASTER_KEY = PART_A + PART_B;
 const GATEKEEPER_PASS = "1234";
 
 function resolveApiKey(input) {
-    if (input === GATEKEEPER_PASS) return MASTER_KEY;
-    return input; // Assume it's a raw API key if not the password
+    if (!input) return "";
+    const clean = input.trim();
+    if (clean === GATEKEEPER_PASS) return MASTER_KEY;
+    return clean; // Assume it's a raw API key if not the password
 }
 
 export async function askGemini(message, history = [], images = [], inputKey, model = 'gemini-flash-latest') {
@@ -159,7 +161,8 @@ export async function generateSpeech(text, inputKey, voice = 'Puck') {
         }
 
         const data = await response.json();
-        // The audio is usually returned as base64 in the first part of the first candidate
+        console.log('🔊 Gemini TTS Data structure:', JSON.stringify(data).substring(0, 200));
+        // The audio is returned as base64 in the inlineData of the first part
         const audioBase64 = data.candidates[0].content.parts[0].inlineData.data;
         return audioBase64;
     } catch (error) {
