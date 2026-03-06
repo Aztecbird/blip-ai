@@ -1,5 +1,6 @@
 import './style.css'
 import { askOllama, checkOllamaStatus, warmUpModel, cancelCurrentRequest } from './services/ollama'
+import { askGemini, generateSpeech } from './services/gemini'
 import { speech } from './services/speech'
 import { web } from './services/web'
 
@@ -18,7 +19,11 @@ const ossStatus = document.getElementById('ollama-status');
 const ossText = document.getElementById('status-text');
 const kokoroVoiceSelect = document.getElementById('kokoroVoiceSelect');
 const kokoroStatusDot = document.getElementById('kokoro-status');
+const geminiVoiceSelect = document.getElementById('geminiVoiceSelect');
+const voiceEngineSelect = document.getElementById('voiceEngineSelect');
 const modelSelect = document.getElementById('modelSelect');
+const geminiKeyInput = document.getElementById('geminiKeyInput');
+const geminiKeyContainer = document.getElementById('gemini-key-container');
 
 // Vision Elements
 const cameraBtn = document.getElementById('cameraBtn');
@@ -56,7 +61,9 @@ const state = {
     timers: [],
     pendingImage: null, // Base64 string
     cameraStream: null,
-    selectedModel: 'llama3.2'
+    geminiKey: localStorage.getItem('blip_gemini_key') || '',
+    selectedModel: localStorage.getItem('blip_model') || 'llama3.2',
+    voiceEngine: localStorage.getItem('blip_voice_engine') || 'kokoro'
 };
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
@@ -86,14 +93,61 @@ async function init() {
         speech.setKokoroVoice(e.target.value);
     };
 
-    // Model selection
-    state.selectedModel = localStorage.getItem('blip_model') || 'llama3.2';
+    // Initialize UI
     modelSelect.value = state.selectedModel;
+    geminiKeyInput.value = state.geminiKey;
+    toggleGeminiInput();
+
     modelSelect.onchange = (e) => {
         state.selectedModel = e.target.value;
         localStorage.setItem('blip_model', state.selectedModel);
-        warmUpModel(state.selectedModel);
+        toggleGeminiInput();
+        if (!state.selectedModel.startsWith('gemini')) {
+            warmUpModel(state.selectedModel);
+        }
     };
+
+    geminiKeyInput.oninput = (e) => {
+        state.geminiKey = e.target.value;
+        localStorage.setItem('blip_gemini_key', state.geminiKey);
+    };
+
+    // Voice Engine Handling
+    voiceEngineSelect.value = state.voiceEngine;
+    updateVoiceToggles();
+
+    voiceEngineSelect.onchange = (e) => {
+        state.voiceEngine = e.target.value;
+        localStorage.setItem('blip_voice_engine', state.voiceEngine);
+        updateVoiceToggles();
+    };
+
+    geminiVoiceSelect.onchange = (e) => {
+        localStorage.setItem('blip_gemini_voice', e.target.value);
+    };
+
+    function updateVoiceToggles() {
+        const kItem = document.getElementById('kokoro-voice-item');
+        const gItem = document.getElementById('gemini-voice-item');
+        if (state.voiceEngine === 'kokoro') {
+            kItem.style.display = 'block';
+            gItem.style.display = 'none';
+        } else if (state.voiceEngine === 'gemini') {
+            kItem.style.display = 'none';
+            gItem.style.display = 'block';
+        } else {
+            kItem.style.display = 'none';
+            gItem.style.display = 'none';
+        }
+    }
+
+    function toggleGeminiInput() {
+        if (state.selectedModel.startsWith('gemini')) {
+            geminiKeyContainer.style.display = 'block';
+        } else {
+            geminiKeyContainer.style.display = 'none';
+        }
+    }
 
     // Check Kokoro status and update its dot
     updateKokoroStatus();                          // immediate check (async, non-blocking)
@@ -416,16 +470,27 @@ async function handleCommand(text) {
     state.isThinking = true;
     speech.stopListening();
 
-    talkBtn.innerText = '⏳ THINKING (Click to Cancel)';
+    talkBtn.innerText = '⏳ THINKING...';
     talkBtn.classList.remove('listening');
     talkBtn.classList.add('thinking');
     faceFrame?.classList.remove('listening-glow');
     document.body.classList.add('thinking-mode');
     setEmotion('curious');
+    transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><i>Blip is thinking...</i>`;
 
     try {
         const images = state.pendingImage ? [state.pendingImage] : [];
-        const response = await askOllama(cmd, state.history, images, state.selectedModel);
+
+        let response;
+        if (state.selectedModel.startsWith('gemini')) {
+            if (!state.geminiKey) {
+                response = { emotion: 'sad', text: 'I need your Gemini API key in the settings to use this super brain!', action: 'none' };
+            } else {
+                response = await askGemini(cmd, state.history, images, state.geminiKey, state.selectedModel);
+            }
+        } else {
+            response = await askOllama(cmd, state.history, images, state.selectedModel);
+        }
 
         let finalReply = response.text;
         let extraHtml = '';
@@ -449,13 +514,16 @@ async function handleCommand(text) {
         // Clear image after successful response
         if (state.pendingImage) clearPendingImage();
 
+        talkBtn.innerText = '🔊 SPEAKING...';
         await speak(finalReply, response.emotion);
     } catch (error) {
         console.error('AI Error:', error);
         let errorMsg = "I'm sorry, I'm having trouble connecting to my brain.";
 
         // Handle specific "model not found" errors
-        if (error.message.includes('not found') || error.message.includes('pull')) {
+        if (state.selectedModel.startsWith('gemini')) {
+            errorMsg = `Gemini Brain Error: ${error.message}`;
+        } else if (error.message.includes('not found') || error.message.includes('pull') || error.message.includes('llava')) {
             errorMsg = "I can't see yet because my vision model is still downloading! Please wait a moment.";
         } else if (error.message.includes('timed out')) {
             errorMsg = "Ollama is taking too long to think. Please try again.";
@@ -484,13 +552,27 @@ async function speak(text, emotion = 'serious') {
         serious: { pitch: 1, rate: 1 }
     }[emotion] || { pitch: 1, rate: 1 };
 
-    await speech.speak(text, {
+    if (state.voiceEngine === 'gemini') {
+        if (!state.geminiKey) {
+            console.warn('Gemini key missing for cloud voice, falling back to browser');
+            return speech.speak(text, { ...cfg, onBoundary: animateMouth });
+        }
+        try {
+            console.log('☁️ Using Gemini Cloud Voice');
+            const voiceName = geminiVoiceSelect.value || 'Puck';
+            const audioData = await generateSpeech(text, state.geminiKey, voiceName);
+            return speech.playBase64Audio(audioData, { onBoundary: animateMouth });
+        } catch (e) {
+            console.warn('Gemini voice failed, falling back:', e.message);
+            return speech.speak(text, { ...cfg, onBoundary: animateMouth });
+        }
+    }
+
+    return speech.speak(text, {
         voice: state.selectedVoice,
         ...cfg,
         onBoundary: (level) => animateMouth(level)
     });
-
-    setTimeout(() => { if (!state.isThinking) setEmotion('serious'); }, 1000);
 }
 
 function setEmotion(e) {

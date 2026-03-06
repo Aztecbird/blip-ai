@@ -23,6 +23,8 @@ if curl -s http://127.0.0.1:11434/api/tags > /dev/null 2>&1; then
   echo -e "${GREEN}✅ Ollama is running.${NC}"
 else
   echo -e "${YELLOW}⚠️  Ollama is NOT running. Please start the Ollama app!${NC}"
+  echo -e "   If using the live GitHub version, run Ollama with CORS support:"
+  echo -e "   ${BLUE}OLLAMA_ORIGINS=\"*\" ollama serve${NC}"
 fi
 
 # 3. Set up Kokoro TTS in a virtual environment

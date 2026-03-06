@@ -156,6 +156,38 @@ class SpeechService {
         return this._speakBrowser(text, options);
     }
 
+    async playBase64Audio(base64Data, options = {}) {
+        this.isSpeaking = true;
+        if (!this._audioCtx) this._audioCtx = new AudioContext();
+
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const audioBuffer = await this._audioCtx.decodeAudioData(bytes.buffer);
+
+        return new Promise((resolve) => {
+            const source = this._audioCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this._audioCtx.destination);
+
+            const interval = setInterval(() => {
+                if (options.onBoundary) options.onBoundary(0.3 + Math.random() * 0.6);
+            }, 70);
+
+            source.onended = () => {
+                clearInterval(interval);
+                if (options.onBoundary) options.onBoundary(0);
+                this.isSpeaking = false;
+                resolve();
+            };
+
+            source.start(0);
+        });
+    }
+
     // ── SPEECH RECOGNITION ────────────────────────────────────────────────────
     startListening(onResult, onEnd, onError) {
         if (!this.SR) return null;
