@@ -108,9 +108,13 @@ async function init() {
     };
 
     geminiKeyInput.oninput = (e) => {
-        state.geminiKey = e.target.value;
+        state.geminiKey = e.target.value.trim();
         localStorage.setItem('blip_gemini_key', state.geminiKey);
     };
+
+    // Initialize Gemini Voice
+    const savedGeminiVoice = localStorage.getItem('blip_gemini_voice') || 'Puck';
+    geminiVoiceSelect.value = savedGeminiVoice;
 
     // Voice Engine Handling
     voiceEngineSelect.value = state.voiceEngine;
@@ -557,6 +561,7 @@ async function speak(text, emotion = 'serious') {
     if (state.voiceEngine === 'gemini') {
         if (!state.geminiKey) {
             console.warn('Gemini key missing for cloud voice, falling back to browser');
+            transcriptText.innerHTML += `<br><small style="color:#f59e0b">⚠️ Enter 1234/API Key for Cloud Voice</small>`;
             return speech.speak(text, { ...cfg, onBoundary: animateMouth });
         }
         try {
@@ -566,6 +571,7 @@ async function speak(text, emotion = 'serious') {
             return speech.playBase64Audio(audioData, { onBoundary: animateMouth });
         } catch (e) {
             console.warn('Gemini voice failed, falling back:', e.message);
+            transcriptText.innerHTML += `<br><small style="color:#ef4444">⚠️ Cloud voice failed: ${e.message}</small>`;
             return speech.speak(text, { ...cfg, onBoundary: animateMouth });
         }
     }

@@ -128,7 +128,7 @@ CRITICAL: Never offer Amazon links or product recommendations for restaurants, b
 
 export async function generateSpeech(text, inputKey, voice = 'Puck') {
     const apiKey = resolveApiKey(inputKey);
-    // Uses the dedicated TTS preview model
+    // MUST use the dedicated TTS preview model for audio generation
     const model = 'gemini-2.5-flash-preview-tts';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
