@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blip AI Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <main class="container">
+            <section id="face-container">
+                <div id="blip-label">B L I P</div>
+
+                <div class="face-frame">
+                    <div id="face" class="serious">
+                        <div class="eyebrow-container">
+                            <div class="eyebrow" id="eyebrowL"></div>
+                            <div class="eyebrow" id="eyebrowR"></div>
+                        </div>
+                        <div class="eye-container">
+                            <div class="eye" id="eyeL"></div>
+                            <div class="eye" id="eyeR"></div>
+                        </div>
+                        <div id="mouth"></div>
+                    </div>
+                    <div id="floating-symbols"></div>
+                </div>
+            </section>
+
+            <section class="controls">
+                <div class="mic-meter">
+                    <div id="meter-level"></div>
+                </div>
+
+                <div id="vision-preview-container" style="display: none;">
+                    <img id="vision-preview" src="" alt="Preview">
+                    <button id="clear-image-btn" aria-label="Clear image">✕</button>
+                </div>
+
+                <div class="button-group">
+                    <button id="talkBtn" class="primary-btn">▶ START BLIP</button>
+                    <div class="vision-btns">
+                        <button id="cameraBtn" title="Take Photo" aria-label="Open camera">📸</button>
+                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                        <button id="uploadBtn" title="Upload Image" aria-label="Upload image">📁</button>
+                    </div>
+                </div>
+
+                <div id="transcript-container">
+                    <p id="transcript">Click Start to begin...</p>
+                </div>
+
+                <div id="chart-container" class="widget-panel chart-panel">
+                    <button id="closeChartBtn" class="panel-close-btn" aria-label="Close chart">✕</button>
+                    <canvas id="currencyChart" style="width: 100%; height: 200px;"></canvas>
+                    <button id="downloadChartBtn" class="action-link outline">⬇️ Download Graph</button>
+                </div>
+
+                <div id="map-container" class="widget-panel map-panel">
+                    <button id="closeMapBtn" class="panel-close-btn" aria-label="Close map">✕</button>
+                    <iframe id="map-frame" width="100%" height="250" style="border:0; display:block;" allowfullscreen=""
+                        loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                </div>
+
+                <video id="webcam-video" autoplay playsinline style="display: none;"></video>
+                <div id="camera-controls" style="display: none; gap: 10px; margin-top: 10px; justify-content: center;">
+                    <button id="snapBtn" class="primary-btn" style="flex: 1;">📸 SNAP PHOTO</button>
+                    <button id="stopCameraBtn" class="secondary-btn" style="padding: 10px 20px;">⏹ STOP</button>
+                </div>
+                <canvas id="capture-canvas" style="display: none;"></canvas>
+            </section>
+
+            <section class="settings">
+                <div class="setting-item" style="grid-column: span 2;">
+                    <label for="kokoroVoiceSelect">🎙️ Kokoro Voice <span id="kokoro-status" class="status-dot"
+                            style="display:inline-block;vertical-align:middle;margin-left:4px;"
+                            title="Kokoro TTS status"></span></label>
+                    <select id="kokoroVoiceSelect">
+                        <option value="af_sarah">Sarah (warm female)</option>
+                        <option value="af_bella">Bella (expressive female)</option>
+                        <option value="am_adam">Adam (clear male)</option>
+                        <option value="bm_george">George (British male)</option>
+                    </select>
+                </div>
+
+                <!-- Fallback browser voice (hidden — used automatically if Kokoro is offline) -->
+                <select id="voiceSelect" style="display:none;"></select>
+
+                <div class="setting-item">
+                    <label for="modelSelect">🧠 AI Model</label>
+                    <select id="modelSelect">
+                        <option value="mistral">Mistral (Reliable)</option>
+                        <option value="llama3.2">Llama 3.2 (Fast/Light)</option>
+                        <option value="gemma2">Gemma 2 (Smart - needs pull)</option>
+                        <option value="deepseek-r1:8b">DeepSeek R1 (Logical)</option>
+                        <option value="phi3.5">Phi 3.5 (Balanced)</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <label for="thresholdSlider">🎤 Sensitivity</label>
+                    <div class="slider-group">
+                        <input type="range" id="thresholdSlider" min="0" max="100" value="20">
+                        <span id="thresholdVal">20%</span>
+                    </div>
+                </div>
+
+                <div id="status-bar">
+                    <span id="ollama-status" class="status-dot"></span>
+                    <span id="status-text">Ollama: Checking...</span>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+</body>
+
+</html>
