@@ -323,13 +323,24 @@ async function toggleApp() {
             meterBox.style.display = 'block';
             setEmotion('happy');
             talkBtn.innerText = '⌛ WAKING UP...';
+            transcriptText.innerText = "Waking up cloud brain...";
 
             await speak("Hello! My name is Blip. How can I help you today?");
+
+            talkBtn.innerText = '🔴 LISTENING...';
+            talkBtn.classList.add('listening');
+            faceFrame?.classList.add('listening-glow');
             startListeningLoop();
         } catch (err) {
             console.error("Wake up error:", err);
-            stopApp();
-            transcriptText.innerText = "⚠️ I had trouble waking up. Try again?";
+            // Don't call stopApp() fully yet so user can see the error
+            state.isActive = false;
+            talkBtn.innerText = '▶ START BLIP';
+            talkBtn.classList.remove('listening', 'thinking');
+            faceFrame?.classList.remove('listening-glow');
+            meterBox.style.display = 'none';
+            setEmotion('sad');
+            transcriptText.innerHTML = `<span style="color:#ef4444">⚠️ ${err.message}. Try again!</span>`;
         }
     } else {
         stopApp();
