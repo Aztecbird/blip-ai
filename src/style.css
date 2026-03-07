@@ -86,14 +86,16 @@ body::before {
     backdrop-filter: blur(40px) saturate(180%);
     -webkit-backdrop-filter: blur(40px) saturate(180%);
     border: 1px solid var(--card-border);
-    border-radius: 2rem;
-    padding: 2rem 1.5rem 1.5rem;
+    padding: 2.25rem 1.5rem 1.5rem;
+    /* Increased top padding for version tag */
     display: grid;
     grid-template-areas:
         "face"
         "controls"
         "settings";
     gap: 1.5rem;
+    position: relative;
+    /* For version tag positioning */
     box-shadow:
         0 0 0 1px rgba(255, 255, 255, 0.05) inset,
         0 20px 50px -10px rgba(0, 0, 0, 0.8),
@@ -111,6 +113,25 @@ section.controls {
 
 section.settings {
     grid-area: settings;
+}
+
+/* ── VERSION TAG ─────────────────────────────────────────────────────────── */
+#version-tag {
+    position: absolute;
+    top: 1rem;
+    right: 1.25rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    letter-spacing: 1px;
+    pointer-events: none;
+    z-index: 100;
 }
 
 /* ── FACE ────────────────────────────────────────────────────────────────── */

@@ -138,8 +138,8 @@ CRITICAL: Never offer Amazon links or product recommendations for restaurants, b
 
 export async function generateSpeech(text, inputKey, voice = 'Puck') {
     const apiKey = resolveApiKey(inputKey);
-    // Use gemini-2.0-flash which supports native multimodal output
-    const model = 'gemini-2.0-flash';
+    // Use gemini-1.5-flash which has stable support for audio modality in v1beta
+    const model = 'gemini-1.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const body = {
