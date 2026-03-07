@@ -38,6 +38,12 @@ const cameraControls = document.getElementById('camera-controls');
 const snapBtn = document.getElementById('snapBtn');
 const stopCameraBtn = document.getElementById('stopCameraBtn');
 
+// Hub Elements
+const hubBtn = document.getElementById('hubBtn');
+const hubContainer = document.getElementById('hub-container');
+const hubMessages = document.getElementById('hub-messages');
+const closeHubBtn = document.getElementById('closeHubBtn');
+
 // Chart Elements
 const chartContainer = document.getElementById('chart-container');
 const closeChartBtn = document.getElementById('closeChartBtn');
@@ -65,7 +71,8 @@ const state = {
     cameraStream: null,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
     selectedModel: localStorage.getItem('blip_model') || (isGitHub ? 'gemini-2.5-flash' : 'llama3.2'),
-    voiceEngine: localStorage.getItem('blip_voice_engine') || (isGitHub ? 'gemini' : 'kokoro')
+    voiceEngine: localStorage.getItem('blip_voice_engine') || (isGitHub ? 'gemini' : 'kokoro'),
+    hubItems: JSON.parse(localStorage.getItem('blip_hub')) || []
 };
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
@@ -220,6 +227,11 @@ async function init() {
         mapContainer.style.display = 'none';
         mapFrame.src = '';
     };
+
+    // Hub Listeners
+    hubBtn.onclick = toggleHub;
+    closeHubBtn.onclick = toggleHub;
+    renderHub();
 }
 
 // ── VISION LOGIC ─────────────────────────────────────────────────────────────
@@ -414,6 +426,7 @@ const actionHandlers = {
     weather: async (res, state) => {
         if (!res.tool_params?.location) return { text: res.text };
         const weather = await web.getWeather(res.tool_params.location);
+        addToHub('ai', `🌤️ Weather for ${res.tool_params.location}: ${weather.text}`);
         state.history.push({ user: `(System: Weather in ${res.tool_params.location})`, blip: weather.text });
         return { text: `${res.text} ${weather.text}` };
     },
@@ -444,6 +457,8 @@ const actionHandlers = {
         const searchSummary = await web.getPlaceInfo(res.tool_params.query, res.tool_params.location);
         const finalReply = `${res.text} I have marked them on the map for you. ${searchSummary}`;
 
+        addToHub('link', `🌍 Map: ${res.tool_params.query} in ${res.tool_params.location}`, { url: mapsUrl });
+
         state.history.push({ user: `(System: Map search for ${res.tool_params.query} in ${res.tool_params.location})`, blip: finalReply });
         return { text: finalReply, extraHtml };
     },
@@ -451,6 +466,7 @@ const actionHandlers = {
     reviews: async (res, state) => {
         if (!res.tool_params?.query || !res.tool_params?.location) return { text: res.text };
         const reviewText = await web.getPlaceReviews(res.tool_params.query, res.tool_params.location);
+        addToHub('ai', `⭐ Reviews for ${res.tool_params.query}: ${reviewText.substring(0, 100)}...`);
         state.history.push({ user: `(System: Fetched reviews for ${res.tool_params.query})`, blip: reviewText });
         return { text: `${res.text} ${reviewText}` };
     },
@@ -458,6 +474,7 @@ const actionHandlers = {
     movies: async (res, state) => {
         if (!res.tool_params?.location) return { text: res.text };
         const moviesText = await web.getMovies(res.tool_params.location);
+        addToHub('ai', `🎬 Movies in ${res.tool_params.location}: ${moviesText.substring(0, 100)}...`);
         state.history.push({ user: `(System: Fetched movies for ${res.tool_params.location})`, blip: moviesText });
         return { text: `${res.text} ${moviesText}` };
     },
@@ -466,6 +483,11 @@ const actionHandlers = {
         if (!res.tool_params?.query) return { text: res.text };
         const recommendations = res.tool_params.recommendations || [];
         const result = await web.getProducts(res.tool_params.query, recommendations);
+
+        if (result.links && result.links.length > 0) {
+            result.links.forEach(l => addToHub('link', `🛒 Product: ${l.name}`, { url: l.url }));
+        }
+
         state.history.push({ user: `(System: Products for ${res.tool_params.query})`, blip: result.text });
         return { text: result.text, extraHtml: result.html };
     },
@@ -484,9 +506,58 @@ const actionHandlers = {
     calendar: async (res) => {
         if (!res.event_details) return { text: res.text };
         const url = createGoogleCalendarUrl(res.event_details);
+        addToHub('link', `📅 Calendar Event: ${res.event_details.summary}`, { url });
         return { text: res.text, extraHtml: `<br><a href="${url}" target="_blank" class="action-link blue">📅 ADD TO GOOGLE CALENDAR</a>` };
     }
 };
+
+// ── BLIP HUB LOGIC (WHATSAPP STYLE) ─────────────────────────────────────────
+function toggleHub() {
+    const isVisible = hubContainer.style.display === 'flex';
+    hubContainer.style.display = isVisible ? 'none' : 'flex';
+    if (!isVisible) renderHub();
+}
+
+function addToHub(type, content, data = {}) {
+    const item = {
+        id: Date.now(),
+        type, // 'ai', 'link', 'image'
+        content,
+        data,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    state.hubItems.unshift(item); // Newest at top for WhatsApp feel
+    if (state.hubItems.length > 50) state.hubItems.pop();
+    localStorage.setItem('blip_hub', JSON.stringify(state.hubItems));
+    renderHub();
+}
+
+function renderHub() {
+    if (state.hubItems.length === 0) {
+        hubMessages.innerHTML = '<div class="hub-empty">Hub is empty. Ask Blip for links or info!</div>';
+        return;
+    }
+
+    hubMessages.innerHTML = state.hubItems.map(item => {
+        let body = '';
+        if (item.type === 'link') {
+            body = `${item.content} <a href="${item.data.url}" target="_blank">🔗 Open Link</a>`;
+        } else if (item.type === 'image') {
+            body = `<img src="${item.data.url}" alt="Hub Image"> ${item.content}`;
+        } else {
+            body = item.content;
+        }
+
+        return `
+            <div class="hub-message ${item.type}">
+                ${body}
+                <span class="hub-time">${item.timestamp}</span>
+            </div>
+        `;
+    }).join('');
+
+    // Auto scroll to bottom (optional) - but we use unshift for newest at bottom
+}
 
 async function handleCommand(text) {
     if (!text.toLowerCase().includes('hey blip') && text.length < 3) return;

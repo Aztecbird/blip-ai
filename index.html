@@ -16,7 +16,7 @@
 <body>
     <div id="app">
         <main class="container">
-            <div id="version-tag">V2.6.0</div>
+            <div id="version-tag">V2.6.1</div>
             <section id="face-container">
                 <div id="blip-label">B L I P</div>
 
@@ -49,6 +49,7 @@
                 <div class="button-group">
                     <button id="talkBtn" class="primary-btn">▶ START BLIP</button>
                     <div class="vision-btns">
+                        <button id="hubBtn" title="Blip Hub" aria-label="Open Hub">💬</button>
                         <button id="cameraBtn" title="Take Photo" aria-label="Open camera">📸</button>
                         <input type="file" id="fileInput" accept="image/*" style="display: none;">
                         <button id="uploadBtn" title="Upload Image" aria-label="Upload image">📁</button>
@@ -57,6 +58,18 @@
 
                 <div id="transcript-container">
                     <p id="transcript">Click Start to begin...</p>
+                </div>
+
+                <!-- Blip Hub (WhatsApp style) -->
+                <div id="hub-container" class="widget-panel hub-panel">
+                    <div class="panel-header">
+                        <span>💬 Blip Hub</span>
+                        <button id="closeHubBtn" class="panel-close-btn" aria-label="Close hub">✕</button>
+                    </div>
+                    <div id="hub-messages">
+                        <!-- Items will be injected here -->
+                        <div class="hub-empty">Hub is empty. Ask Blip for links or info!</div>
+                    </div>
                 </div>
 
                 <div id="chart-container" class="widget-panel chart-panel">
