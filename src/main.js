@@ -539,7 +539,7 @@ async function handleCommand(text) {
         if (response.action !== 'weather' && response.action !== 'currency' && response.action !== 'map' && response.action !== 'reviews') {
             state.history.push({ user: cmd, blip: finalReply });
         }
-        if (state.history.length > 5) state.history.shift();
+        if (state.history.length > 25) state.history.shift();
 
         // Clear image after successful response
         if (state.pendingImage) clearPendingImage();
