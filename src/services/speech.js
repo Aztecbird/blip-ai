@@ -188,12 +188,23 @@ class SpeechService {
         this.initAudio(); // Ensure context is ready
 
         const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
             bytes[i] = binaryString.charCodeAt(i);
         }
 
-        const audioBuffer = await this._audioCtx.decodeAudioData(bytes.buffer);
+        // Gemini TTS v1beta returns raw 16-bit PCM at 24000Hz when responseModalities is AUDIO.
+        // We manually convert this to an AudioBuffer because it lacks a WAV header.
+        const int16Array = new Int16Array(bytes.buffer);
+        const float32Array = new Float32Array(int16Array.length);
+        for (let i = 0; i < int16Array.length; i++) {
+            float32Array[i] = int16Array[i] / 32768.0; // Normalize to [-1.0, 1.0]
+        }
+
+        const sampleRate = 24000;
+        const audioBuffer = this._audioCtx.createBuffer(1, float32Array.length, sampleRate);
+        audioBuffer.getChannelData(0).set(float32Array);
 
         return new Promise((resolve) => {
             const source = this._audioCtx.createBufferSource();
