@@ -1,4 +1,4 @@
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 // 🔐 GATEKEEPER: We split the key to prevent GitHub bots from auto-revoking it.
 // To update: Get a NEW key from AI Studio, split it in half, and paste below.
@@ -19,7 +19,7 @@ function resolveApiKey(input) {
     return clean; // Assume it's a raw API key if not the password
 }
 
-export async function askGemini(message, history = [], images = [], inputKey, model = 'gemini-2.0-flash') {
+export async function askGemini(message, history = [], images = [], inputKey, model = 'gemini-2.5-flash') {
     const apiKey = resolveApiKey(inputKey);
     // Stick to v1beta for broader model support
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -138,8 +138,8 @@ CRITICAL: Never offer Amazon links or product recommendations for restaurants, b
 
 export async function generateSpeech(text, inputKey, voice = 'Puck') {
     const apiKey = resolveApiKey(inputKey);
-    // Use gemini-1.5-flash which has stable support for audio modality in v1beta
-    const model = 'gemini-1.5-flash';
+    // Use the verified TTS endpoint
+    const model = 'gemini-2.5-flash-preview-tts';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const body = {
@@ -147,7 +147,7 @@ export async function generateSpeech(text, inputKey, voice = 'Puck') {
             parts: [{ text }]
         }],
         generationConfig: {
-            response_modalities: ["AUDIO"],
+            responseModalities: ["AUDIO"],
             speechConfig: {
                 voiceConfig: {
                     prebuiltVoiceConfig: {
