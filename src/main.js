@@ -690,7 +690,7 @@ async function handleCommand(text) {
 
         let response;
         if (state.selectedModel.startsWith('gemini')) {
-            if (!state.geminiKey) {
+            if (!state.geminiKey && !isGitHub) {
                 response = { emotion: 'sad', text: 'I need your Gemini API key in the settings to use this super brain!', action: 'none' };
             } else {
                 response = await askGemini(cmd, state.history, images, state.geminiKey, state.selectedModel);
@@ -764,7 +764,7 @@ async function speak(text, emotion = 'serious') {
     }[emotion] || { pitch: 1, rate: 1 };
 
     if (state.voiceEngine === 'gemini') {
-        if (!state.geminiKey) {
+        if (!state.geminiKey && !isGitHub) {
             console.warn('Gemini key missing for cloud voice, falling back to browser');
             transcriptText.innerHTML += `<br><small style="color:#f59e0b">⚠️ Enter 1234/API Key for Cloud Voice</small>`;
             return speech.speak(text, { ...cfg, onBoundary: animateMouth });

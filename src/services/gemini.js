@@ -225,6 +225,7 @@ function parseGeminiResponse(raw) {
             fallbackSymbol = symbolMatch[1];
         }
 
+        const fallbackEmotion = 'serious';
         return { emotion: fallbackEmotion, text: fallbackText.trim(), symbol: fallbackSymbol, action: 'none', value_ms: null, event_details: null, tool_params: null };
     }
 }
