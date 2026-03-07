@@ -247,5 +247,22 @@ export const web = {
         ).join('');
 
         return { text: spokenText, html };
+    },
+
+    /**
+     * Search YouTube and return an embed URL
+     * @param {string} query - e.g. "how to cut tomatoes"
+     */
+    async searchYouTube(query) {
+        console.log(`🎬 YouTube search: ${query}`);
+        // Since we don't have a YouTube Data API key, we'll construct a direct search URL 
+        // and a plausible "Lucky" embed URL approach or just direct link.
+        // For a better "Projector" feel, we'll provide a direct link to the search results.
+        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+        return {
+            text: `I've found some videos on ${query} for you to watch.`,
+            url: searchUrl,
+            html: `<a href="${searchUrl}" target="_blank" class="action-link red">🎬 WATCH ON YOUTUBE: ${query}</a>`
+        };
     }
 };

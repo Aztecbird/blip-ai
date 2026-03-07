@@ -39,6 +39,7 @@ const hubBtn = document.getElementById('hubBtn');
 const hubContainer = document.getElementById('hub-container');
 const hubMessages = document.getElementById('hub-messages');
 const closeHubBtn = document.getElementById('closeHubBtn');
+const projectorBtn = document.getElementById('projectorBtn');
 
 // Chart Elements
 const chartContainer = document.getElementById('chart-container');
@@ -69,7 +70,8 @@ const state = {
     selectedModel: localStorage.getItem('blip_model') || (isGitHub ? 'gemini-2.5-flash' : 'llama3.2'),
     voiceEngine: localStorage.getItem('blip_voice_engine') || (isGitHub ? 'gemini' : 'kokoro'),
     hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
-    idleBehavior: null // 'dreamer', 'observer', 'squinter'
+    idleBehavior: null, // 'dreamer', 'observer', 'squinter'
+    isProjectorMode: false
 };
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
@@ -217,6 +219,7 @@ async function init() {
     // Hub Listeners
     hubBtn.onclick = toggleHub;
     closeHubBtn.onclick = toggleHub;
+    projectorBtn.onclick = toggleProjectorMode;
     renderHub();
 }
 
@@ -494,6 +497,13 @@ const actionHandlers = {
         const url = createGoogleCalendarUrl(res.event_details);
         addToHub('link', `📅 Calendar Event: ${res.event_details.summary}`, { url });
         return { text: res.text, extraHtml: `<br><a href="${url}" target="_blank" class="action-link blue">📅 ADD TO GOOGLE CALENDAR</a>` };
+    },
+
+    youtube: async (res) => {
+        if (!res.tool_params?.query) return { text: res.text };
+        const result = await web.searchYouTube(res.tool_params.query);
+        addToHub('link', `🎬 YouTube: ${res.tool_params.query}`, { url: result.url });
+        return { text: `${res.text} ${result.text}`, extraHtml: `<br>${result.html}` };
     }
 };
 
@@ -502,6 +512,13 @@ function toggleHub() {
     const isVisible = hubContainer.style.display === 'flex';
     hubContainer.style.display = isVisible ? 'none' : 'flex';
     if (!isVisible) renderHub();
+}
+
+function toggleProjectorMode() {
+    state.isProjectorMode = !state.isProjectorMode;
+    document.body.classList.toggle('projector-mode', state.isProjectorMode);
+    projectorBtn.innerText = state.isProjectorMode ? '📱' : '📽️';
+    console.log(`📽️ Projector Mode: ${state.isProjectorMode}`);
 }
 
 function addToHub(type, content, data = {}) {
