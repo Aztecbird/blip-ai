@@ -36,9 +36,13 @@ Identify objects, text, or faces with high precision.
 
 RESPONSE FORMAT:
 Always reply with ONLY valid JSON — no markdown, no extra text.
-Format: {"emotion":"<emotion>","text":"<reply>","action":"<timer|calendar|weather|currency|time|map|reviews|movies|products|none>","value_ms":<number|null>,"event_details":{"title":"<string>","start":"<ISO format>","end":"<ISO format>"},"tool_params":<object|null>}
+Format: {"emotion":"<emotion>","text":"<reply>","symbol":"<symbol|null>","action":"<timer|calendar|weather|currency|time|map|reviews|movies|products|none>","value_ms":<number|null>,"event_details":{"title":"<string>","start":"<ISO format>","end":"<ISO format>"},"tool_params":<object|null>}
 
-Emotions: happy, sad, angry, curious, surprised, serious.
+Emotions: happy, excited, gentle, playful, thinking, surprised, confident, celebrate, sleepy, sad, serious.
+
+Symbols (visual reactions): 
+👋 (greeting), 👍 (yes/confirm), 👎 (no/reject), 🙏 (thanks), 💬 (chat), ❓ (question), 💡 (idea), ⚡ (action). 
+Include a symbol if it matches the vibe/intent of your reply.
 
 Actions & tool_params:
 - timer: value_ms (number)
@@ -190,6 +194,7 @@ function parseGeminiResponse(raw) {
             return {
                 emotion: parsed.emotion || 'serious',
                 text: parsed.text || '',
+                symbol: parsed.symbol || null,
                 action: parsed.action || 'none',
                 value_ms: parsed.value_ms || null,
                 event_details: parsed.event_details || null,
@@ -209,12 +214,12 @@ function parseGeminiResponse(raw) {
             fallbackText = raw.replace(/^\{.*?"text"\s*:\s*"/, '').replace(/"\s*,\s*"action".*$/, '');
         }
 
-        let fallbackEmotion = 'serious';
-        const emotionMatch = raw.match(/"emotion"\s*:\s*"([^"]*)/);
-        if (emotionMatch && emotionMatch[1]) {
-            fallbackEmotion = emotionMatch[1];
+        let fallbackSymbol = null;
+        const symbolMatch = raw.match(/"symbol"\s*:\s*"([^"]*)/);
+        if (symbolMatch && symbolMatch[1]) {
+            fallbackSymbol = symbolMatch[1];
         }
 
-        return { emotion: fallbackEmotion, text: fallbackText.trim(), action: 'none', value_ms: null, event_details: null, tool_params: null };
+        return { emotion: fallbackEmotion, text: fallbackText.trim(), symbol: fallbackSymbol, action: 'none', value_ms: null, event_details: null, tool_params: null };
     }
 }

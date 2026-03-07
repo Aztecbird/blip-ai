@@ -592,6 +592,10 @@ async function handleCommand(text) {
         // Render transcript with all extra buttons
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${extraHtml}`;
 
+        // Visual Reactions (V2.6.4)
+        if (response.symbol) spawnSymbol(response.symbol);
+        if (response.action && response.action !== 'none') spawnSymbol(response.action);
+
         // Add to history (regular response)
         if (response.action !== 'weather' && response.action !== 'currency' && response.action !== 'map' && response.action !== 'reviews') {
             state.history.push({ user: cmd, blip: finalReply });
@@ -694,23 +698,46 @@ function triggerRandomIdle() {
     }, 5000);
 }
 
-function spawnSymbol(type) {
+function spawnSymbol(typeOrEmoji) {
     const container = document.getElementById('floating-symbols');
     if (!container) return;
 
     const symbol = document.createElement('div');
-    symbol.classList.add('symbol', type);
+    symbol.classList.add('symbol');
+
+    // Add type as class if it's potentially a word (for specific CSS)
+    if (typeOrEmoji.length > 3) symbol.classList.add(typeOrEmoji);
 
     const randomX = Math.floor(Math.random() * 80) + 10;
     symbol.style.left = `${randomX}%`;
     symbol.style.bottom = '10%';
 
-    if (type === 'question') symbol.innerText = '???';
-    else if (type === 'exclamation') symbol.innerText = '!!!';
-    else if (type === 'music') symbol.innerText = '♪';
+    // Mapping for named types
+    const mapping = {
+        'question': '???',
+        'exclamation': '!!!',
+        'music': '♪',
+        'timer': '⏰',
+        'calendar': '📅',
+        'weather': '🌤️',
+        'currency': '💰',
+        'map': '🌍',
+        'reviews': '⭐',
+        'movies': '🎬',
+        'products': '🛒',
+        // AI Symbols from prompt mapping
+        'greeting': '👋',
+        'confirm': '👍',
+        'reject': '👎',
+        'thanks': '🙏',
+        'chat': '💬',
+        'idea': '💡',
+        'action': '⚡'
+    };
+
+    symbol.innerText = mapping[typeOrEmoji] || typeOrEmoji;
 
     container.appendChild(symbol);
-
     setTimeout(() => symbol.remove(), 2000);
 }
 

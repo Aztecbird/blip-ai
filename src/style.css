@@ -434,6 +434,97 @@ section.settings {
     opacity: 0.9;
 }
 
+#face.excited .eye {
+    animation: eye-vibrate 0.1s infinite alternate;
+}
+
+@keyframes eye-vibrate {
+    0% {
+        transform: scale(1.2);
+    }
+
+    100% {
+        transform: scale(1.4);
+    }
+}
+
+#face.excited #mouth {
+    width: 60px;
+    height: 30px;
+    border-radius: 5px 5px 30px 30px;
+}
+
+#face.playful .eye#eyeL {
+    height: 3px;
+    border-radius: 20px;
+    transform: translateY(2px) rotate(-10deg);
+}
+
+#face.playful #mouth {
+    width: 45px;
+    height: 15px;
+    border-radius: 5px 5px 40px 10px;
+    /* Smirk */
+}
+
+#face.confident .eye {
+    height: 6px;
+    transform: scaleX(1.1);
+}
+
+#face.confident #eyebrowL,
+#face.confident #eyebrowR {
+    opacity: 1;
+    transform: translateY(-8px) rotate(-5deg);
+}
+
+#face.celebrate {
+    animation: celebratory-jump 0.5s infinite alternate ease-in-out;
+}
+
+@keyframes celebratory-jump {
+    0% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    100% {
+        transform: translateY(-20px) rotate(5deg);
+    }
+}
+
+#face.celebrate .eye {
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(45deg, #fff, #fbbf24);
+}
+
+#face.sleepy .eye {
+    height: 2px;
+    opacity: 0.5;
+    transform: translateY(4px);
+}
+
+#face.sleepy #mouth {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    opacity: 0.3;
+}
+
+#face.thinking .eye {
+    transform: translateX(10px) translateY(-5px);
+}
+
+#face.thinking #eyebrowL {
+    opacity: 1;
+    transform: translateY(-2px) rotate(-15deg);
+}
+
+#face.thinking #eyebrowR {
+    opacity: 1;
+    transform: translateY(-8px) rotate(10deg);
+}
+
 /* ── FLOATING SYMBOLS ────────────────────────────────────────────────────── */
 #floating-symbols {
     position: absolute;
