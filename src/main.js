@@ -40,6 +40,9 @@ const hubContainer = document.getElementById('hub-container');
 const hubMessages = document.getElementById('hub-messages');
 const closeHubBtn = document.getElementById('closeHubBtn');
 const projectorBtn = document.getElementById('projectorBtn');
+const hubInput = document.getElementById('hubInput');
+const sendHubBtn = document.getElementById('sendHubBtn');
+const saveToHubBtn = document.getElementById('save-to-hub-btn');
 
 // Chart Elements
 const chartContainer = document.getElementById('chart-container');
@@ -220,6 +223,11 @@ async function init() {
     hubBtn.onclick = toggleHub;
     closeHubBtn.onclick = toggleHub;
     projectorBtn.onclick = toggleProjectorMode;
+
+    sendHubBtn.onclick = postManualHub;
+    hubInput.onkeydown = (e) => { if (e.key === 'Enter') postManualHub(); };
+    saveToHubBtn.onclick = saveCurrentVisionToHub;
+
     renderHub();
 }
 
@@ -524,42 +532,75 @@ function toggleProjectorMode() {
 function addToHub(type, content, data = {}) {
     const item = {
         id: Date.now(),
-        type, // 'ai', 'link', 'image'
+        type, // 'ai', 'link', 'image', 'user'
         content,
         data,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-    state.hubItems.unshift(item); // Newest at top for WhatsApp feel
+    state.hubItems.unshift(item); // Newest at top
     if (state.hubItems.length > 50) state.hubItems.pop();
     localStorage.setItem('blip_hub', JSON.stringify(state.hubItems));
     renderHub();
 }
 
+/** Manual Storage V2.7.1 */
+function postManualHub() {
+    const text = hubInput.value.trim();
+    if (!text) return;
+
+    // Detect if it's a link
+    const isLink = text.startsWith('http') || text.startsWith('www');
+    const type = isLink ? 'link' : 'user';
+    const data = isLink ? { url: text.startsWith('www') ? `https://${text}` : text } : {};
+
+    addToHub(type, text, data);
+    hubInput.value = '';
+    console.log('✅ Manual item added to Hub');
+}
+
+function saveCurrentVisionToHub() {
+    if (!state.pendingImage && !state.currentImage) {
+        console.warn('No image to save');
+        return;
+    }
+    const img = state.pendingImage || state.currentImage;
+    addToHub('image', 'Saved Photo', { url: img });
+
+    // Feedback
+    const originalText = saveToHubBtn.innerText;
+    saveToHubBtn.innerText = '✅ Saved!';
+    setTimeout(() => {
+        saveToHubBtn.innerText = originalText;
+    }, 2000);
+}
+
 function renderHub() {
     if (state.hubItems.length === 0) {
-        hubMessages.innerHTML = '<div class="hub-empty">Hub is empty. Ask Blip for links or info!</div>';
+        hubMessages.innerHTML = '<div class="hub-empty">Hub is empty. Save photos or notes here!</div>';
         return;
     }
 
     hubMessages.innerHTML = state.hubItems.map(item => {
         let body = '';
         if (item.type === 'link') {
-            body = `${item.content} <a href="${item.data.url}" target="_blank">🔗 Open Link</a>`;
+            const label = item.content.length > 40 ? '🔗 Open Link' : item.content;
+            body = `<a href="${item.data.url}" target="_blank">${label}</a>`;
         } else if (item.type === 'image') {
-            body = `<img src="${item.data.url}" alt="Hub Image"> ${item.content}`;
+            body = `<img src="${item.data.url}" alt="Hub Image" onclick="window.open('${item.data.url}')">`;
         } else {
             body = item.content;
         }
 
+        const cls = (item.type === 'user' || item.type === 'link') ? 'user' : 'ai';
+        const finalCls = item.type === 'image' ? 'image' : cls;
+
         return `
-            <div class="hub-message ${item.type}">
+            <div class="hub-message ${finalCls}">
                 ${body}
                 <span class="hub-time">${item.timestamp}</span>
             </div>
         `;
     }).join('');
-
-    // Auto scroll to bottom (optional) - but we use unshift for newest at bottom
 }
 
 async function handleCommand(text) {

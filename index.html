@@ -16,7 +16,7 @@
 <body>
     <div id="app">
         <main class="container">
-            <div id="version-tag">V2.7.0</div>
+            <div id="version-tag">V2.7.1</div>
             <section id="face-container">
                 <div id="blip-label">B L I P</div>
 
@@ -44,6 +44,7 @@
                 <div id="vision-preview-container" style="display: none;">
                     <img id="vision-preview" src="" alt="Preview">
                     <button id="clear-image-btn" aria-label="Clear image">✕</button>
+                    <button id="save-to-hub-btn" class="mini-save-btn" title="Save to Hub">📥 Save to Hub</button>
                 </div>
 
                 <div class="button-group">
@@ -69,7 +70,12 @@
                     </div>
                     <div id="hub-messages">
                         <!-- Items will be injected here -->
-                        <div class="hub-empty">Hub is empty. Ask Blip for links or info!</div>
+                        <div class="hub-empty">Hub is empty. Save photos or notes here!</div>
+                    </div>
+                    <div class="hub-footer">
+                        <input type="text" id="hubInput" placeholder="Write a note or paste a link..."
+                            aria-label="Hub note">
+                        <button id="sendHubBtn" aria-label="Post to Hub">Post</button>
                     </div>
                 </div>
 

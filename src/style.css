@@ -829,6 +829,32 @@ body.projector-mode #projectorBtn {
     justify-content: center;
 }
 
+.mini-save-btn {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mini-save-btn:hover {
+    transform: scale(1.05) translateY(-2px);
+    background: #4338ca;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
@@ -1111,6 +1137,55 @@ input[type="range"] {
 .hub-message.link a:hover {
     color: #fff;
     text-shadow: 0 0 8px var(--accent-2);
+}
+
+.hub-message.user {
+    align-self: flex-end;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+    box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+}
+
+.hub-footer {
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    gap: 0.5rem;
+}
+
+#hubInput {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 0.5rem 0.8rem;
+    color: white;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border 0.2s ease;
+}
+
+#hubInput:focus {
+    border-color: var(--accent);
+}
+
+#sendHubBtn {
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    padding: 0 1rem;
+    color: white;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#sendHubBtn:hover {
+    opacity: 0.9;
+    transform: scale(0.98);
 }
 
 .widget-panel.map-panel {
