@@ -5,7 +5,7 @@ const GEMINI_MODEL = "gemini-2.5-flash";
 const OBFUSCATED_KEY = "QUl6YVN5Q21Iakc2OElGOEJJMTFnOGxtcmFIclhFRFNXbVAtTjg0";
 
 const MASTER_KEY = atob(OBFUSCATED_KEY);
-const GATEKEEPER_PASS = "1234";
+const GATEKEEPER_PASS = "blip108";
 
 function resolveApiKey(input) {
     const isGitHub = window.location.hostname.includes('github.io');
