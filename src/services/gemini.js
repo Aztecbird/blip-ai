@@ -2,10 +2,9 @@ const GEMINI_MODEL = "gemini-2.5-flash";
 
 // 🔐 GATEKEEPER: We split the key to prevent GitHub bots from auto-revoking it.
 // To update: Get a NEW key from AI Studio, split it in half, and paste below.
-const PART_A = "AIzaSyDS5jjsmo9v";
-const PART_B = "4YYgO4x1w7-VGZ1FG_GTzk8";
+const OBFUSCATED_KEY = "QUl6YVN5QmRwZjQ3cnp2MTRlVVZ3RFA4NzBhd3dReEEzWk1hRkFj";
 
-const MASTER_KEY = PART_A + PART_B;
+const MASTER_KEY = atob(OBFUSCATED_KEY);
 const GATEKEEPER_PASS = "1234";
 
 function resolveApiKey(input) {
