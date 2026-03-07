@@ -16,7 +16,7 @@
 <body>
     <div id="app">
         <main class="container">
-            <div id="version-tag">V2.7.4</div>
+            <div id="version-tag">V2.8.0</div>
             <section id="face-container">
                 <div id="blip-label">B L I P</div>
 
@@ -42,9 +42,10 @@
                 </div>
 
                 <div id="vision-preview-container" style="display: none;">
+                    <div id="live-indicator" style="display: none;">LIVE 👁️</div>
                     <img id="vision-preview" src="" alt="Preview">
                     <button id="clear-image-btn" aria-label="Clear image">✕</button>
-                    <button id="save-to-hub-btn" class="mini-save-btn" title="Save to Hub">📥 Save to Hub</button>
+                    <button id="save-to-hub-btn" class="mini-save-btn" title="Save to Hub">📥</button>
                 </div>
 
                 <div class="button-group">
@@ -53,8 +54,10 @@
                         <button id="hubBtn" title="Blip Hub" aria-label="Open Hub">💬</button>
                         <button id="projectorBtn" title="Projector Mode" aria-label="Toggle Projector Mode">📽️</button>
                         <button id="cameraBtn" title="Take Photo" aria-label="Open camera">📸</button>
-                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
-                        <button id="uploadBtn" title="Upload Image" aria-label="Upload image">📁</button>
+                        <button id="watchBtn" title="Live Watch Mode" aria-label="Toggle Live Watch">👁️</button>
+                        <input type="file" id="fileInput" accept="image/*,video/mp4,video/quicktime"
+                            style="display: none;">
+                        <button id="uploadBtn" title="Upload Image/Video" aria-label="Upload file">📁</button>
                     </div>
                 </div>
 

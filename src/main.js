@@ -23,10 +23,12 @@ const geminiKeyContainer = document.getElementById('gemini-key-container');
 
 // Vision Elements
 const cameraBtn = document.getElementById('cameraBtn');
+const watchBtn = document.getElementById('watchBtn');
 const uploadBtn = document.getElementById('uploadBtn');
 const fileInput = document.getElementById('fileInput');
 const visionPreviewContainer = document.getElementById('vision-preview-container');
 const visionPreview = document.getElementById('vision-preview');
+const liveIndicator = document.getElementById('live-indicator');
 const clearImageBtn = document.getElementById('clear-image-btn');
 const webcamVideo = document.getElementById('webcam-video');
 const captureCanvas = document.getElementById('capture-canvas');
@@ -74,7 +76,10 @@ const state = {
     voiceEngine: localStorage.getItem('blip_voice_engine') || (isGitHub ? 'gemini' : 'kokoro'),
     hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
     idleBehavior: null, // 'dreamer', 'observer', 'squinter'
-    isProjectorMode: false
+    isProjectorMode: false,
+    isLiveWatch: false,
+    liveInterval: null,
+    liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
@@ -194,6 +199,7 @@ async function init() {
 
     // Vision Listeners
     cameraBtn.onclick = startCamera;
+    watchBtn.onclick = toggleLiveWatch;
     uploadBtn.onclick = () => fileInput.click();
     fileInput.onchange = handleFileUpload;
     clearImageBtn.onclick = clearPendingImage;
@@ -287,6 +293,45 @@ function capturePhoto() {
     transcriptText.innerText = "I got it! Now, what would you like to know about this?";
 }
 
+/** Video Brain V2.8.0 */
+function toggleLiveWatch() {
+    state.isLiveWatch = !state.isLiveWatch;
+    watchBtn.classList.toggle('active', state.isLiveWatch);
+    liveIndicator.style.display = state.isLiveWatch ? 'block' : 'none';
+    visionPreviewContainer.style.display = state.isLiveWatch ? 'block' : (state.pendingImage ? 'block' : 'none');
+
+    if (state.isLiveWatch) {
+        setEmotion('curious');
+        transcriptText.innerText = "Live Watch ACTIVE. I'm observing everything...";
+        // If camera not yet on, start it
+        if (!state.cameraStream) startCamera();
+
+        state.liveInterval = setInterval(captureLiveFrame, 1500);
+    } else {
+        clearInterval(state.liveInterval);
+        state.liveFrames = [];
+        transcriptText.innerText = "Live Watch stopped.";
+        if (state.isActive) startListeningLoop();
+    }
+}
+
+function captureLiveFrame() {
+    if (!state.cameraStream) return;
+
+    const ctx = captureCanvas.getContext('2d');
+    captureCanvas.width = 160; // Tiny for performance
+    captureCanvas.height = 120;
+    ctx.drawImage(webcamVideo, 0, 0, 160, 120);
+
+    const base64 = captureCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+    state.liveFrames.push({ data: base64, mimeType: 'image/jpeg' });
+
+    if (state.liveFrames.length > 5) state.liveFrames.shift(); // Keep last 5 frames
+
+    // Update preview bubble with latest
+    visionPreview.src = `data:image/jpeg;base64,${base64}`;
+}
+
 function handleFileUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -294,9 +339,21 @@ function handleFileUpload(e) {
     const reader = new FileReader();
     reader.onload = (event) => {
         const base64 = event.target.result.split(',')[1];
-        setPendingImage(base64);
+        const mimeType = file.type;
+
+        if (mimeType.startsWith('video/')) {
+            state.pendingImage = { data: base64, mimeType };
+            // For video preview, we just show a placeholder or first frame if we could, 
+            // but for simplicity we'll use a generic icon or keep previous
+            visionPreview.src = 'https://cdn-icons-png.flaticon.com/512/1179/1179069.png';
+            transcriptText.innerText = "Video clip loaded! Analyzing the movement...";
+        } else {
+            setPendingImage(base64);
+            transcriptText.innerText = "Got the photo! Ask me anything about it.";
+        }
+
+        visionPreviewContainer.style.display = 'block';
         setEmotion('happy');
-        transcriptText.innerText = "Got the file! Ask me anything about it.";
     };
     reader.readAsDataURL(file);
 }
@@ -625,6 +682,11 @@ async function handleCommand(text) {
 
     try {
         const images = state.pendingImage ? [state.pendingImage] : [];
+
+        // Inject Live Frames for temporal context
+        if (state.isLiveWatch && state.liveFrames.length > 0) {
+            images.push(...state.liveFrames);
+        }
 
         let response;
         if (state.selectedModel.startsWith('gemini')) {

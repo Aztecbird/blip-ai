@@ -799,8 +799,8 @@ body.projector-mode #projectorBtn {
     position: fixed;
     bottom: 25px;
     right: 25px;
-    width: 80px;
-    height: 80px;
+    width: 85px;
+    height: 85px;
     border-radius: 50%;
     /* Compact Bubble Look */
     overflow: visible;
@@ -809,6 +809,61 @@ body.projector-mode #projectorBtn {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px var(--accent-glow);
     animation: bubble-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     z-index: 1000;
+}
+
+#live-indicator {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ef4444;
+    color: white;
+    font-size: 0.6rem;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+    z-index: 1002;
+    letter-spacing: 1px;
+    animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+    0% {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: translateX(-50%) scale(0.95);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
+}
+
+#watchBtn.active {
+    background: var(--accent);
+    color: white;
+    box-shadow: 0 0 15px var(--accent-glow);
+    animation: pulse-watch 2s infinite;
+}
+
+@keyframes pulse-watch {
+    0% {
+        box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(79, 70, 229, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(79, 70, 229, 0);
+    }
 }
 
 @keyframes bubble-in {

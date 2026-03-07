@@ -73,12 +73,16 @@ CRITICAL: Never offer Amazon links or product recommendations for restaurants, b
     const userParts = [{ text: `${systemPrompt}\n\nUser: ${message}` }];
 
     if (images && images.length > 0) {
-        images.forEach(imgBase64 => {
-            // Remove data:image/jpeg;base64, prefix if present
-            const cleanBase64 = imgBase64.replace(/^data:image\/\w+;base64,/, "");
+        images.forEach(media => {
+            // media can be a string (legacy) or an object { data, mimeType }
+            const isObj = typeof media === 'object';
+            const rawData = isObj ? media.data : media;
+            const mimeType = isObj ? media.mimeType : "image/jpeg";
+
+            const cleanBase64 = rawData.replace(/^data:[\w\/]+;base64,/, "");
             userParts.push({
                 inline_data: {
-                    mime_type: "image/jpeg",
+                    mime_type: mimeType,
                     data: cleanBase64
                 }
             });
