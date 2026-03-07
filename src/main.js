@@ -13,10 +13,6 @@ const transcriptText = document.getElementById('transcript');
 const meterLevel = document.getElementById('meter-level');
 const meterBox = document.querySelector('.mic-meter');
 const voiceSelect = document.getElementById('voiceSelect');
-const thresholdSlider = document.getElementById('thresholdSlider');
-const thresholdVal = document.getElementById('thresholdVal');
-const ossStatus = document.getElementById('ollama-status');
-const ossText = document.getElementById('status-text');
 const kokoroVoiceSelect = document.getElementById('kokoroVoiceSelect');
 const kokoroStatusDot = document.getElementById('kokoro-status');
 const geminiVoiceSelect = document.getElementById('geminiVoiceSelect');
@@ -72,7 +68,8 @@ const state = {
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
     selectedModel: localStorage.getItem('blip_model') || (isGitHub ? 'gemini-2.5-flash' : 'llama3.2'),
     voiceEngine: localStorage.getItem('blip_voice_engine') || (isGitHub ? 'gemini' : 'kokoro'),
-    hubItems: JSON.parse(localStorage.getItem('blip_hub')) || []
+    hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
+    idleBehavior: null // 'dreamer', 'observer', 'squinter'
 };
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
@@ -89,12 +86,6 @@ async function init() {
     state.selectedVoice = voices[0];
     voiceSelect.onchange = (e) => {
         state.selectedVoice = voices[parseInt(e.target.value)];
-    };
-
-    // Sensitivity
-    thresholdSlider.oninput = (e) => {
-        state.sensitivity = parseInt(e.target.value);
-        thresholdVal.innerText = `${state.sensitivity}%`;
     };
 
     // Kokoro voice selector
@@ -168,13 +159,8 @@ async function init() {
     updateKokoroStatus();                          // immediate check (async, non-blocking)
     setInterval(updateKokoroStatus, 15000);        // re-check every 15s
 
-    // Check Ollama
-    const isOnline = await checkOllamaStatus();
-    updateOllamaStatus(isOnline);
-    if (isOnline) {
-        warmUpModel('llama3.2');
-        warmUpModel('llava');
-    }
+    // Randomized Idle Personality (V2.6.3)
+    setInterval(triggerRandomIdle, 12000);
 
     // Face blinking
     setInterval(() => {
@@ -680,7 +666,32 @@ async function speak(text, emotion = 'serious') {
 
 function setEmotion(e) {
     state.currentEmotion = e;
+    // When explicit emotion is set, clear any idle behavior
+    if (state.idleBehavior) {
+        face.classList.remove(state.idleBehavior);
+        state.idleBehavior = null;
+    }
     face.className = e;
+}
+
+function triggerRandomIdle() {
+    // Only idle if app is active but NOT thinking, NOT speaking, and NOT already emotional
+    if (!state.isActive || state.isThinking || speech.isSpeaking || state.currentEmotion !== 'serious') return;
+
+    const behaviors = ['dreamer', 'observer', 'squinter'];
+    const pick = behaviors[Math.floor(Math.random() * behaviors.length)];
+
+    state.idleBehavior = pick;
+    face.classList.add(pick);
+    console.log(`🎭 Blip is now: ${pick}`);
+
+    // Revert to normal after 4-6 seconds
+    setTimeout(() => {
+        if (state.idleBehavior === pick) {
+            face.classList.remove(pick);
+            state.idleBehavior = null;
+        }
+    }, 5000);
 }
 
 function spawnSymbol(type) {
