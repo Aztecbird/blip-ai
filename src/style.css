@@ -796,34 +796,76 @@ body.projector-mode #projectorBtn {
 }
 
 #vision-preview-container {
-    position: relative;
-    width: 100%;
-    margin-bottom: 0.75rem;
-    border-radius: 0.85rem;
-    overflow: hidden;
-    border: 2px solid var(--accent);
-    box-shadow: 0 0 20px var(--accent-glow);
-    animation: fadeIn 0.3s ease;
+    position: fixed;
+    bottom: 25px;
+    right: 25px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    /* Compact Bubble Look */
+    overflow: visible;
+    /* To let buttons sit on edges */
+    border: 3px solid var(--accent);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px var(--accent-glow);
+    animation: bubble-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 1000;
+}
+
+@keyframes bubble-in {
+    from {
+        transform: scale(0) rotate(-45deg);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1) rotate(0);
+        opacity: 1;
+    }
 }
 
 #vision-preview {
     width: 100%;
+    height: 100%;
     display: block;
-    max-height: 200px;
     object-fit: cover;
+    border-radius: 50%;
 }
 
 #clear-image-btn {
     position: absolute;
-    top: 5px;
-    right: 5px;
-    background: rgba(0, 0, 0, 0.6);
+    top: -5px;
+    right: -5px;
+    background: #ef4444;
     color: white;
-    border: none;
+    border: 2px solid #000;
     border-radius: 50%;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1001;
+}
+
+.mini-save-btn {
+    position: absolute;
+    bottom: -5px;
+    right: -5px;
+    background: var(--success);
+    color: white;
+    border: 2px solid #000;
+    padding: 6px;
+    border-radius: 50%;
+    /* Circle icon only */
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 1001;
     display: flex;
     align-items: center;
     justify-content: center;
