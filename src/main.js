@@ -569,6 +569,13 @@ const actionHandlers = {
         const result = await web.searchYouTube(res.tool_params.query);
         addToHub('link', `🎬 YouTube: ${res.tool_params.query}`, { url: result.url });
         return { text: `${res.text} ${result.text}`, extraHtml: `<br>${result.html}` };
+    },
+
+    search: async (res) => {
+        if (!res.tool_params?.query) return { text: res.text };
+        const result = await web.search(res.tool_params.query);
+        addToHub('link', `🔍 Search: ${res.tool_params.query}`, { url: `https://www.google.com/search?q=${encodeURIComponent(res.tool_params.query)}` });
+        return { text: `${res.text} ${result.text}`, extraHtml: `<br>${result.html}` };
     }
 };
 

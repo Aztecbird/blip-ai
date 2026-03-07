@@ -218,35 +218,74 @@ export const web = {
     },
 
     /**
-     * Build Amazon product links from Ollama's recommended model names.
-     * No API key needed — uses public Amazon search URLs.
+     * Build product links for Spanish retailers.
      * @param {string} query - e.g. "piano keyboard"
      * @param {string[]} recommendations - e.g. ["Yamaha P-125", "Roland FP-30X"]
      */
     async getProducts(query, recommendations = []) {
-        console.log(`🛒 Building Amazon links for: ${query}`, recommendations);
+        console.log(`🛒 Building retailer links for: ${query}`, recommendations);
 
-        // Use recommendations from Ollama, or fall back to the raw query as a single item
         const items = (recommendations && recommendations.length > 0)
             ? recommendations.slice(0, 3)
             : [query];
 
-        // Build amazon.es search links (Spain — change to amazon.com for US)
-        const amazonBase = 'https://www.amazon.es/s?k=';
-        const products = items.map(name => ({
-            name,
-            url: `${amazonBase}${encodeURIComponent(name)}`
-        }));
+        const retailers = [
+            { name: 'Amazon', base: 'https://www.amazon.es/s?k=' },
+            { name: 'Media Markt', base: 'https://www.mediamarkt.es/es/search.html?query=' },
+            { name: 'PC Componentes', base: 'https://www.pccomponentes.com/buscar/?query=' },
+            { name: 'Carrefour', base: 'https://www.carrefour.es/?q=' }
+        ];
 
-        const spokenNames = products.map(p => p.name).join(', ');
-        const spokenText = `I found ${products.length} product option${products.length > 1 ? 's' : ''}: ${spokenNames}. I've added Amazon links for these items below.`;
+        // If the query mentions a specific retailer, prioritize it
+        const lowerQuery = query.toLowerCase();
+        const preferredRetailer = retailers.find(r => lowerQuery.includes(r.name.toLowerCase()));
 
-        // HTML cards shown in the transcript
+        const products = [];
+        items.forEach(itemName => {
+            if (preferredRetailer) {
+                products.push({
+                    name: `${itemName} @ ${preferredRetailer.name}`,
+                    url: `${preferredRetailer.base}${encodeURIComponent(itemName)}`,
+                    color: 'blue'
+                });
+            } else {
+                // Default to top 2 results for variety
+                retailers.slice(0, 2).forEach(r => {
+                    products.push({
+                        name: `${itemName} (${r.name})`,
+                        url: `${r.base}${encodeURIComponent(itemName)}`,
+                        color: r.name === 'Amazon' ? 'orange' : 'blue'
+                    });
+                });
+            }
+        });
+
+        const spokenNames = items.join(', ');
+        const storeSuffix = preferredRetailer ? ` at ${preferredRetailer.name}` : "";
+        const spokenText = `I've found some options for ${spokenNames}${storeSuffix}. I've added links to check their price and availability below.`;
+
         const html = products.map(p =>
-            `<a href="${p.url}" target="_blank" class="action-link blue" style="display:block;margin-top:6px;text-align:left;">🛒 ${p.name}</a>`
+            `<a href="${p.url}" target="_blank" class="action-link ${p.color}" style="display:block;margin-top:6px;text-align:left;">🛒 ${p.name}</a>`
         ).join('');
 
         return { text: spokenText, html };
+    },
+
+    /**
+     * General Web Search (Google/DuckDuckGo links)
+     */
+    async search(query) {
+        console.log(`🔍 Web search: ${query}`);
+        const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+
+        return {
+            text: `I've prepared a web search for "${query}" for you.`,
+            html: `
+                <a href="${googleUrl}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>
+                <a href="${ddgUrl}" target="_blank" class="action-link green">🦆 SEARCH ON DUCKDUCKGO</a>
+            `
+        };
     },
 
     /**
