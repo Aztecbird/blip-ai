@@ -1,33 +1,29 @@
-# Blip AI Assistant V2
+# Blip AI: Cloud Edition 🚀🤖
 
-A modern, responsive AI assistant with emotional facial expressions, powered by local LLMs via Ollama.
+Blip is a tiny, ultra-expressive voice assistant with a modular brain. He can run locally via Ollama or live on the web via Google's Gemini 1.5/2.0 "Super Brain".
 
-## ✨ Features
-- **Emotional Responses**: Blip changes facial expressions based on the AI's response (happy, sad, curious, angry, etc.).
-- **Voice Interaction**: Speak naturally to Blip using the Web Speech API.
-- **Local AI**: All processing happens on your machine via Ollama (phi3.5:latest).
-- **Premium Design**: Modern dark-mode UI with smooth CSS animations.
-- **Sensitivity Controls**: Adjustable microphone threshold to filter background noise.
+## ✨ New in Cloud Edition (v2.5)
+- **Glassmorphism UI**: Beautiful, premium design that feels at home on any desktop.
+- **Gemini Super Brain**: Vision-ready reasoning via Google's latest models.
+- **Cloud Voice**: High-fidelity neural voices (Puck, Kore, etc.) that don't require local servers.
+- **GitHub Independent**: Works out of the box when deployed to GitHub Pages!
 
-## 🚀 Setup & Run
+## 🚀 Setup & Deployment
 
-### 1. Prerequisites
-- **Node.js**: (v18 or higher)
-- **Ollama**: Installed and running locally.
-- **Microphone**: Chrome or Edge recommended.
+### 1. Local Development
+1. Clone the repo.
+2. Run `./setup-blip.sh` to install dependencies and start the local TTS server (Kokoro).
+3. Visit `http://localhost:5173`.
 
-### 2. Configure Ollama
-Ensure Ollama is running with CORS enabled. In your terminal:
-```bash
-```
-Open the provided local URL (usually `http://localhost:5173`) in your browser.
+### 2. Live GitHub Deployment
+Blip is pre-configured for GitHub Pages:
+- **Auto-Config**: It detects the live domain and switches to Gemini Brain and Voice automatically.
+- **Gatekeeper**: Use the password `1234` in settings to unlock the master API key, or enter your own [Google AI Studio Key](https://aistudio.google.com/).
 
 ## 🛠️ Tech Stack
-- **Framework**: Vite
-- **Logic**: Vanilla ES6+ Javascript
-- **Styling**: Modern CSS3 (Variables, Flexbox, Keyframes)
-- **AI**: Ollama API
-- **Voice**: Web Speech API
+- **AI Brains**: Gemini 2.0 Flash (Cloud), Ollama (Local).
+- **Voice Engines**: Gemini TTS (Cloud), Kokoro (Local Neural), Web Speech API (Browser).
+- **Core**: Vite, Vanilla ES6+, CSS Glassmorphism.
 
 ---
-Created with ❤️ for Pablo.
+Created with ❤️ for Pablo. 🍱✨🚀🎙️

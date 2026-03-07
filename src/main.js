@@ -51,6 +51,8 @@ const closeMapBtn = document.getElementById('closeMapBtn');
 const mapFrame = document.getElementById('map-frame');
 
 // ── APP STATE ────────────────────────────────────────────────────────────────
+const isGitHub = window.location.hostname.includes('github.io');
+
 const state = {
     isActive: false,
     isThinking: false,
@@ -62,8 +64,8 @@ const state = {
     pendingImage: null, // Base64 string
     cameraStream: null,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
-    selectedModel: localStorage.getItem('blip_model') || 'llama3.2',
-    voiceEngine: localStorage.getItem('blip_voice_engine') || 'kokoro'
+    selectedModel: localStorage.getItem('blip_model') || (isGitHub ? 'gemini-2.0-flash' : 'llama3.2'),
+    voiceEngine: localStorage.getItem('blip_voice_engine') || (isGitHub ? 'gemini' : 'kokoro')
 };
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────

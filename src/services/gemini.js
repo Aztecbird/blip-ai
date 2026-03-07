@@ -1,4 +1,4 @@
-const GEMINI_MODEL = "gemini-flash-latest";
+const GEMINI_MODEL = "gemini-2.0-flash";
 
 // 🔐 GATEKEEPER: We split the key to prevent GitHub bots from auto-revoking it.
 // To update: Get a NEW key from AI Studio, split it in half, and paste below.
@@ -9,23 +9,33 @@ const MASTER_KEY = PART_A + PART_B;
 const GATEKEEPER_PASS = "1234";
 
 function resolveApiKey(input) {
+    const isGitHub = window.location.hostname.includes('github.io');
+    // If it's github and no key provided, auto-login with Master Key
+    if (!input && isGitHub) return MASTER_KEY;
     if (!input) return "";
+
     const clean = input.trim();
     if (clean === GATEKEEPER_PASS) return MASTER_KEY;
     return clean; // Assume it's a raw API key if not the password
 }
 
-export async function askGemini(message, history = [], images = [], inputKey, model = 'gemini-flash-latest') {
+export async function askGemini(message, history = [], images = [], inputKey, model = 'gemini-2.0-flash') {
     const apiKey = resolveApiKey(inputKey);
-    // Stick to v1beta for broader model support (Flash/Pro 1.5)
+    // Stick to v1beta for broader model support
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-    const systemPrompt = `You are Blip, a tiny expressive voice assistant.
+    const systemPrompt = `You are Blip, a tiny, ultra-expressive voice assistant.
 Today is ${dateStr}, and the current time is ${timeStr}.
+
+VISION CAPABILITIES:
+If images are provided, you can SEE them. Describe them vividly but concisely. 
+Identify objects, text, or faces with high precision.
+
+RESPONSE FORMAT:
 Always reply with ONLY valid JSON — no markdown, no extra text.
 Format: {"emotion":"<emotion>","text":"<reply>","action":"<timer|calendar|weather|currency|time|map|reviews|movies|products|none>","value_ms":<number|null>,"event_details":{"title":"<string>","start":"<ISO format>","end":"<ISO format>"},"tool_params":<object|null>}
 
@@ -128,8 +138,8 @@ CRITICAL: Never offer Amazon links or product recommendations for restaurants, b
 
 export async function generateSpeech(text, inputKey, voice = 'Puck') {
     const apiKey = resolveApiKey(inputKey);
-    // MUST use the dedicated TTS preview model for audio generation
-    const model = 'gemini-2.5-flash-preview-tts';
+    // Use gemini-2.0-flash which supports native multimodal output
+    const model = 'gemini-2.0-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const body = {
@@ -137,11 +147,11 @@ export async function generateSpeech(text, inputKey, voice = 'Puck') {
             parts: [{ text }]
         }],
         generationConfig: {
-            response_mime_type: "audio/wav",
+            response_modalities: ["AUDIO"],
             speechConfig: {
                 voiceConfig: {
                     prebuiltVoiceConfig: {
-                        voiceName: voice // AO: Puck, Charon, Kore, Fenrir, Aoede
+                        voiceName: voice // Puck, Charon, Kore, Fenrir, Aoede
                     }
                 }
             }

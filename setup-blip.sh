@@ -27,6 +27,12 @@ else
   echo -e "   ${BLUE}OLLAMA_ORIGINS=\"*\" ollama serve${NC}"
 fi
 
+# 2.5 Gemini Cloud Reminder
+echo -e "${BLUE}☁️  Step 2.5: Gemini Cloud Brain Reminder...${NC}"
+echo -e "   To use the Gemini 2.5 'Super Brain' (Cloud Engine):"
+echo -e "   1. Ensure you have an API key from: ${BLUE}https://aistudio.google.com/${NC}"
+echo -e "   2. Enter the key (or the gatekeeper pass '1234') in the Blip settings."
+
 # 3. Set up Kokoro TTS in a virtual environment
 echo -e "${BLUE}🎙️  Step 3: Setting up Kokoro TTS...${NC}"
 
