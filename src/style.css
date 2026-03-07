@@ -465,6 +465,65 @@ body.projector-mode #projectorBtn {
     opacity: 0.8;
 }
 
+/* ── DYNAMIC PROJECTOR REAL ESTATE (V3.0.0) ── */
+body.projector-mode.projecting-visual .face-frame {
+    width: 120px !important;
+    height: 100px !important;
+    position: fixed !important;
+    bottom: 2rem !important;
+    right: 2rem !important;
+    z-index: 1000 !important;
+    transform: none !important;
+    animation: none !important;
+    background: rgba(0, 0, 0, 0.4) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+body.projector-mode.projecting-visual #face {
+    width: 100px !important;
+    height: 80px !important;
+}
+
+body.projector-mode.projecting-visual .eye {
+    width: 8px !important;
+    height: 8px !important;
+}
+
+body.projector-mode.projecting-visual #mouth {
+    width: 25px !important;
+    height: 4px !important;
+}
+
+body.projector-mode.projecting-visual #transcript-container {
+    position: fixed !important;
+    bottom: 2rem !important;
+    left: 2rem !important;
+    width: auto !important;
+    max-width: 60% !important;
+    z-index: 1000 !important;
+}
+
+body.projector-mode.projecting-visual .widget-panel {
+    display: flex !important;
+    position: fixed !important;
+    inset: 2rem !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    z-index: 500 !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+body.projector-mode.projecting-visual .map-panel iframe {
+    height: 100% !important;
+}
+
+body.projector-mode.projecting-visual .hub-panel {
+    max-height: none !important;
+}
+
+
 #face.curious .eye#eyeR {
     transform: translateY(-6px);
 }

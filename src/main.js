@@ -209,6 +209,7 @@ async function init() {
     // Chart Listeners
     closeChartBtn.onclick = () => {
         chartContainer.style.display = 'none';
+        document.body.classList.remove('projecting-visual');
         if (activeChart) activeChart.destroy();
     };
 
@@ -222,12 +223,16 @@ async function init() {
     // Map Listeners
     closeMapBtn.onclick = () => {
         mapContainer.style.display = 'none';
+        document.body.classList.remove('projecting-visual');
         mapFrame.src = '';
     };
 
     // Hub Listeners
     hubBtn.onclick = toggleHub;
-    closeHubBtn.onclick = toggleHub;
+    closeHubBtn.onclick = () => {
+        toggleHub();
+        document.body.classList.remove('projecting-visual');
+    };
     projectorBtn.onclick = toggleProjectorMode;
 
     sendHubBtn.onclick = postManualHub;
@@ -426,6 +431,7 @@ function cancelInteraction() {
     talkBtn.classList.add('listening');
     faceFrame?.classList.add('listening-glow');
     setEmotion('serious');
+    document.body.classList.remove('projecting-visual');
     transcriptText.innerHTML = '<span style="color:#f88">🛑 Interrupted. Say "Hey Blip" again.</span>';
     startListeningLoop();
 }
@@ -442,6 +448,7 @@ function stopApp() {
     faceFrame?.classList.remove('listening-glow');
     meterBox.style.display = 'none';
     setEmotion('serious');
+    document.body.classList.remove('projecting-visual');
     transcriptText.innerText = 'Blip is resting.';
 }
 
@@ -494,7 +501,7 @@ const actionHandlers = {
         const history = await web.getCurrencyHistory(res.tool_params.from, res.tool_params.to);
         if (history && history.labels.length > 0) {
             renderCurrencyChart(history.labels, history.rates, `${res.tool_params.from} to ${res.tool_params.to}`);
-            extraHtml = `<br><button onclick="document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
+            extraHtml = `<br><button onclick="document.body.classList.add('projecting-visual'); document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
         }
         return { text: `${res.text} ${exchange.text}`, extraHtml };
     },
@@ -504,6 +511,7 @@ const actionHandlers = {
         const query = encodeURIComponent(`${res.tool_params.query} in ${res.tool_params.location}`);
         mapFrame.src = `https://maps.google.com/maps?q=${query}&t=&z=13&ie=UTF8&iwloc=&output=embed`;
         mapContainer.style.display = 'block';
+        document.body.classList.add('projecting-visual');
 
         const mapsUrl = `https://www.google.com/maps/search/${query}`;
         let extraHtml = `<br><a href="${mapsUrl}" target="_blank" class="action-link green">🌍 OPEN IN GOOGLE MAPS</a>`;
@@ -522,6 +530,7 @@ const actionHandlers = {
         const reviewText = await web.getPlaceReviews(res.tool_params.query, res.tool_params.location);
         addToHub('ai', `⭐ Reviews for ${res.tool_params.query}: ${reviewText.substring(0, 100)}...`);
         state.history.push({ user: `(System: Fetched reviews for ${res.tool_params.query})`, blip: reviewText });
+        document.body.classList.add('projecting-visual');
         return { text: `${res.text} ${reviewText}` };
     },
 
@@ -530,6 +539,7 @@ const actionHandlers = {
         const moviesText = await web.getMovies(res.tool_params.location);
         addToHub('ai', `🎬 Movies in ${res.tool_params.location}: ${moviesText.substring(0, 100)}...`);
         state.history.push({ user: `(System: Fetched movies for ${res.tool_params.location})`, blip: moviesText });
+        document.body.classList.add('projecting-visual');
         return { text: `${res.text} ${moviesText}` };
     },
 
@@ -543,6 +553,7 @@ const actionHandlers = {
         }
 
         state.history.push({ user: `(System: Products for ${res.tool_params.query})`, blip: result.text });
+        document.body.classList.add('projecting-visual');
         return { text: result.text, extraHtml: result.html };
     },
 
@@ -568,6 +579,7 @@ const actionHandlers = {
         if (!res.tool_params?.query) return { text: res.text };
         const result = await web.searchYouTube(res.tool_params.query);
         addToHub('link', `🎬 YouTube: ${res.tool_params.query}`, { url: result.url });
+        document.body.classList.add('projecting-visual');
         return { text: `${res.text} ${result.text}`, extraHtml: `<br>${result.html}` };
     },
 
@@ -575,6 +587,7 @@ const actionHandlers = {
         if (!res.tool_params?.query) return { text: res.text };
         const result = await web.search(res.tool_params.query);
         addToHub('link', `🔍 Search: ${res.tool_params.query}`, { url: `https://www.google.com/search?q=${encodeURIComponent(res.tool_params.query)}` });
+        document.body.classList.add('projecting-visual');
         return { text: `${res.text} ${result.text}`, extraHtml: `<br>${result.html}` };
     }
 };
