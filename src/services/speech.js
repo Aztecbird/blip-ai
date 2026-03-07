@@ -12,17 +12,44 @@ class SpeechService {
         this._audioCtx = null;
     }
 
+    // 🎙️ Initialize AudioContext on user gesture
+    initAudio() {
+        if (!this._audioCtx) {
+            this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this._audioCtx.state === 'suspended') {
+            this._audioCtx.resume();
+        }
+    }
+
     async init() {
-        // Load browser voices
+        console.log('🎤 Initializing Speech Service...');
+        // Load browser voices with a timeout
         const browserVoices = await new Promise((resolve) => {
+            let resolved = false;
             const load = () => {
+                if (resolved) return;
                 const v = this.synth.getVoices();
-                if (v.length > 0) resolve(v);
+                if (v.length > 0) {
+                    resolved = true;
+                    resolve(v);
+                }
             };
+
+            // Wait up to 2.5 seconds for voices
+            setTimeout(() => {
+                if (!resolved) {
+                    console.warn('🕒 Browser voices timeout. Proceeding with empty list.');
+                    resolved = true;
+                    resolve([]);
+                }
+            }, 2500);
+
             this.synth.onvoiceschanged = load;
             load();
         });
 
+        this.voices = browserVoices;
         // Check Kokoro in background
         this.checkKokoroStatus();
 
@@ -158,7 +185,7 @@ class SpeechService {
 
     async playBase64Audio(base64Data, options = {}) {
         this.isSpeaking = true;
-        if (!this._audioCtx) this._audioCtx = new AudioContext();
+        this.initAudio(); // Ensure context is ready
 
         const binaryString = atob(base64Data);
         const bytes = new Uint8Array(binaryString.length);

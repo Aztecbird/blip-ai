@@ -316,10 +316,21 @@ async function toggleApp() {
     state.isActive = !state.isActive;
 
     if (state.isActive) {
-        meterBox.style.display = 'block';
-        setEmotion('happy');
-        await speak("Hello! My name is Blip. How can I help you today?");
-        startListeningLoop();
+        try {
+            // 🎙️ VITAL: Initialize AudioContext on the user gesture
+            speech.initAudio();
+
+            meterBox.style.display = 'block';
+            setEmotion('happy');
+            talkBtn.innerText = '⌛ WAKING UP...';
+
+            await speak("Hello! My name is Blip. How can I help you today?");
+            startListeningLoop();
+        } catch (err) {
+            console.error("Wake up error:", err);
+            stopApp();
+            transcriptText.innerText = "⚠️ I had trouble waking up. Try again?";
+        }
     } else {
         stopApp();
     }
