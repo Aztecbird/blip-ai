@@ -84,7 +84,7 @@ const state = {
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
-    console.log('🚀 Blip V2 initializing...');
+    console.log('🚀 Blip V3.0.0 initializing...');
 
     // Load voices
     const voices = await speech.init();
@@ -169,7 +169,7 @@ async function init() {
     updateKokoroStatus();                          // immediate check (async, non-blocking)
     setInterval(updateKokoroStatus, 15000);        // re-check every 15s
 
-    // Randomized Idle Personality (V2.6.3)
+    // Randomized Idle Personality (V3.0.0)
     setInterval(triggerRandomIdle, 12000);
 
     // Face blinking
@@ -293,7 +293,7 @@ function capturePhoto() {
     transcriptText.innerText = "I got it! Now, what would you like to know about this?";
 }
 
-/** Video Brain V2.8.0 */
+/** Video Brain V3.0.0 */
 function toggleLiveWatch() {
     state.isLiveWatch = !state.isLiveWatch;
     watchBtn.classList.toggle('active', state.isLiveWatch);
@@ -607,7 +607,7 @@ function addToHub(type, content, data = {}) {
     renderHub();
 }
 
-/** Manual Storage V2.7.1 */
+/** Manual Storage V3.0.0 */
 function postManualHub() {
     const text = hubInput.value.trim();
     if (!text) return;
@@ -719,7 +719,7 @@ async function handleCommand(text) {
         // Render transcript with all extra buttons
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${extraHtml}`;
 
-        // Visual Reactions (V2.6.4)
+        // Visual Reactions (V3.0.0)
         if (response.symbol) spawnSymbol(response.symbol);
         if (response.action && response.action !== 'none') spawnSymbol(response.action);
 
