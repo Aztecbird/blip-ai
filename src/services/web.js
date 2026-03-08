@@ -300,18 +300,23 @@ export const web = {
 
         let extractedData = "I've provided some links below for you to explore.";
         try {
-            // Try to grab some real facts from Wikipedia so Blip has "context memory" of the search
+            // Step 1: Search for the best page title
             const searchTerms = encodeURIComponent(query);
-            const wikiRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`);
-            if (wikiRes.ok) {
-                const wikiData = await wikiRes.json();
-                if (wikiData.query.search.length > 0) {
-                    // Clean HTML tags from snippet
-                    extractedData = "Here is what I found: " + wikiData.query.search[0].snippet.replace(/<\/?[^>]+(>|$)/g, "") + ". " +
-                        (wikiData.query.search[1] ? wikiData.query.search[1].snippet.replace(/<\/?[^>]+(>|$)/g, "") : "");
+            const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`);
+            const searchData = await searchRes.json();
+
+            if (searchData.query.search.length > 0) {
+                const title = searchData.query.search[0].title;
+                // Step 2: Fetch the actual summary/intro of that page
+                const summaryRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json&origin=*`);
+                const summaryData = await summaryRes.json();
+                const pages = summaryData.query.pages;
+                const pageId = Object.keys(pages)[0];
+                if (pageId !== "-1") {
+                    extractedData = pages[pageId].extract.substring(0, 800) + "...";
                 }
             }
-        } catch (e) { /* ignore */ }
+        } catch (e) { console.error('Wikipedia Fetch Error:', e); }
 
         let extraHtml = `
             <a href="${googleUrl}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>

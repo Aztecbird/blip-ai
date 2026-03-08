@@ -723,8 +723,23 @@ async function handleCommand(text) {
         // Execute specific action handler if it exists
         if (actionHandlers[response.action]) {
             const result = await actionHandlers[response.action](response, state);
-            finalReply = result.text;
+            const toolResult = result.text;
             extraHtml = result.extraHtml || '';
+
+            // Reasoning Loop: If a tool returned data, let the AI interpret it for a final answer
+            const infoActions = ['search', 'weather', 'currency', 'time', 'reviews'];
+            if (infoActions.includes(response.action)) {
+                console.log(`🧠 Reasoning pass for action: ${response.action}`);
+                const reasoningPrompt = `I performed the ${response.action} action. 
+Here is the raw data I found: "${toolResult}". 
+Based on this data and the user's original request "${cmd}", give me a friendly, helpful final answer.
+IMPORTANT: Reply ONLY with a natural sentence. Do not mention tools or JSON.`;
+
+                const secondResponse = await askGemini(reasoningPrompt, state.history, [], state.geminiKey, state.selectedModel);
+                finalReply = secondResponse.text;
+            } else {
+                finalReply = toolResult;
+            }
         }
 
         // Render transcript with all extra buttons
@@ -735,9 +750,7 @@ async function handleCommand(text) {
         if (response.action && response.action !== 'none') spawnSymbol(response.action);
 
         // Add to history (regular response)
-        if (response.action !== 'weather' && response.action !== 'currency' && response.action !== 'map' && response.action !== 'reviews') {
-            state.history.push({ user: cmd, blip: finalReply });
-        }
+        state.history.push({ user: cmd, blip: finalReply });
         if (state.history.length > 25) state.history.shift();
 
         // Clear image after successful response
