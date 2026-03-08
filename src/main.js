@@ -584,7 +584,7 @@ const actionHandlers = {
         chartContainer.style.display = 'block';
         document.body.classList.add('projecting-visual');
 
-        const extraHtml = `<br><button onclick="document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
+        const extraHtml = `<br><button onclick="document.body.classList.add('projecting-visual'); document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
         return { text: res.text, extraHtml };
     }
 };
