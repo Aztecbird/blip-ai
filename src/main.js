@@ -791,14 +791,15 @@ Return a simple JSON object: {"action": "search|weather|chart|timer|list|nutriti
 
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
-        const synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 2000)}", 
+        const synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 3000)}", 
 generate a deep, insightful final answer for the user's request: "${cmd}".
 
 CRITICAL RULES:
-1. INCLUDE ALL HARD NUMBERS, percentages, and statistics found in the evidence.
-2. Report the population of Valencia and its gender breakdown (47.6% male, 52.4% female) accurately.
-3. Maintain a high-intelligence "Identity Course" style persona.
-4. DO NOT mention tools or JSON. Provide a natural, insightful response.`;
+1. DATA PRIORITY: Include ALL hard numbers, percentages, and statistics found in the evidence.
+2. COMPARISON MODE: If a comparison is requested (e.g., Mexico vs Spain), YOU MUST use a Markdown table to present the data side-by-side.
+3. DEMOGRAPHIC DEPTH: Always try to report "Total Population", "Women %", "Men %", and "Median Age" if available in the evidence.
+4. TONE: Maintain a high-intelligence, "Identity Course" style persona (profound but data-driven).
+5. NO FLUFF: Do not mention tools, JSON, or "I searched". Just provide the insight and the data table.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
         let finalReply = synthesisResponse.text;

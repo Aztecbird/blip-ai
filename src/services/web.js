@@ -300,29 +300,31 @@ export const web = {
 
         let extractedData = "I've provided some links below for you to explore.";
         try {
-            // Smart Keyword Detection: If looking for population/data, try a more specific Wikipedia search
-            let searchQuery = query;
+            // Smart Split for Comparisons (V3.6.0)
+            const splitRegex = / (and|compared with|vs|versus) /i;
+            const subQueries = query.toLowerCase().split(splitRegex).filter(q => q.trim().length > 3 && !['and', 'compared with', 'vs', 'versus'].includes(q));
+
+            let combinedExtract = "";
             const dataKeywords = ['population', 'demographics', 'men', 'women', 'males', 'females', 'stats', 'data', 'breakdown'];
-            if (dataKeywords.some(k => query.toLowerCase().includes(k))) {
-                searchQuery = query + " demographics"; // Force Wikipedia to look for the data-heavy page
-            }
 
-            // Step 1: Search for the best page title
-            const searchTerms = encodeURIComponent(searchQuery);
-            const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`);
-            const searchData = await searchRes.json();
+            for (const q of (subQueries.length > 1 ? subQueries : [query])) {
+                const searchTerms = encodeURIComponent(q + (dataKeywords.some(k => q.toLowerCase().includes(k)) ? "" : " demographics"));
+                const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`);
+                const searchData = await searchRes.json();
 
-            if (searchData.query.search.length > 0) {
-                const title = searchData.query.search[0].title;
-                // Step 2: Fetch the actual summary/intro of that page (asking for more data)
-                const summaryRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json&origin=*`);
-                const summaryData = await summaryRes.json();
-                const pages = summaryData.query.pages;
-                const pageId = Object.keys(pages)[0];
-                if (pageId !== "-1") {
-                    extractedData = pages[pageId].extract.substring(0, 1200); // More context for the AI reasoning loop
+                if (searchData.query.search.length > 0) {
+                    const title = searchData.query.search[0].title;
+                    const summaryRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json&origin=*`);
+                    const summaryData = await summaryRes.json();
+                    const pages = summaryData.query.pages;
+                    const pageId = Object.keys(pages)[0];
+                    if (pageId !== "-1") {
+                        combinedExtract += `\n--- SOURCE: ${title} ---\n${pages[pageId].extract.substring(0, 1500)}\n`;
+                    }
                 }
             }
+            extractedData = combinedExtract || "No specific detailed sources found.";
+
         } catch (e) { console.error('Wikipedia Fetch Error:', e); }
 
         let extraHtml = `
