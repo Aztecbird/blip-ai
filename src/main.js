@@ -113,7 +113,7 @@ const PERSONAS = {
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
     try {
-        console.log('🚀 Blip V4.3.10 initializing...');
+        console.log('🚀 Blip V4.3.11 initializing...');
 
         // Load voices
         const voices = await speech.init();
@@ -831,8 +831,8 @@ Analyze the user's latest request: "${cmd}".
 Use the conversation history for context if the user is referring to previous topics (like countries, data, or graphs).
 
 Return a simple JSON object: {
-  "actions": ["search", "youtube", "map", "chart", ...], 
-  "query": "optimized search query based on current and previous context",
+  "actions": ["search", "youtube", "map", "chart", "chat", "none"], 
+  "query": "optimized search query based on current and previous context (leave empty for casual chat)",
   "entities": ["entity1", "entity2"]
 }`;
 
@@ -877,18 +877,18 @@ Return a simple JSON object: {
 
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
-        const synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 4000)}", 
-        generate a final answer for the user's request: "${cmd}".
+        const synthesisPrompt = `You are Blip. 
+        User Request: "${cmd}"
+        Research Evidence Found: "${evidence.substring(0, 4000)}"
 
-        CRITICAL OUTPUT RULES:
-        1. AUTO-CHART: If the research contains numbers, statistics, or comparisons, ALWAYS extract them into a JSON block for a chart.
-        2. DATA FORMAT: Use Markdown tables for comparisons and extract the same data into the JSON block.
-        3. FORMAT: You must return your response in this JSON-embedded format if chart data is available:
-           { 
-             "text": "Your natural explanation here...",
-             "chart": { "labels": ["label1", "label2"], "data": [val1, val2], "title": "Chart Title", "type": "bar|line|pie" }
-           }
-        4. PERSONA: Maintain the "Identity Course" style (insightful, profound).`;
+        TASK: Generate the final response.
+        
+        CRITICAL RULES:
+        1. RELEVANCE: If the 'Research Evidence' is unrelated to the request (e.g., user said "lips" and evidence is about "Brazil"), IGNORE the evidence and just reply naturally as a chat assistant.
+        2. NO HALLUCINATION: Do NOT force facts from the research into the answer if they don't apply.
+        3. AUTO-CHART: Only include the JSON "chart" block if the research contains ACTUAL relevant numbers/stats.
+        4. FORMAT: If a chart is needed, return: { "text": "...", "chart": { ... } }. Otherwise, just return your text reply.
+        5. PERSONA: Punchy, expressive, and digital.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
         const synthData = extractJSON(synthesisResponse.rawResponse);
