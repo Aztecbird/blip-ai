@@ -85,7 +85,7 @@ const state = {
     liveInterval: null,
     liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
-// V4.3.2 - The Transcription Fix & "(Ask Blip)" Update
+// V4.3.3 - The Emergency UI Restore
 
 // ── PERSONA CONFIGURATION (V3.4.0) ───────────────────────────────────────────
 const PERSONAS = {
@@ -104,7 +104,7 @@ const PERSONAS = {
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
-    console.log('🚀 Blip V4.3.2 initializing...');
+    console.log('🚀 Blip V4.3.3 initializing...');
 
     // Load voices
     const voices = await speech.init();
