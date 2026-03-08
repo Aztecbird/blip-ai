@@ -72,7 +72,7 @@ const state = {
     pendingImage: null, // Base64 string
     cameraStream: null,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
-    selectedModel: 'gemini-2.5-flash', // Standardized for V3.1.0
+    selectedModel: 'gemini-1.5-flash', // Corrected stable model
     voiceEngine: 'gemini',             // Standardized for V3.1.0
     selectedGeminiVoice: 'Kore',       // Standardized for V3.1.0
     hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],

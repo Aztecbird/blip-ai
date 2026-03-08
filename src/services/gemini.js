@@ -1,4 +1,4 @@
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-1.5-flash";
 
 // 🔐 GATEKEEPER: We split the key to prevent GitHub bots from auto-revoking it.
 // To update: Get a NEW key from AI Studio, split it in half, and paste below.
@@ -8,9 +8,6 @@ const MASTER_KEY = atob(OBFUSCATED_KEY);
 const GATEKEEPER_PASS = "blip108";
 
 function resolveApiKey(input) {
-    const isGitHub = window.location.hostname.includes('github.io');
-    // If it's github and no key provided, auto-login with Master Key
-    if (!input && isGitHub) return MASTER_KEY;
     if (!input) return "";
 
     const clean = input.trim();
