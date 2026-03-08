@@ -1,24 +1,23 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
 
 /* ── TOKENS ──────────────────────────────────────────────────────────────── */
 :root {
-    --bg-deep: #05050d;
+    --bg-deep: #030308;
     --bg-mid: #0a0a1f;
-    --card-bg: rgba(255, 255, 255, 0.05);
-    /* Increased for better glass look */
-    --card-border: rgba(255, 255, 255, 0.12);
+    --card-bg: rgba(255, 255, 255, 0.03);
+    --card-border: rgba(255, 255, 255, 0.1);
     --text-primary: #ffffff;
-    --text-secondary: #a0a0c0;
-    --accent: #6366f1;
-    /* Indigo */
-    --accent-2: #06b6d4;
-    /* Cyan */
-    --accent-vibrant: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #06b6d4 100%);
-    --accent-glow: rgba(99, 102, 241, 0.5);
-    --accent-2-glow: rgba(6, 182, 212, 0.4);
+    --text-secondary: #94a3b8;
+    --accent: #818cf8;
+    /* Softer Indigo */
+    --accent-2: #22d3ee;
+    /* Vibrant Cyan */
+    --accent-vibrant: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #22d3ee 100%);
+    --accent-glow: rgba(129, 140, 248, 0.4);
+    --accent-2-glow: rgba(34, 211, 238, 0.3);
     --error: #f43f5e;
     --success: #10b981;
-    --face-glow: rgba(99, 102, 241, 0.3);
+    --face-glow: rgba(129, 140, 248, 0.25);
 }
 
 * {
@@ -29,7 +28,7 @@
 
 /* ── BODY & ANIMATED BACKGROUND ─────────────────────────────────────────── */
 body {
-    font-family: 'Outfit', -apple-system, sans-serif;
+    font-family: 'Inter', -apple-system, sans-serif;
     background: var(--bg-deep);
     color: var(--text-primary);
     display: flex;
@@ -38,6 +37,7 @@ body {
     min-height: 100vh;
     overflow: hidden;
     position: relative;
+    letter-spacing: -0.01em;
 }
 
 body::before {
@@ -81,13 +81,11 @@ body::before {
 .container {
     width: 100%;
     max-width: 380px;
-    /* Slightly wider for better spacing */
     background: var(--card-bg);
-    backdrop-filter: blur(40px) saturate(180%);
-    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    backdrop-filter: blur(50px) saturate(200%);
+    -webkit-backdrop-filter: blur(50px) saturate(200%);
     border: 1px solid var(--card-border);
-    padding: 2.25rem 1.5rem 1.5rem;
-    /* Increased top padding for version tag */
+    padding: 2.25rem 1.75rem 1.75rem;
     display: grid;
     grid-template-areas:
         "face"
@@ -1064,25 +1062,45 @@ body.projector-mode.projecting-visual .hub-panel {
 
 /* ── SETTINGS ────────────────────────────────────────────────────────────── */
 .settings {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
     border-top: 1px solid rgba(255, 255, 255, 0.05);
-    padding-top: 0.85rem;
+    padding-top: 1.25rem;
 }
 
 .setting-item {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.5rem;
 }
 
 label {
+    font-family: 'JetBrains Mono', monospace;
     font-size: 0.6rem;
     font-weight: 700;
     text-transform: uppercase;
     color: var(--text-secondary);
-    letter-spacing: 0.07em;
+    letter-spacing: 0.15em;
+}
+
+input[type="password"] {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    outline: none;
+    font-size: 0.9rem;
+    width: 100%;
+    transition: all 0.3s ease;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+input[type="password"]:focus {
+    border-color: var(--accent);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
 }
 
 select {

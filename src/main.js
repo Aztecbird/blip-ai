@@ -72,8 +72,9 @@ const state = {
     pendingImage: null, // Base64 string
     cameraStream: null,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
-    selectedModel: localStorage.getItem('blip_model') || (isGitHub ? 'gemini-2.5-flash' : 'llama3.2'),
-    voiceEngine: localStorage.getItem('blip_voice_engine') || (isGitHub ? 'gemini' : 'kokoro'),
+    selectedModel: 'gemini-2.5-flash', // Standardized for V3.1.0
+    voiceEngine: 'gemini',             // Standardized for V3.1.0
+    selectedGeminiVoice: 'Kore',       // Standardized for V3.1.0
     hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
     idleBehavior: null, // 'dreamer', 'observer', 'squinter'
     isProjectorMode: false,
@@ -104,65 +105,28 @@ async function init() {
     };
 
     // Initialize UI
-    modelSelect.value = state.selectedModel;
     geminiKeyInput.value = state.geminiKey;
-    toggleGeminiInput();
 
-    modelSelect.onchange = (e) => {
-        state.selectedModel = e.target.value;
-        localStorage.setItem('blip_model', state.selectedModel);
-        toggleGeminiInput();
-        if (!state.selectedModel.startsWith('gemini')) {
-            warmUpModel(state.selectedModel);
-        }
-    };
-
-    geminiKeyInput.oninput = (e) => {
+    const saveKey = (e) => {
         state.geminiKey = e.target.value.trim();
         localStorage.setItem('blip_gemini_key', state.geminiKey);
+        console.log('🔐 Access Key updated');
     };
 
-    // Initialize Gemini Voice
-    const savedGeminiVoice = localStorage.getItem('blip_gemini_voice') || 'Puck';
-    geminiVoiceSelect.value = savedGeminiVoice;
+    // Persistence Fix: Listen to multiple events to ensure it saves on mobile
+    geminiKeyInput.oninput = saveKey;
+    geminiKeyInput.onchange = saveKey;
+    geminiKeyInput.onblur = saveKey;
 
-    // Voice Engine Handling
-    voiceEngineSelect.value = state.voiceEngine;
+    // Standardized Voice Engine Toggles (simplified)
     updateVoiceToggles();
 
-    voiceEngineSelect.onchange = (e) => {
-        state.voiceEngine = e.target.value;
-        localStorage.setItem('blip_voice_engine', state.voiceEngine);
-        updateVoiceToggles();
-        toggleGeminiInput();
-    };
-
-    geminiVoiceSelect.onchange = (e) => {
-        localStorage.setItem('blip_gemini_voice', e.target.value);
-    };
-
     function updateVoiceToggles() {
+        // We now standardize on Gemini, but keep these for internal state consistency
         const kItem = document.getElementById('kokoro-voice-item');
         const gItem = document.getElementById('gemini-voice-item');
-        if (state.voiceEngine === 'kokoro') {
-            kItem.style.display = 'block';
-            gItem.style.display = 'none';
-        } else if (state.voiceEngine === 'gemini') {
-            kItem.style.display = 'none';
-            gItem.style.display = 'block';
-        } else {
-            kItem.style.display = 'none';
-            gItem.style.display = 'none';
-        }
-    }
-
-    function toggleGeminiInput() {
-        const needsKey = state.selectedModel.startsWith('gemini') || state.voiceEngine === 'gemini';
-        if (needsKey) {
-            geminiKeyContainer.style.display = 'block';
-        } else {
-            geminiKeyContainer.style.display = 'none';
-        }
+        if (kItem) kItem.style.display = 'none';
+        if (gItem) gItem.style.display = 'block';
     }
 
     // Check Kokoro status and update its dot
@@ -790,8 +754,8 @@ async function speak(text, emotion = 'serious') {
             return speech.speak(text, { ...cfg, onBoundary: animateMouth });
         }
         try {
-            console.log('☁️ Using Gemini Cloud Voice');
-            const voiceName = geminiVoiceSelect.value || 'Puck';
+            console.log('☁️ Using Gemini Cloud Voice (Kore)');
+            const voiceName = 'Kore';
             const audioData = await generateSpeech(text, state.geminiKey, voiceName);
             return speech.playBase64Audio(audioData, { onBoundary: animateMouth });
         } catch (e) {

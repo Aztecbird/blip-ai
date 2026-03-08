@@ -16,7 +16,7 @@
 <body>
     <div id="app">
         <main class="container">
-            <div id="version-tag">V3.0.0</div>
+            <div id="version-tag">V3.1.0</div>
             <section id="face-container">
                 <div id="blip-label">B L I P</div>
 
@@ -103,57 +103,29 @@
             </section>
 
             <section class="settings">
-                <div class="setting-item">
-                    <label for="voiceEngineSelect">🔊 Voice Engine</label>
-                    <select id="voiceEngineSelect">
-                        <option value="kokoro">Kokoro (Local Neural)</option>
-                        <option value="gemini">Gemini Cloud (Global)</option>
-                        <option value="browser">Browser (Legacy)</option>
-                    </select>
-                </div>
-
-                <div class="setting-item" id="kokoro-voice-item">
-                    <label for="kokoroVoiceSelect">🎙️ Kokoro Voice <span id="kokoro-status" class="status-dot"
-                            style="display:inline-block;vertical-align:middle;margin-left:4px;"
-                            title="Kokoro TTS status"></span></label>
-                    <select id="kokoroVoiceSelect">
-                        <option value="af_sarah">Sarah (warm female)</option>
-                        <option value="af_bella">Bella (expressive female)</option>
-                        <option value="am_adam">Adam (clear male)</option>
-                        <option value="bm_george">George (British male)</option>
-                    </select>
-                </div>
-
-                <div class="setting-item" id="gemini-voice-item" style="display: none;">
-                    <label for="geminiVoiceSelect">☁️ Gemini Voice</label>
-                    <select id="geminiVoiceSelect">
-                        <option value="Puck">Puck (Fast/Clear)</option>
-                        <option value="Charon">Charon (Deep/Serious)</option>
-                        <option value="Kore">Kore (Smooth Female)</option>
-                        <option value="Fenrir">Fenrir (Strong Male)</option>
-                        <option value="Aoede">Aoede (Bright Female)</option>
-                    </select>
-                </div>
-
-                <!-- Fallback browser voice (hidden — used automatically if Kokoro is offline) -->
-                <select id="voiceSelect" style="display:none;"></select>
-
-                <div class="setting-item">
-                    <label for="modelSelect">🧠 AI Model</label>
-                    <select id="modelSelect">
-                        <option value="mistral">Mistral (Reliable)</option>
-                        <option value="llama3.2">Llama 3.2 (Fast/Light)</option>
-                        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Super Fast)</option>
-                        <option value="gemini-2.5-pro">Gemini 2.5 Pro (Brainiac)</option>
-                        <option value="deepseek-r1:8b">DeepSeek R1 (Logical)</option>
-                        <option value="phi3.5">Phi 3.5 (Balanced)</option>
-                    </select>
-                </div>
-
-                <div id="gemini-key-container" class="setting-item" style="display: none;">
-                    <label for="geminiKeyInput">🔑 Access Key / API Key</label>
+                <!-- Dropdowns removed for simplification: standardizing on Gemini 2.5 Brain + Kore Voice -->
+                <div id="gemini-key-container" class="setting-item">
+                    <label for="geminiKeyInput">🔑 Access Key</label>
                     <input type="password" id="geminiKeyInput" placeholder="Password (1234) or AI Studio Key">
+                    <small
+                        style="color: var(--text-secondary); font-size: 0.65rem; margin-top: 4px; display: block; opacity: 0.7;">
+                        Enter your master key or Gemini API key to unlock the brain.
+                    </small>
                 </div>
+
+                <!-- Hidden inputs to keep code compatibility with minimal refactor -->
+                <select id="voiceEngineSelect" style="display:none;">
+                    <option value="gemini">Gemini</option>
+                </select>
+                <select id="geminiVoiceSelect" style="display:none;">
+                    <option value="Kore">Kore</option>
+                </select>
+                <select id="modelSelect" style="display:none;">
+                    <option value="gemini-2.5-flash">Gemini 2.5</option>
+                </select>
+                <select id="kokoroVoiceSelect" style="display:none;"></select>
+                <span id="kokoro-status" style="display:none;"></span>
+                <select id="voiceSelect" style="display:none;"></select>
 
             </section>
         </main>
