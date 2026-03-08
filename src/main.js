@@ -113,7 +113,7 @@ const PERSONAS = {
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
     try {
-        console.log('🚀 Blip V4.3.9 initializing...');
+        console.log('🚀 Blip V4.3.10 initializing...');
 
         // Load voices
         const voices = await speech.init();
@@ -831,81 +831,78 @@ Analyze the user's latest request: "${cmd}".
 Use the conversation history for context if the user is referring to previous topics (like countries, data, or graphs).
 
 Return a simple JSON object: {
-  "action": "search|weather|chart|timer|list|nutrition|map|youtube|none", 
+  "actions": ["search", "youtube", "map", "chart", ...], 
   "query": "optimized search query based on current and previous context",
-  "entities": ["entity1", "entity2"] (e.g. ["Mexico", "Spain"] if those are being compared)
+  "entities": ["entity1", "entity2"]
 }`;
 
         const intentResponse = await askGemini(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
-        let intent = extractJSON(intentResponse.rawResponse) || { action: intentResponse.action || 'none', query: cmd, entities: [] };
+        let intent = extractJSON(intentResponse.rawResponse) || { actions: [intentResponse.action || 'none'], query: cmd, entities: [] };
+        if (!intent.actions) intent.actions = [intent.action || 'none'];
 
         // --- STEP 2: DEEP RESEARCH ---
         console.log("📡 Step 2: Researching", intent);
-        let evidence = "No special data found.";
+        let evidence = "";
         let extraHtml = '';
 
-        // SPECIAL CASE: Deep Demographic Search (V3.6.0)
-        if (cmd.toLowerCase().includes('population') || cmd.toLowerCase().includes('demographic')) {
-            const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || []);
-            evidence = research.text;
-            const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
-            extraHtml = standardResult.extraHtml;
+        for (const action of intent.actions) {
+            console.log(`🔍 Executing Action: ${action}`);
+
+            // 1. Deep Demographic Search (V3.6.0)
+            if (cmd.toLowerCase().includes('population') || cmd.toLowerCase().includes('demographic')) {
+                const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || []);
+                evidence += research.text + "\n";
+                const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
+                extraHtml += standardResult.extraHtml;
+            }
+            // 2. Action Handlers
+            else if (actionHandlers[action]) {
+                const result = await actionHandlers[action]({ tool_params: { ...intent, query: intent.query || cmd } }, state);
+                evidence += result.text + "\n";
+                if (result.extraHtml && !extraHtml.includes(result.extraHtml)) {
+                    extraHtml += result.extraHtml;
+                }
+            }
+            // 3. Fallback: Search / Research
+            else if (action === 'search' || action === 'chart') {
+                const research = await web.search(intent.query || cmd, intent.entities || []);
+                evidence += research.text + "\n";
+                if (research.html && !extraHtml.includes(research.html)) {
+                    extraHtml += research.html;
+                }
+            }
         }
-        // SPECIAL CASE: Charts require research first
-        else if (intent.action === 'chart') {
-            const research = await web.search(intent.query || cmd, intent.entities || []);
-            evidence = research.text;
-        }
-        // GENERIC CASE: Action Handlers (Supports 40 Scenarios)
-        else if (actionHandlers[intent.action]) {
-            const result = await actionHandlers[intent.action]({ tool_params: { ...intent, query: intent.query || cmd } }, state);
-            evidence = result.text;
-            extraHtml = result.extraHtml || '';
-        }
-        // FALLBACK: General Search
-        else if (intent.action === 'search') {
-            const research = await web.search(intent.query || cmd);
-            evidence = research.text;
-            extraHtml = research.html || '';
-        }
+
+        if (!evidence) evidence = "No special data found.";
 
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
-        let synthesisPrompt = "";
+        const synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 4000)}", 
+        generate a final answer for the user's request: "${cmd}".
 
-        if (intent.action === 'chart') {
-            synthesisPrompt = `Based on this research: "${evidence.substring(0, 3000)}", 
-            extract data for a chart to answer: "${cmd}".
-            Return a JSON object: { "text": "natural explanation", "labels": ["label1", "label2"], "data": [value1, value2], "title": "Chart Title", "type": "bar|line|pie" }.
-            DO NOT apologize. If data is missing, estimate or provide best available numbers from the research.`;
-        } else {
-            synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 3000)}", 
-            generate a final answer for the user's request: "${cmd}".
-
-            CRITICAL DATA RULES:
-            1. ENTITY VERIFICATION: Only report data for the EXACT entities requested (e.g., Mexico, Spain). If the evidence discusses other places (e.g., UK, Trinidad), DO NOT report that as the answer.
-            2. NO HALLUCINATION: If the evidence does not contain the specific numbers for the requested entities, state clearly that the research didn't return those exact figures yet.
-            3. DATA FORMAT: Use Markdown tables for comparisons.
-            4. TOTAL POPULATION: Include Total Population, Men/Women counts/percentages, and Median Age if found.
-            5. PERSONA: Maintain the "Identity Course" style (insightful, profound) but keep it grounded in the hard facts found in the evidence.`;
-        }
+        CRITICAL OUTPUT RULES:
+        1. AUTO-CHART: If the research contains numbers, statistics, or comparisons, ALWAYS extract them into a JSON block for a chart.
+        2. DATA FORMAT: Use Markdown tables for comparisons and extract the same data into the JSON block.
+        3. FORMAT: You must return your response in this JSON-embedded format if chart data is available:
+           { 
+             "text": "Your natural explanation here...",
+             "chart": { "labels": ["label1", "label2"], "data": [val1, val2], "title": "Chart Title", "type": "bar|line|pie" }
+           }
+        4. PERSONA: Maintain the "Identity Course" style (insightful, profound).`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
-        let finalReply = synthesisResponse.text;
+        const synthData = extractJSON(synthesisResponse.rawResponse);
+        let finalReply = synthData?.text || synthesisResponse.text;
 
-        // Specialized Chart Rendering
-        if (intent.action === 'chart') {
-            const chartData = extractJSON(synthesisResponse.text);
-            if (chartData) {
-                finalReply = chartData.text || "Here is the data visualization you requested.";
-                if (chartData.labels && chartData.data) {
-                    setMode('chart');
-                    renderChart(chartData.labels, chartData.data, chartData.title || 'Data Graph', chartData.type || 'bar');
-                    document.body.classList.add('projecting-visual');
-                    extraHtml += `<br><button onclick="setMode('chart')" class="action-link purple">📈 VIEW GRAPH</button>`;
-                }
-            } else {
-                console.warn("Failed to extract chart JSON from synthesis.");
+        // Auto-Chart Rendering (V4.3.10)
+        const chartData = synthData?.chart || extractJSON(synthesisResponse.text);
+        if (chartData && chartData.labels && chartData.data) {
+            console.log("📈 Auto-Rendering Chart:", chartData.title);
+            setMode('chart');
+            renderChart(chartData.labels, chartData.data, chartData.title || 'Data Graph', chartData.type || 'bar');
+            document.body.classList.add('projecting-visual');
+            if (!extraHtml.includes("VIEW GRAPH")) {
+                extraHtml += `<br><button onclick="setMode('chart')" class="action-link purple">📈 VIEW GRAPH</button>`;
             }
         }
 
