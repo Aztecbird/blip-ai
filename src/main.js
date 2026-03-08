@@ -17,6 +17,12 @@ const chatEntry = document.getElementById('chat-entry');
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
 
+// Hidden Compatibility Elements (V4.3.2 Fix)
+const voiceSelect = document.getElementById('voiceSelect');
+const kokoroVoiceSelect = document.getElementById('kokoroVoiceSelect');
+const geminiVoiceSelect = document.getElementById('geminiVoiceSelect');
+const kokoroStatusDot = document.getElementById('kokoro-status');
+
 // Vision Elements
 const cameraBtn = document.getElementById('cameraBtn');
 const watchBtn = document.getElementById('watchBtn');
@@ -79,7 +85,7 @@ const state = {
     liveInterval: null,
     liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
-// V4.3.1 - The Sequential Scenery Update
+// V4.3.2 - The Transcription Fix & "(Ask Blip)" Update
 
 // ── PERSONA CONFIGURATION (V3.4.0) ───────────────────────────────────────────
 const PERSONAS = {
@@ -98,7 +104,7 @@ const PERSONAS = {
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
-    console.log('🚀 Blip V4.3.1 initializing...');
+    console.log('🚀 Blip V4.3.2 initializing...');
 
     // Load voices
     const voices = await speech.init();
@@ -113,9 +119,11 @@ async function init() {
     };
 
     // Kokoro voice selector
-    kokoroVoiceSelect.onchange = (e) => {
-        speech.setKokoroVoice(e.target.value);
-    };
+    if (kokoroVoiceSelect) {
+        kokoroVoiceSelect.onchange = (e) => {
+            speech.setKokoroVoice(e.target.value);
+        };
+    }
 
     // Initialize UI
     geminiKeyInput.value = state.geminiKey;

@@ -28,14 +28,13 @@
         </svg>
 
         <main class="container">
-            <div id="version-tag">V4.3.1</div>
+            <div id="version-tag">V4.3.2</div>
 
             <section id="face-area">
                 <div id="blip-status" class="persona-header">
                     <span id="persona-emoji">✨</span>
-                    <span id="blip-label">BLIP</span>
+                    <span id="persona-label">BLIP V4.3.2</span>
                 </div>
-                <div id="persona-label" class="persona-subtitle">Living AI</div>
 
                 <div class="face-frame">
                     <div class="scenery-layer">
@@ -54,19 +53,18 @@
                     </div>
                     <div id="face-container">
                         <div id="blip-aura"></div>
-                        <div id="blip-radar"></div>
-                        <div id="face" class="serious">
-                            <div class="eye-container">
-                                <div class="eye left">
-                                    <div class="pupil"></div>
-                                </div>
-                                <div class="eye right">
-                                    <div class="pupil"></div>
-                                </div>
-                            </div>
+                        <div id="face">
+                            <div class="eye left"></div>
+                            <div class="eye right"></div>
                             <div id="mouth"></div>
                         </div>
                     </div>
+                </div>
+
+                <div class="controls-main">
+                    <button id="talkBtn" class="main-pulse-btn">
+                        <span class="btn-text">(Ask Blip)</span>
+                    </button>
                     <div id="live-indicator">LIVE OBSERVER</div>
                 </div>
 
@@ -80,10 +78,6 @@
                     <input type="text" id="chatInput" placeholder="Type to Blip...">
                     <button id="sendChatBtn">➔</button>
                 </div>
-
-                <button id="talkBtn" class="main-pulse-btn">
-                    <div class="inner-icon">🎤</div>
-                </button>
 
                 <div class="mini-actions">
                     <button id="chatBtn" title="Chat">⌨️</button>
