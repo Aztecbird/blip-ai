@@ -828,13 +828,12 @@ function triggerRandomIdle() {
 }
 
 /**
- * 🚲 Living Scenery: Eye Tracking Logic
- * Makes Blip's pupils follow the bicycle rider across the frame.
+ * 🚲 Living Scenery: Multi-Object Eye Tracking Logic
+ * Makes Blip's pupils follow the closest 'scenery-object' across the frame.
  */
 function startSceneryTracking() {
-    const bicycle = document.getElementById('bicycle-rider');
     const faceFrame = document.querySelector('.face-frame');
-    if (!bicycle || !faceFrame) return;
+    if (!faceFrame) return;
 
     function update() {
         // Only track if Blip is not busy talking or thinking
@@ -845,25 +844,45 @@ function startSceneryTracking() {
             return;
         }
 
-        const bikeRect = bicycle.getBoundingClientRect();
+        const objects = document.querySelectorAll('.scenery-object');
         const frameRect = faceFrame.getBoundingClientRect();
-
-        const bikeX = bikeRect.left + bikeRect.width / 2;
-        const bikeY = bikeRect.top + bikeRect.height / 2;
-
         const frameCenterX = frameRect.left + frameRect.width / 2;
         const frameCenterY = frameRect.top + frameRect.height / 2;
 
-        const dx = bikeX - frameCenterX;
-        const dy = bikeY - frameCenterY;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        let closestObj = null;
+        let minDistance = Infinity;
 
-        const maxDist = 4;
-        const moveX = (dx / dist) * Math.min(dist / 15, maxDist);
-        const moveY = (dy / dist) * Math.min(dist / 15, maxDist);
+        objects.forEach(obj => {
+            const rect = obj.getBoundingClientRect();
+            // Ignore objects far outside the frame to prevent erratic eye jumps
+            if (rect.right < frameRect.left - 50 || rect.left > frameRect.right + 50) return;
 
-        document.documentElement.style.setProperty('--pupil-x', `${moveX}px`);
-        document.documentElement.style.setProperty('--pupil-y', `${moveY}px`);
+            const objX = rect.left + rect.width / 2;
+            const objY = rect.top + rect.height / 2;
+
+            const dist = Math.sqrt(Math.pow(objX - frameCenterX, 2) + Math.pow(objY - frameCenterY, 2));
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestObj = { x: objX, y: objY };
+            }
+        });
+
+        if (closestObj) {
+            const dx = closestObj.x - frameCenterX;
+            const dy = closestObj.y - frameCenterY;
+            const totalDist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+            const maxDist = 5;
+            const moveX = (dx / totalDist) * Math.min(totalDist / 12, maxDist);
+            const moveY = (dy / totalDist) * Math.min(totalDist / 12, maxDist);
+
+            document.documentElement.style.setProperty('--pupil-x', `${moveX}px`);
+            document.documentElement.style.setProperty('--pupil-y', `${moveY}px`);
+        } else {
+            // Revert to center if no objects are visible
+            document.documentElement.style.setProperty('--pupil-x', '0px');
+            document.documentElement.style.setProperty('--pupil-y', '0px');
+        }
 
         requestAnimationFrame(update);
     }
