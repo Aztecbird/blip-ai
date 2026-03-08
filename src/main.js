@@ -756,16 +756,19 @@ async function handleCommand(text) {
         const images = state.pendingImage ? [state.pendingImage] : [];
         if (state.isLiveWatch && state.liveFrames.length > 0) images.push(...state.liveFrames);
 
-        // --- STEP 1: INTERPRET INTENT ---
+        // --- STEP 1: INTERPRET INTENT (Context Aware) ---
         console.log("🧠 Step 1: Interpret Intent");
-        const intentPrompt = `Interpret the user's intent: "${cmd}". 
+        const intentPrompt = `You are the Intent Interpreter. 
+Analyze the user's latest request: "${cmd}".
+Use the conversation history for context if the user is referring to previous topics (like countries, data, or graphs).
+
 Return a simple JSON object: {
   "action": "search|weather|chart|timer|list|nutrition|map|youtube|none", 
-  "query": "optimized search query",
-  "entities": ["entity1", "entity2"] (only if comparing multiple things)
+  "query": "optimized search query based on current and previous context",
+  "entities": ["entity1", "entity2"] (e.g. ["Mexico", "Spain"] if those are being compared)
 }`;
-        // Nudge: If user says "graph", "chart", "compare", but action is none, force it to 'chart'
-        const intentResponse = await askGemini(intentPrompt, [], [], state.geminiKey, state.selectedModel);
+
+        const intentResponse = await askGemini(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
         let intent = extractJSON(intentResponse.text) || { action: 'none', query: cmd, entities: [] };
 
         // --- STEP 2: DEEP RESEARCH ---

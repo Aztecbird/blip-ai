@@ -321,12 +321,15 @@ export const web = {
 
             for (const target of searchTargets) {
                 const lowerTarget = target.toLowerCase();
-                const matchedEntity = Object.keys(demographicDataBank).find(key => lowerTarget.includes(key));
+                // Robust matching: find if target contains country name OR if country name is in target
+                const matchedEntity = Object.keys(demographicDataBank).find(key =>
+                    lowerTarget.includes(key) || key.includes(lowerTarget)
+                );
 
                 if (matchedEntity) {
                     const data = demographicDataBank[matchedEntity];
                     combinedExtract += `\n--- VERIFIED SOURCE: BLIP DEMO-BANK (${matchedEntity.toUpperCase()}) ---\n`;
-                    combinedExtract += `Total Population: ${data.total}\nWomen: ${data.women}\nMen: ${data.men}\nMedian Age: ${data.age}\nDynamic: ${data.growth}\n`;
+                    combinedExtract += `Total Population of ${matchedEntity}: ${data.total}\nWomen: ${data.women}\nMen: ${data.men}\nMedian Age: ${data.age}\nDynamic: ${data.growth}\n`;
                 } else {
                     // Fallback to Wikipedia
                     const dataKeywords = ['population', 'demographics', 'men', 'women', 'males', 'females', 'stats', 'data', 'breakdown'];
