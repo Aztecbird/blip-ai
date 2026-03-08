@@ -222,6 +222,10 @@ async function init() {
         if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
         if (downloadChartBtn) downloadChartBtn.onclick = downloadChart;
 
+        // Chart Toggles
+        if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
+        if (downloadChartBtn) downloadChartBtn.onclick = downloadChart;
+
         // Scenery Orbit (V4.3.1)
 
         chatBtn.onclick = () => {
