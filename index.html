@@ -16,102 +16,126 @@
 <body>
     <div id="app">
         <main class="container">
-            <div id="version-tag">V3.3.1</div>
-            <section id="face-container">
-                <div id="blip-label">B L I P</div>
+            <div id="version-tag">V4.0.0</div>
+
+            <section id="face-area">
+                <div id="blip-status" class="persona-header">
+                    <span id="persona-emoji">✨</span>
+                    <span id="blip-label">BLIP</span>
+                </div>
+                <div id="persona-label" class="persona-subtitle">Living AI</div>
 
                 <div class="face-frame">
                     <div class="scenery-layer">
-                        <div class="cloud cloud-1"></div>
-                        <div class="cloud cloud-2"></div>
-                        <div class="cloud cloud-3"></div>
+                        <div class="cloud layer-1">☁️</div>
+                        <div class="cloud layer-2">☁️</div>
+                        <div class="cloud layer-3">☁️</div>
                         <div id="bicycle-rider" class="scenery-object">🚲</div>
                         <div id="walking-cat" class="scenery-object">🐈</div>
                         <div id="traveler-person" class="scenery-object">🧳</div>
                     </div>
                     <div id="face" class="serious">
-                        <div class="eyebrow-container">
-                            <div class="eyebrow" id="eyebrowL"></div>
-                            <div class="eyebrow" id="eyebrowR"></div>
+                        <div class="eye left">
+                            <div class="pupil"></div>
                         </div>
-                        <div class="eye-container">
-                            <div class="eye" id="eyeL">
-                                <div class="pupil"></div>
-                            </div>
-                            <div class="eye" id="eyeR">
-                                <div class="pupil"></div>
-                            </div>
+                        <div class="eye right">
+                            <div class="pupil"></div>
                         </div>
                         <div id="mouth"></div>
                     </div>
-                    <div id="floating-symbols"></div>
+                    <div id="live-indicator">LIVE OBSERVER</div>
+                </div>
+
+                <div id="transcript-area">
+                    <div id="transcript">Ready to help.</div>
                 </div>
             </section>
 
-            <section class="controls">
-                <div class="mic-meter">
-                    <div id="meter-level"></div>
+            <section id="interaction-area">
+                <div id="chat-entry" class="hidden">
+                    <input type="text" id="chatInput" placeholder="Type to Blip...">
+                    <button id="sendChatBtn">➔</button>
                 </div>
 
-                <div id="vision-preview-container" style="display: none;">
-                    <div id="live-indicator" style="display: none;">LIVE 👁️</div>
-                    <img id="vision-preview" src="" alt="Preview">
-                    <button id="clear-image-btn" aria-label="Clear image">✕</button>
-                    <button id="save-to-hub-btn" class="mini-save-btn" title="Save to Hub">📥</button>
-                </div>
+                <button id="talkBtn" class="main-pulse-btn">
+                    <div class="inner-icon">🎤</div>
+                </button>
 
-                <div class="button-group">
-                    <button id="talkBtn" class="primary-btn">▶ START BLIP</button>
-                    <div class="vision-btns">
-                        <button id="hubBtn" title="Blip Hub" aria-label="Open Hub">💬</button>
-                        <button id="projectorBtn" title="Projector Mode" aria-label="Toggle Projector Mode">📽️</button>
-                        <button id="cameraBtn" title="Take Photo" aria-label="Open camera">📸</button>
-                        <button id="watchBtn" title="Live Watch Mode" aria-label="Toggle Live Watch">👁️</button>
-                        <input type="file" id="fileInput" accept="image/*,video/mp4,video/quicktime"
-                            style="display: none;">
-                        <button id="uploadBtn" title="Upload Image/Video" aria-label="Upload file">📁</button>
+                <div class="mini-actions">
+                    <button id="chatBtn" title="Chat">⌨️</button>
+                    <button id="cameraBtn" title="Look">👁️</button>
+                    <button id="hubBtn" title="Hub">📱</button>
+                    <button id="gearBtn" title="Settings">⚙️</button>
+                </div>
+            </section>
+
+            <!-- 🛠 UNDER THE HOOD (Hidden by default) -->
+            <div id="under-the-hood" class="hidden-panel">
+                <div class="panel-header">
+                    <h3>SYSTEM SETTINGS</h3>
+                    <button id="closePanelBtn">✕</button>
+                </div>
+                <div class="panel-content">
+                    <div class="setting-group">
+                        <label>Access Key / Password</label>
+                        <input type="password" id="geminiKeyInput" placeholder="Enter blip108 or Gemini Key">
+                    </div>
+                    <div class="setting-group">
+                        <label>Voice Model</label>
+                        <select id="voiceEngineSelect">
+                            <option value="gemini">Gemini Neural (Premium)</option>
+                            <option value="web">Browser Default</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Core Model</label>
+                        <select id="modelSelect">
+                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
+                            <option value="gemini-2.5-pro">Gemini 2.5 Pro (Brainy)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group secondary-btns">
+                        <button id="watchBtn">🎥 Watch Mode</button>
+                        <button id="uploadBtn">📁 Upload</button>
+                        <input type="file" id="fileInput" hidden accept="image/*">
                     </div>
                 </div>
-
-                <div id="transcript-container">
-                    <p id="transcript">Click Start to begin...</p>
+            </div>
+            <!-- Blip Hub (WhatsApp style) -->
+            <div id="hub-container" class="widget-panel hub-panel">
+                <div class="panel-header">
+                    <span>💬 Blip Hub</span>
+                    <button id="closeHubBtn" class="panel-close-btn" aria-label="Close hub">✕</button>
                 </div>
-
-                <!-- Blip Hub (WhatsApp style) -->
-                <div id="hub-container" class="widget-panel hub-panel">
-                    <div class="panel-header">
-                        <span>💬 Blip Hub</span>
-                        <button id="closeHubBtn" class="panel-close-btn" aria-label="Close hub">✕</button>
-                    </div>
-                    <div id="hub-messages">
-                        <!-- Items will be injected here -->
-                        <div class="hub-empty">Hub is empty. Save photos or notes here!</div>
-                    </div>
-                    <div class="hub-footer">
-                        <input type="text" id="hubInput" placeholder="Write a note or paste a link..."
-                            aria-label="Hub note">
-                        <button id="sendHubBtn" aria-label="Post to Hub">Post</button>
-                    </div>
+                <div id="hub-messages">
+                    <!-- Items will be injected here -->
+                    <div class="hub-empty">Hub is empty. Save photos or notes here!</div>
                 </div>
-
-                <div id="chart-container" class="widget-panel chart-panel">
-                    <button id="closeChartBtn" class="panel-close-btn" aria-label="Close chart">✕</button>
-                    <canvas id="currencyChart" style="width: 100%; height: 200px;"></canvas>
-                    <button id="downloadChartBtn" class="action-link outline">⬇️ Download Graph</button>
+                <div class="hub-footer">
+                    <input type="text" id="hubInput" placeholder="Write a note or paste a link..."
+                        aria-label="Hub note">
+                    <button id="sendHubBtn" aria-label="Post to Hub">Post</button>
                 </div>
+            </div>
 
-                <div id="map-container" class="widget-panel map-panel">
-                    <button id="closeMapBtn" class="panel-close-btn" aria-label="Close map">✕</button>
-                    <iframe id="map-frame" width="100%" height="250" style="border:0; display:block;" allowfullscreen=""
-                        loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-                </div>
+            <div id="chart-container" class="widget-panel chart-panel">
+                <button id="closeChartBtn" class="panel-close-btn" aria-label="Close chart">✕</button>
+                <canvas id="currencyChart" style="width: 100%; height: 200px;"></canvas>
+                <button id="downloadChartBtn" class="action-link outline">⬇️ Download Graph</button>
+            </div>
 
-                <video id="webcam-video" autoplay playsinline style="display: none;"></video>
-                <div id="camera-controls" style="display: none; gap: 10px; margin-top: 10px; justify-content: center;">
-                    <button id="snapBtn" class="primary-btn" style="flex: 1;">📸 SNAP PHOTO</button>
-                    <button id="stopCameraBtn" class="secondary-btn" style="padding: 10px 20px;">⏹ STOP</button>
-                </div>
-                <canvas id="capture-canvas" style="display: none;"></canvas>
+            <div id="map-container" class="widget-panel map-panel">
+                <button id="closeMapBtn" class="panel-close-btn" aria-label="Close map">✕</button>
+                <iframe id="map-frame" width="100%" height="250" style="border:0; display:block;" allowfullscreen=""
+                    loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            </div>
+
+            <video id="webcam-video" autoplay playsinline style="display: none;"></video>
+            <div id="camera-controls" style="display: none; gap: 10px; margin-top: 10px; justify-content: center;">
+                <button id="snapBtn" class="primary-btn" style="flex: 1;">📸 SNAP PHOTO</button>
+                <button id="stopCameraBtn" class="secondary-btn" style="padding: 10px 20px;">⏹ STOP</button>
+            </div>
+            <canvas id="capture-canvas" style="display: none;"></canvas>
             </section>
 
             <section class="settings">
@@ -132,7 +156,7 @@
                 <select id="geminiVoiceSelect" style="display:none;">
                     <option value="Kore">Kore</option>
                 </select>
-                <select id="modelSelect" style="display:none;">
+                <select id="modelSelectHidden" style="display:none;">
                     <option value="gemini-2.5-flash">Gemini 2.5</option>
                 </select>
                 <select id="kokoroVoiceSelect" style="display:none;"></select>

@@ -19,7 +19,13 @@ const geminiVoiceSelect = document.getElementById('geminiVoiceSelect');
 const voiceEngineSelect = document.getElementById('voiceEngineSelect');
 const modelSelect = document.getElementById('modelSelect');
 const geminiKeyInput = document.getElementById('geminiKeyInput');
-const geminiKeyContainer = document.getElementById('gemini-key-container');
+const gearBtn = document.getElementById('gearBtn');
+const underTheHood = document.getElementById('under-the-hood');
+const closePanelBtn = document.getElementById('closePanelBtn');
+const chatBtn = document.getElementById('chatBtn');
+const chatEntry = document.getElementById('chat-entry');
+const chatInput = document.getElementById('chatInput');
+const sendChatBtn = document.getElementById('sendChatBtn');
 
 // Vision Elements
 const cameraBtn = document.getElementById('cameraBtn');
@@ -72,7 +78,7 @@ const state = {
     pendingImage: null, // Base64 string
     cameraStream: null,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
-    selectedModel: 'gemini-1.5-flash', // Corrected stable model
+    selectedModel: 'gemini-2.5-flash', // Corrected stable model
     voiceEngine: 'gemini',             // Standardized for V3.1.0
     selectedGeminiVoice: 'Kore',       // Standardized for V3.1.0
     hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
@@ -83,6 +89,21 @@ const state = {
     liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
 // V3.1.1
+
+// ── PERSONA CONFIGURATION (V3.4.0) ───────────────────────────────────────────
+const PERSONAS = {
+    idle: { emoji: "✨", label: "BLIP", color: "#818cf8", emotion: "serious" },
+    listening: { emoji: "👂", label: "LISTENING", color: "#f43f5e", emotion: "surprised" },
+    thinking: { emoji: "🧠", label: "THINKING", color: "#8b5cf6", emotion: "thinking" },
+    happy: { emoji: "😊", label: "HAPPY", color: "#10b981", emotion: "happy" },
+    sad: { emoji: "😢", label: "SAD", color: "#64748b", emotion: "sad" },
+    warning: { emoji: "⚠️", label: "ALERT", color: "#f59e0b", emotion: "surprised" },
+    sleepy: { emoji: "💤", label: "SLEEPY", color: "#334155", emotion: "sleepy" },
+    cooking: { emoji: "👨‍🍳", label: "CHEF MODE", color: "#fb923c", emotion: "gentle" },
+    study: { emoji: "📚", label: "STUDY MODE", color: "#3b82f6", emotion: "serious" },
+    media: { emoji: "🎬", label: "MEDIA", color: "#ef4444", emotion: "excited" },
+    advice: { emoji: "💡", label: "ADVISOR", color: "#eab308", emotion: "gentle" }
+};
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
@@ -176,49 +197,36 @@ async function init() {
 
     talkBtn.onclick = toggleApp;
 
-    // Vision Listeners
-    cameraBtn.onclick = startCamera;
-    watchBtn.onclick = toggleLiveWatch;
-    uploadBtn.onclick = () => fileInput.click();
-    fileInput.onchange = handleFileUpload;
-    clearImageBtn.onclick = clearPendingImage;
-    snapBtn.onclick = capturePhoto;
-    stopCameraBtn.onclick = stopCamera;
+    // Appliance UI Toggles
+    gearBtn.onclick = () => underTheHood.classList.add('active');
+    closePanelBtn.onclick = () => underTheHood.classList.remove('active');
 
-    // Chart Listeners
-    closeChartBtn.onclick = () => {
-        chartContainer.style.display = 'none';
-        document.body.classList.remove('projecting-visual');
-        if (activeChart) activeChart.destroy();
+    chatBtn.onclick = () => {
+        chatEntry.classList.toggle('hidden');
+        if (!chatEntry.classList.contains('hidden')) chatInput.focus();
     };
 
-    downloadChartBtn.onclick = () => {
-        const link = document.createElement('a');
-        link.download = 'exchange_rate_7_days.png';
-        link.href = currencyChartCanvas.toDataURL('image/png');
-        link.click();
-    };
-
-    // Map Listeners
-    closeMapBtn.onclick = () => {
-        mapContainer.style.display = 'none';
-        document.body.classList.remove('projecting-visual');
-        mapFrame.src = '';
-    };
-
-    // Hub Listeners
-    hubBtn.onclick = toggleHub;
-    closeHubBtn.onclick = () => {
-        toggleHub();
-        document.body.classList.remove('projecting-visual');
-    };
-    projectorBtn.onclick = toggleProjectorMode;
-
-    sendHubBtn.onclick = postManualHub;
-    hubInput.onkeydown = (e) => { if (e.key === 'Enter') postManualHub(); };
-    saveToHubBtn.onclick = saveCurrentVisionToHub;
+    sendChatBtn.onclick = postChat;
+    chatInput.onkeydown = (e) => { if (e.key === 'Enter') postChat(); };
 
     renderHub();
+}
+
+/**
+ * 📝 Text Communication Handler
+ */
+async function postChat() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    chatInput.value = '';
+    // chatEntry.classList.add('hidden'); // Removed auto-hide so it stays visible while awake
+
+    // Switch to thinking state
+    setPersona('thinking');
+    transcriptText.innerHTML = `<i style="opacity: 0.7;">💬 ${text}</i>`;
+
+    handleCommand(text);
 }
 
 // ── VISION LOGIC ─────────────────────────────────────────────────────────────
@@ -370,26 +378,21 @@ async function toggleApp() {
             // 🎙️ VITAL: Initialize AudioContext on the user gesture
             speech.initAudio();
 
-            meterBox.style.display = 'block';
-            setEmotion('happy');
-            talkBtn.innerText = '⌛ WAKING UP...';
-            transcriptText.innerText = "Waking up cloud brain...";
+            setPersona('happy');
+            transcriptText.innerText = "Waking up...";
 
             await speak("Hello! My name is Blip. How can I help you today?");
 
-            talkBtn.innerText = '🔴 LISTENING...';
-            talkBtn.classList.add('listening');
-            faceFrame?.classList.add('listening-glow');
+            setPersona('listening');
+            talkBtn.classList.add('active');
+            chatEntry.classList.remove('hidden'); // Show chat entry automatically on wake
             startListeningLoop();
         } catch (err) {
             console.error("Wake up error:", err);
-            // Don't call stopApp() fully yet so user can see the error
             state.isActive = false;
-            talkBtn.innerText = '▶ START BLIP';
-            talkBtn.classList.remove('listening', 'thinking');
-            faceFrame?.classList.remove('listening-glow');
-            meterBox.style.display = 'none';
-            setEmotion('sad');
+            talkBtn.classList.remove('active');
+            chatEntry.classList.add('hidden');
+            setPersona('sad');
             transcriptText.innerHTML = `<span style="color:#ef4444">⚠️ ${err.message}. Try again!</span>`;
         }
     } else {
@@ -404,14 +407,11 @@ function cancelInteraction() {
     state.isActive = true;
     window.speechSynthesis.cancel();
     speech.stopListening();
-    document.body.classList.remove('thinking-mode');
-    talkBtn.innerText = '🔴 LISTENING...';
-    talkBtn.classList.remove('thinking');
-    talkBtn.classList.add('listening');
-    faceFrame?.classList.add('listening-glow');
-    setEmotion('serious');
+
+    talkBtn.classList.add('active');
+    setPersona('idle');
     document.body.classList.remove('projecting-visual');
-    transcriptText.innerHTML = '<span style="color:#f88">🛑 Interrupted. Say "Hey Blip" again.</span>';
+    transcriptText.innerHTML = '<span style="color:#f88">🛑 Interrupted.</span>';
     startListeningLoop();
 }
 
@@ -419,14 +419,13 @@ function stopApp() {
     state.isActive = false;
     state.history = []; // Clear context on stop
     clearPendingImage();
-    stopCamera(); // Ensure camera is closed
+    stopCamera();
     speech.stopListening();
     window.speechSynthesis.cancel();
-    talkBtn.innerText = '▶ START BLIP';
-    talkBtn.classList.remove('listening', 'thinking');
-    faceFrame?.classList.remove('listening-glow');
-    meterBox.style.display = 'none';
-    setEmotion('serious');
+
+    talkBtn.classList.remove('active');
+    chatEntry.classList.add('hidden'); // Hide chat entry on sleep
+    setPersona('idle');
     document.body.classList.remove('projecting-visual');
     transcriptText.innerText = 'Blip is resting.';
 }
@@ -434,15 +433,17 @@ function stopApp() {
 function startListeningLoop() {
     if (!state.isActive || state.isThinking) return;
 
-    talkBtn.innerText = '🔴 LISTENING...';
-    talkBtn.classList.add('listening');
-    faceFrame?.classList.add('listening-glow');
+    setPersona('listening');
+    talkBtn.classList.add('active');
 
     speech.startListening(
         // On Result
         (result) => {
             transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${result.text}</i>`;
-            if (result.isFinal) handleCommand(result.text);
+            if (result.isFinal) {
+                setPersona('thinking');
+                handleCommand(result.text);
+            }
         },
         // On End
         () => {
@@ -455,7 +456,7 @@ function startListeningLoop() {
             console.warn('Recognition error:', err);
             if (err.error === 'not-allowed') {
                 stopApp();
-                transcriptText.innerText = '⚠️ Microphone blocked. Please allow access.';
+                transcriptText.innerText = '⚠️ Microphone blocked.';
             }
         }
     );
@@ -787,14 +788,45 @@ async function speak(text, emotion = 'serious') {
     });
 }
 
-function setEmotion(e) {
-    state.currentEmotion = e;
-    // When explicit emotion is set, clear any idle behavior
+/**
+ * 🎨 Universal Persona System
+ * Updates emoji, label, color, and face in one call.
+ */
+function setPersona(key) {
+    const p = PERSONAS[key] || PERSONAS.idle;
+    state.currentPersona = key;
+    state.currentEmotion = p.emotion;
+
+    // Update UI Elements
+    const emojiEl = document.getElementById('persona-emoji');
+    const labelEl = document.getElementById('persona-label');
+
+    if (emojiEl) {
+        emojiEl.innerText = p.emoji;
+        emojiEl.style.filter = `drop-shadow(0 0 10px ${p.color})`;
+    }
+    if (labelEl) {
+        labelEl.innerText = p.label;
+        labelEl.style.color = p.color;
+    }
+
+    // Update Global Accent Color for CSS
+    document.documentElement.style.setProperty('--accent', p.color);
+    document.documentElement.style.setProperty('--face-glow', `${p.color}44`); // 44 is ~25% alpha
+
+    // Sync Face
     if (state.idleBehavior) {
         face.classList.remove(state.idleBehavior);
         state.idleBehavior = null;
     }
-    face.className = e;
+    face.className = p.emotion;
+}
+
+// Deprecated: Alias for backward compatibility
+function setEmotion(e) {
+    // Find a persona that matches this emotion or fallback to idle
+    const found = Object.keys(PERSONAS).find(k => PERSONAS[k].emotion === e);
+    setPersona(found || 'idle');
 }
 
 function triggerRandomIdle() {
