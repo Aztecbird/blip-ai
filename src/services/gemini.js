@@ -98,6 +98,9 @@ CRITICAL: Never offer Amazon links or product recommendations for restaurants, b
     }
 
     const body = {
+        system_instruction: {
+            parts: [{ text: systemPrompt }]
+        },
         contents: [
             ...historyPrompts,
             { role: 'user', parts: userParts }
