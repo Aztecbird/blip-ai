@@ -79,7 +79,7 @@ const state = {
     liveInterval: null,
     liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
-// V4.2.0
+// V4.3.1 - The Sequential Scenery Update
 
 // ── PERSONA CONFIGURATION (V3.4.0) ───────────────────────────────────────────
 const PERSONAS = {
@@ -98,7 +98,7 @@ const PERSONAS = {
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
-    console.log('🚀 Blip V4.2.0 initializing...');
+    console.log('🚀 Blip V4.3.1 initializing...');
 
     // Load voices
     const voices = await speech.init();
@@ -199,6 +199,9 @@ async function init() {
     // Appliance UI Toggles
     gearBtn.onclick = () => setMode('settings');
     closePanelBtn.onclick = () => setMode('core');
+
+    // Scenery Orbit (V4.3.1)
+    initSceneryOrbit();
 
     chatBtn.onclick = () => {
         chatEntry.classList.toggle('hidden');
