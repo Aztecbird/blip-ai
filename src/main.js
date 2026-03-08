@@ -88,7 +88,7 @@ const state = {
     liveInterval: null,
     liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
-// V3.1.1
+// V4.1.0
 
 // ── PERSONA CONFIGURATION (V3.4.0) ───────────────────────────────────────────
 const PERSONAS = {
@@ -107,7 +107,7 @@ const PERSONAS = {
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
-    console.log('🚀 Blip V3.0.0 initializing...');
+    console.log('🚀 Blip V4.1.0 initializing...');
 
     // Load voices
     const voices = await speech.init();
