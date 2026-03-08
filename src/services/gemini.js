@@ -62,7 +62,7 @@ Actions & tool_params:
 - map: tool_params: {"query":"<what you are looking for>", "location":"<city or area>"} (Use for restaurants, parks, etc.)
 - reviews: tool_params: {"query":"<name of place to review>", "location":"<city>"} (Use for rating/info about places)
 - chart: tool_params: {"title":"<title>", "labels":["A","B","C"], "data":[10,20,30], "type":"bar|line"}
-  -> CRITICAL GRAPH RULE: If the user provides numbers (like "100 apples, 300 pears" or "Men: 400, Women: 440") and asks for a graph/chart, YOU MUST USE THE "chart" ACTION. Do NOT search the web. Do NOT say you will draw it later. Just output the JSON with the "chart" action and put the numbers in the data array!
+  -> CRITICAL GRAPH RULE: If the user explicitly asks for a graph/chart, YOU MUST USE THE "chart" ACTION. If you already have the numbers in your conversation history, output the JSON with the "chart" action. IF YOU DO NOT HAVE THE NUMBERS, DO NOT USE THE SEARCH ACTION. Instead, cleanly ask the user: "Sure! Please provide the exact numbers you'd like me to graph."
 
 CRITICAL: Never offer Amazon links or product recommendations for restaurants, bars, or physical locations. Use 'map' or 'reviews' instead.`;
 

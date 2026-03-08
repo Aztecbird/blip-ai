@@ -794,7 +794,6 @@ async function speak(text, emotion = 'serious') {
             return speech.playBase64Audio(audioData, { onBoundary: animateMouth });
         } catch (e) {
             console.warn('Gemini voice failed, falling back:', e.message);
-            transcriptText.innerHTML += `<br><small style="color:#ef4444">⚠️ Cloud voice failed: ${e.message}</small>`;
             return speech.speak(text, { ...cfg, onBoundary: animateMouth });
         }
     }
