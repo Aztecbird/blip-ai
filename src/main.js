@@ -219,6 +219,9 @@ async function postChat() {
     const text = chatInput.value.trim();
     if (!text) return;
 
+    // Fix: Initialize audio context on user gesture so cloud voice can play
+    if (speech.initAudio) speech.initAudio();
+
     chatInput.value = '';
     // chatEntry.classList.add('hidden'); // Removed auto-hide so it stays visible while awake
 
@@ -821,6 +824,17 @@ CRITICAL DATA RULES:
 
         // Clear image
         if (state.pendingImage) clearPendingImage();
+
+        // Fix: Auto-open results if the user asks to "show results" or "open google"
+        if (cmd.toLowerCase().includes('show results') || cmd.toLowerCase().includes('open google') || cmd.toLowerCase().includes('search on google')) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = extraHtml;
+            const firstLink = tempDiv.querySelector('a')?.href;
+            if (firstLink) {
+                console.log('🚀 Auto-opening search result:', firstLink);
+                window.open(firstLink, '_blank');
+            }
+        }
 
         talkBtn.innerText = '🔊 SPEAKING...';
         await speak(finalReply, 'serious');
