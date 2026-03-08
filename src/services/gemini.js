@@ -61,9 +61,8 @@ Actions & tool_params:
 - time: tool_params: {}
 - map: tool_params: {"query":"<what you are looking for>", "location":"<city or area>"} (Use for restaurants, parks, etc.)
 - reviews: tool_params: {"query":"<name of place to review>", "location":"<city>"} (Use for rating/info about places)
-- movies: tool_params: {"location":"<city>"}
-- products: tool_params: {"query":"<product type>","recommendations":["<Model 1>","<Model 2>"]} — For physical items (Amazon, Media Markt, Carrefour). Mention specific stores if the user asks for them. NEVER use for restaurants.
-- chart: tool_params: {"title":"<title>", "labels":["A","B","C"], "data":[10,20,30], "type":"bar|line"} (CRITICAL: If the user asks for a graph or chart of any data, YOU MUST USE THIS ACTION. Do NOT try to draw a chart with text emojis or spacing. Just return the data in tool_params and set action to "chart"!)
+- chart: tool_params: {"title":"<title>", "labels":["A","B","C"], "data":[10,20,30], "type":"bar|line"}
+  -> CRITICAL GRAPH RULE: If the user provides numbers (like "100 apples, 300 pears" or "Men: 400, Women: 440") and asks for a graph/chart, YOU MUST USE THE "chart" ACTION. Do NOT search the web. Do NOT say you will draw it later. Just output the JSON with the "chart" action and put the numbers in the data array!
 
 CRITICAL: Never offer Amazon links or product recommendations for restaurants, bars, or physical locations. Use 'map' or 'reviews' instead.`;
 

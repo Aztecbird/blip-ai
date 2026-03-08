@@ -165,27 +165,32 @@ export const web = {
                 elements.push(...wideData.elements);
             }
 
-            // Step 4: Format the results into a readable summary
-            const places = elements.slice(0, 4).map(el => {
+            // Step 4: Format the results into a readable summary and an HTML list
+            const htmlPlaces = elements.slice(0, 4).map(el => {
                 const t = el.tags || {};
-                const name = t.name || 'Unknown restaurant';
+                const name = t.name || 'Unknown place';
                 const street = t['addr:street'] ? ` on ${t['addr:street']}` : '';
                 const housenumber = t['addr:housenumber'] ? ` ${t['addr:housenumber']}` : '';
-                const hours = t['opening_hours'] ? `. Hours: ${t['opening_hours']}` : '';
-                const phone = t['phone'] || t['contact:phone'] ? `. Phone: ${t['phone'] || t['contact:phone']}` : '';
+                const hours = t['opening_hours'] ? `<br>🕒 ${t['opening_hours']}` : '';
+                const phone = t['phone'] || t['contact:phone'] ? `<br>📞 ${t['phone'] || t['contact:phone']}` : '';
                 const cuisine = t['cuisine'] ? ` (${t['cuisine'].replace(/_/g, ' ')})` : '';
-                return `${name}${cuisine}${street}${housenumber}${hours}${phone}`;
-            });
+
+                const q = encodeURIComponent(`${name} ${location}`);
+                return `<a href="https://www.google.com/maps/search/${q}" target="_blank" class="action-link blue" style="display:block;margin-top:6px;text-align:left;line-height:1.4;">
+                    <b>📍 ${name}</b>${cuisine}${street}${housenumber}${hours}${phone}
+                </a>`;
+            }).join('');
 
             const intro = detectedCuisine
-                ? `I found ${places.length} ${detectedCuisine} restaurants in ${location}:`
-                : `I found ${places.length} places in ${location}:`;
+                ? `I found ${elements.length} ${detectedCuisine} options in ${location}. I've marked the best ones on the map for you!`
+                : `I found ${elements.length} places matching that description in ${location}. I've marked them on the map.`;
 
-            return `${intro} ${places.join('. ')}.`;
+            return { text: intro, html: htmlPlaces };
 
         } catch (e) {
             console.error('OSM lookup error, falling back to Wikipedia:', e);
-            return this._wikiPlaceInfo(query, location);
+            const wikiText = await this._wikiPlaceInfo(query, location);
+            return { text: wikiText, html: '' };
         }
     },
 
@@ -286,15 +291,30 @@ export const web = {
     },
 
     /**
-     * General Web Search (Google/DuckDuckGo links)
+     * General Web Search (Uses Wikipedia for data extraction + Google/DDG links)
      */
     async search(query) {
         console.log(`🔍 Web search: ${query}`);
         const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
         const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
 
+        let extractedData = "I've provided some links below for you to explore.";
+        try {
+            // Try to grab some real facts from Wikipedia so Blip has "context memory" of the search
+            const searchTerms = encodeURIComponent(query);
+            const wikiRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`);
+            if (wikiRes.ok) {
+                const wikiData = await wikiRes.json();
+                if (wikiData.query.search.length > 0) {
+                    // Clean HTML tags from snippet
+                    extractedData = "Here is what I found: " + wikiData.query.search[0].snippet.replace(/<\/?[^>]+(>|$)/g, "") + ". " +
+                        (wikiData.query.search[1] ? wikiData.query.search[1].snippet.replace(/<\/?[^>]+(>|$)/g, "") : "");
+                }
+            }
+        } catch (e) { /* ignore */ }
+
         return {
-            text: `I've prepared a web search for "${query}" for you.`,
+            text: extractedData,
             html: `
                 <a href="${googleUrl}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>
                 <a href="${ddgUrl}" target="_blank" class="action-link green">🦆 SEARCH ON DUCKDUCKGO</a>
