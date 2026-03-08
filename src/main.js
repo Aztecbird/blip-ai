@@ -698,67 +698,67 @@ async function handleCommand(text) {
     setEmotion('curious');
     transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><i>Blip is thinking...</i>`;
 
+    // Visual state: Start Thinking
+    face.classList.remove('listening');
+    face.classList.add('thinking');
+
     try {
         const images = state.pendingImage ? [state.pendingImage] : [];
+        if (state.isLiveWatch && state.liveFrames.length > 0) images.push(...state.liveFrames);
 
-        // Inject Live Frames for temporal context
-        if (state.isLiveWatch && state.liveFrames.length > 0) {
-            images.push(...state.liveFrames);
-        }
+        // --- STEP 1: INTERPRET INTENT ---
+        console.log("🧠 Step 1: Interpret Intent");
+        const intentPrompt = `Interpret the user's intent: "${cmd}". 
+Return a simple JSON object: {"action": "search|weather|chart|none", "query": "optimized search query or subject"}`;
+        const intentResponse = await askGemini(intentPrompt, [], [], state.geminiKey, state.selectedModel);
+        let intent = { action: 'none', query: cmd };
+        try { intent = JSON.parse(intentResponse.text); } catch (e) { /* fallback */ }
 
-        let response;
-        if (state.selectedModel.startsWith('gemini')) {
-            if (!state.geminiKey && !isGitHub) {
-                response = { emotion: 'sad', text: 'I need your Gemini API key in the settings to use this super brain!', action: 'none' };
-            } else {
-                response = await askGemini(cmd, state.history, images, state.geminiKey, state.selectedModel);
-            }
-        } else {
-            response = await askOllama(cmd, state.history, images, state.selectedModel);
-        }
-
-        let finalReply = response.text;
+        // --- STEP 2: DEEP RESEARCH ---
+        console.log("📡 Step 2: Researching", intent);
+        let evidence = "No special data found.";
         let extraHtml = '';
 
-        // Execute specific action handler if it exists
-        if (actionHandlers[response.action]) {
-            const result = await actionHandlers[response.action](response, state);
-            const toolResult = result.text;
+        if (intent.action === 'search' || cmd.toLowerCase().includes('population') || cmd.toLowerCase().includes('demographic')) {
+            const research = await web.deepDemographicSearch(intent.query || cmd);
+            evidence = research.text;
+            // Also trigger standard action handler for the links/buttons
+            const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
+            extraHtml = standardResult.extraHtml;
+        } else if (actionHandlers[intent.action]) {
+            const result = await actionHandlers[intent.action]({ tool_params: { query: intent.query || cmd } }, state);
+            evidence = result.text;
             extraHtml = result.extraHtml || '';
-
-            // Reasoning Loop: If a tool returned data, let the AI interpret it for a final answer
-            const infoActions = ['search', 'weather', 'currency', 'time', 'reviews'];
-            if (infoActions.includes(response.action)) {
-                console.log(`🧠 Reasoning pass for action: ${response.action}`);
-                const reasoningPrompt = `I performed the ${response.action} action. 
-Here is the raw data I found: "${toolResult}". 
-Based on this data and the user's original request "${cmd}", give me a friendly, helpful final answer.
-IMPORTANT: Reply ONLY with a natural sentence. Do not mention tools or JSON.`;
-
-                const secondResponse = await askGemini(reasoningPrompt, state.history, [], state.geminiKey, state.selectedModel);
-                finalReply = secondResponse.text;
-            } else {
-                finalReply = toolResult;
-            }
         }
 
-        // Render transcript with all extra buttons
+        // --- STEP 3: SYNTHESIZE ANSWER ---
+        console.log("✍️ Step 3: Synthesizing Final Answer");
+        const synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 1500)}", 
+generate a deep, insightful final answer for the user's request: "${cmd}".
+Target a high-intelligence, "Identity Course" style persona. 
+Use a friendly but professional tone. Do not mention tools.`;
+
+        const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
+        let finalReply = synthesisResponse.text;
+
+        // Render transcript
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${extraHtml}`;
 
-        // Visual Reactions (V3.0.0)
-        if (response.symbol) spawnSymbol(response.symbol);
-        if (response.action && response.action !== 'none') spawnSymbol(response.action);
-
-        // Add to history (regular response)
+        // Add to history
         state.history.push({ user: cmd, blip: finalReply });
         if (state.history.length > 25) state.history.shift();
 
-        // Clear image after successful response
+        // Visual Reactions
+        spawnSymbol('brain');
+        face.classList.remove('thinking');
+
+        // Clear image
         if (state.pendingImage) clearPendingImage();
 
         talkBtn.innerText = '🔊 SPEAKING...';
-        await speak(finalReply, response.emotion);
+        await speak(finalReply, 'serious');
     } catch (error) {
+        face.classList.remove('thinking');
         console.error('AI Error:', error);
         let errorMsg = "I'm sorry, I'm having trouble connecting to my brain.";
 

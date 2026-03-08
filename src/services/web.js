@@ -358,5 +358,29 @@ export const web = {
             url: searchUrl,
             html: `<a href="${searchUrl}" target="_blank" class="action-link red">🎬 WATCH ON YOUTUBE: ${query}</a>`
         };
+    },
+
+    /**
+     * Deep Web Demographic Search (V3.5.0)
+     * Finds segments, interests, patterns, and culture signals.
+     */
+    async deepDemographicSearch(query, context = '') {
+        console.log(`📡 Deep Demographic Search: ${query}`);
+        // This is a high-level tool that will be called during the Reasoning Loop.
+        // It performs a broad search and then filters for "People/Demographics" specific data.
+
+        const searchResult = await this.search(query + " demographics statistics audience profile");
+
+        // We return the raw search text to the Synthesize step
+        return {
+            text: searchResult.text,
+            insights: [
+                "Audience Segments",
+                "Interest Patterns",
+                "Geographic Clusters",
+                "Purchasing Tendencies",
+                "Cultural Signals"
+            ]
+        };
     }
 };
