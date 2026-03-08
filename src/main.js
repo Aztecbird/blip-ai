@@ -104,123 +104,130 @@ const PERSONAS = {
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
-    console.log('🚀 Blip V4.3.5 initializing...');
+    try {
+        console.log('🚀 Blip V4.3.7 initializing...');
 
-    // Load voices
-    const voices = await speech.init();
-    if (voiceSelect && voices.length) {
-        voiceSelect.innerHTML = voices
-            .filter(v => v.lang.startsWith('en'))
-            .map((v, i) => `<option value="${i}">${v.name}</option>`)
-            .join('');
+        // Load voices
+        const voices = await speech.init();
+        if (voiceSelect && voices.length) {
+            voiceSelect.innerHTML = voices
+                .filter(v => v.lang.startsWith('en'))
+                .map((v, i) => `<option value="${i}">${v.name}</option>`)
+                .join('');
 
-        state.selectedVoice = voices[0];
-        voiceSelect.onchange = (e) => {
-            state.selectedVoice = voices[parseInt(e.target.value)];
-        };
-    }
-
-    // Kokoro voice selector
-    if (kokoroVoiceSelect) {
-        kokoroVoiceSelect.onchange = (e) => {
-            speech.setKokoroVoice(e.target.value);
-        };
-    }
-
-    // Initialize UI
-    geminiKeyInput.value = state.geminiKey;
-
-    const saveKey = (e) => {
-        state.geminiKey = e.target.value.trim();
-        localStorage.setItem('blip_gemini_key', state.geminiKey);
-        console.log('🔐 Access Key updated');
-    };
-
-    // Persistence Fix: Listen to multiple events to ensure it saves on mobile
-    geminiKeyInput.oninput = saveKey;
-    geminiKeyInput.onchange = saveKey;
-    geminiKeyInput.onblur = saveKey;
-
-    // Standardized Voice Engine Toggles (simplified)
-    updateVoiceToggles();
-
-    function updateVoiceToggles() {
-        // We now standardize on Gemini, but keep these for internal state consistency
-        const kItem = document.getElementById('kokoro-voice-item');
-        const gItem = document.getElementById('gemini-voice-item');
-        if (kItem) kItem.style.display = 'none';
-        if (gItem) gItem.style.display = 'block';
-    }
-
-    // Check Kokoro status and update its dot
-    updateKokoroStatus();                          // immediate check (async, non-blocking)
-    setInterval(updateKokoroStatus, 15000);        // re-check every 15s
-
-    // Randomized Idle Personality (V3.1.0)
-    setInterval(() => {
-        if (!state.isActive || state.isThinking || speech.isSpeaking) return;
-
-        // Randomly trigger eye scanning
-        const eyes = document.querySelectorAll('.eye');
-        if (Math.random() > 0.7) {
-            eyes.forEach(e => e.classList.add('scanning'));
-            setTimeout(() => eyes.forEach(e => e.classList.remove('scanning')), 4000);
+            state.selectedVoice = voices[0];
+            voiceSelect.onchange = (e) => {
+                state.selectedVoice = voices[parseInt(e.target.value)];
+            };
         }
 
-        triggerRandomIdle();
-    }, 12000);
-
-    // Face blinking
-    setInterval(() => {
-        if (state.currentEmotion === 'surprised') return;
-        const eyes = document.querySelectorAll('.eye');
-        eyes.forEach(e => e.style.height = '2px');
-        setTimeout(() => {
-            eyes.forEach(e => e.style.height = '14px');
-        }, 150);
-    }, 4000);
-    // Start Living Scenery Systems
-    startSceneryTracking();
-    startSceneryDirector();
-
-    // Floating Symbols
-    setInterval(() => {
-        if (!state.isActive) return;
-
-        if (state.isThinking) {
-            // Spawn ??? or !!! when thinking
-            if (Math.random() > 0.4) spawnSymbol(Math.random() > 0.5 ? 'question' : 'exclamation');
-        } else if (!speech.isSpeaking && !state.cameraStream) {
-            // Spawn music notes when idle/listening
-            if (Math.random() > 0.8) spawnSymbol('music');
+        // Kokoro voice selector
+        if (kokoroVoiceSelect) {
+            kokoroVoiceSelect.onchange = (e) => {
+                speech.setKokoroVoice(e.target.value);
+            };
         }
-    }, 600);
 
-    // Close panels on Esc
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') setMode('core');
-    });
+        // Initialize UI
+        geminiKeyInput.value = state.geminiKey;
 
-    // Initial Mode
-    setMode('core');
+        const saveKey = (e) => {
+            state.geminiKey = e.target.value.trim();
+            localStorage.setItem('blip_gemini_key', state.geminiKey);
+            console.log('🔐 Access Key updated');
+        };
 
-    talkBtn.onclick = toggleApp;
+        // Persistence Fix: Listen to multiple events to ensure it saves on mobile
+        geminiKeyInput.oninput = saveKey;
+        geminiKeyInput.onchange = saveKey;
+        geminiKeyInput.onblur = saveKey;
 
-    // Appliance UI Toggles
-    gearBtn.onclick = () => setMode('settings');
-    closePanelBtn.onclick = () => setMode('core');
+        // Standardized Voice Engine Toggles (simplified)
+        updateVoiceToggles();
 
-    // Scenery Orbit (V4.3.1)
+        function updateVoiceToggles() {
+            // We now standardize on Gemini, but keep these for internal state consistency
+            const kItem = document.getElementById('kokoro-voice-item');
+            const gItem = document.getElementById('gemini-voice-item');
+            if (kItem) kItem.style.display = 'none';
+            if (gItem) gItem.style.display = 'block';
+        }
 
-    chatBtn.onclick = () => {
-        chatEntry.classList.toggle('hidden');
-        if (!chatEntry.classList.contains('hidden')) chatInput.focus();
-    };
+        // Check Kokoro status and update its dot
+        updateKokoroStatus();                          // immediate check (async, non-blocking)
+        setInterval(updateKokoroStatus, 15000);        // re-check every 15s
 
-    sendChatBtn.onclick = postChat;
-    chatInput.onkeydown = (e) => { if (e.key === 'Enter') postChat(); };
+        // Randomized Idle Personality (V3.1.0)
+        setInterval(() => {
+            if (!state.isActive || state.isThinking || speech.isSpeaking) return;
 
-    renderHub();
+            // Randomly trigger eye scanning
+            const eyes = document.querySelectorAll('.eye');
+            if (Math.random() > 0.7) {
+                eyes.forEach(e => e.classList.add('scanning'));
+                setTimeout(() => eyes.forEach(e => e.classList.remove('scanning')), 4000);
+            }
+
+            triggerRandomIdle();
+        }, 12000);
+
+        // Face blinking
+        setInterval(() => {
+            if (state.currentEmotion === 'surprised') return;
+            const eyes = document.querySelectorAll('.eye');
+            eyes.forEach(e => e.style.height = '2px');
+            setTimeout(() => {
+                eyes.forEach(e => e.style.height = '14px');
+            }, 150);
+        }, 4000);
+        // Start Living Scenery Systems
+        startSceneryTracking();
+        startSceneryDirector();
+
+        // Floating Symbols
+        setInterval(() => {
+            if (!state.isActive) return;
+
+            if (state.isThinking) {
+                // Spawn ??? or !!! when thinking
+                if (Math.random() > 0.4) spawnSymbol(Math.random() > 0.5 ? 'question' : 'exclamation');
+            } else if (!speech.isSpeaking && !state.cameraStream) {
+                // Spawn music notes when idle/listening
+                if (Math.random() > 0.8) spawnSymbol('music');
+            }
+        }, 600);
+
+        // Close panels on Esc
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') setMode('core');
+        });
+
+        // Initial Mode
+        setMode('core');
+
+        talkBtn.onclick = toggleApp;
+
+        // Appliance UI Toggles
+        gearBtn.onclick = () => setMode('settings');
+        closePanelBtn.onclick = () => setMode('core');
+
+        // Scenery Orbit (V4.3.1)
+
+        chatBtn.onclick = () => {
+            chatEntry.classList.toggle('hidden');
+            if (!chatEntry.classList.contains('hidden')) chatInput.focus();
+        };
+
+        sendChatBtn.onclick = postChat;
+        chatInput.onkeydown = (e) => { if (e.key === 'Enter') postChat(); };
+
+        renderHub();
+    } catch (err) {
+        console.error('❌ Critical Initialization Error:', err);
+        if (typeof transcriptText !== 'undefined' && transcriptText) {
+            transcriptText.innerHTML = `<span style="color:#f43f5e">⚠️ System Error: ${err.message}. Please refresh.</span>`;
+        }
+    }
 }
 
 // ── MODE CONTROLLER (V4.3.0) ─────────────────────────────────────────────────
