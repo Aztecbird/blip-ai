@@ -157,6 +157,8 @@ async function init() {
             eyes.forEach(e => e.style.height = '14px');
         }, 150);
     }, 4000);
+    // Start Living Scenery Eye Tracking
+    startSceneryTracking();
 
     // Floating Symbols
     setInterval(() => {
@@ -823,6 +825,49 @@ function triggerRandomIdle() {
             state.idleBehavior = null;
         }
     }, 5000);
+}
+
+/**
+ * 🚲 Living Scenery: Eye Tracking Logic
+ * Makes Blip's pupils follow the bicycle rider across the frame.
+ */
+function startSceneryTracking() {
+    const bicycle = document.getElementById('bicycle-rider');
+    const faceFrame = document.querySelector('.face-frame');
+    if (!bicycle || !faceFrame) return;
+
+    function update() {
+        // Only track if Blip is not busy talking or thinking
+        if (state.isThinking || speech.isSpeaking || state.currentEmotion !== 'serious') {
+            document.documentElement.style.setProperty('--pupil-x', '0px');
+            document.documentElement.style.setProperty('--pupil-y', '0px');
+            requestAnimationFrame(update);
+            return;
+        }
+
+        const bikeRect = bicycle.getBoundingClientRect();
+        const frameRect = faceFrame.getBoundingClientRect();
+
+        const bikeX = bikeRect.left + bikeRect.width / 2;
+        const bikeY = bikeRect.top + bikeRect.height / 2;
+
+        const frameCenterX = frameRect.left + frameRect.width / 2;
+        const frameCenterY = frameRect.top + frameRect.height / 2;
+
+        const dx = bikeX - frameCenterX;
+        const dy = bikeY - frameCenterY;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        const maxDist = 4;
+        const moveX = (dx / dist) * Math.min(dist / 15, maxDist);
+        const moveY = (dy / dist) * Math.min(dist / 15, maxDist);
+
+        document.documentElement.style.setProperty('--pupil-x', `${moveX}px`);
+        document.documentElement.style.setProperty('--pupil-y', `${moveY}px`);
+
+        requestAnimationFrame(update);
+    }
+    update();
 }
 
 function spawnSymbol(typeOrEmoji) {

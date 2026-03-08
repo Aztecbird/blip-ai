@@ -179,20 +179,94 @@ section.settings {
 
 /* Face frame glow ring */
 .face-frame {
+    width: 280px;
+    height: 180px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 2rem;
     position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 200px;
-    height: 160px;
-    border-radius: 50%;
-    background: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
     box-shadow:
-        0 0 0 1px rgba(99, 102, 241, 0.15),
-        0 0 30px -5px var(--face-glow),
-        0 0 60px -20px var(--face-glow) inset;
+        0 10px 30px rgba(0, 0, 0, 0.3),
+        inset 0 0 20px rgba(129, 140, 248, 0.1);
+    border: 1.5px solid rgba(129, 140, 248, 0.2);
+    overflow: hidden;
     transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
     animation: face-float 6s ease-in-out infinite;
+}
+
+/* 🧬 Living Scenery Layer */
+.scenery-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.cloud {
+    position: absolute;
+    background: white;
+    width: 50px;
+    height: 18px;
+    border-radius: 20px;
+    filter: blur(8px);
+    opacity: 0.15;
+}
+
+.cloud-1 {
+    top: 15%;
+    left: -60px;
+    animation: move-cloud 30s linear infinite;
+}
+
+.cloud-2 {
+    top: 35%;
+    right: -60px;
+    width: 70px;
+    animation: move-cloud 45s linear infinite reverse;
+}
+
+@keyframes move-cloud {
+    from {
+        transform: translateX(-50px);
+    }
+
+    to {
+        transform: translateX(350px);
+    }
+}
+
+#bicycle-rider {
+    position: absolute;
+    bottom: 8px;
+    left: -30px;
+    font-size: 1.4rem;
+    filter: drop-shadow(0 0 8px var(--accent));
+    z-index: 1;
+    animation: ride-bike 15s linear infinite;
+}
+
+@keyframes ride-bike {
+    0% {
+        transform: translateX(0) scaleX(1);
+    }
+
+    48% {
+        transform: translateX(340px) scaleX(1);
+    }
+
+    50% {
+        transform: translateX(340px) scaleX(-1);
+    }
+
+    98% {
+        transform: translateX(0) scaleX(-1);
+    }
+
+    100% {
+        transform: translateX(0) scaleX(1);
+    }
 }
 
 @keyframes face-float {
@@ -271,6 +345,19 @@ section.settings {
     box-shadow: 0 0 10px var(--face-glow);
     transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
+    overflow: hidden;
+}
+
+.pupil {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: #000;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(calc(-50% + var(--pupil-x, 0px)), calc(-50% + var(--pupil-y, 0px)));
+    transition: transform 0.1s ease-out;
 }
 
 /* Eye scanning state */
