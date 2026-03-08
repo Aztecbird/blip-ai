@@ -480,7 +480,7 @@ const actionHandlers = {
         let extraHtml = '';
         const history = await web.getCurrencyHistory(res.tool_params.from, res.tool_params.to);
         if (history && history.labels.length > 0) {
-            renderCurrencyChart(history.labels, history.rates, `${res.tool_params.from} to ${res.tool_params.to}`);
+            renderChart(history.labels, history.rates, `${res.tool_params.from} to ${res.tool_params.to}`, 'line');
             extraHtml = `<br><button onclick="document.body.classList.add('projecting-visual'); document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
         }
         return { text: `${res.text} ${exchange.text}`, extraHtml };
@@ -493,11 +493,13 @@ const actionHandlers = {
         mapContainer.style.display = 'block';
         document.body.classList.add('projecting-visual');
 
-        const mapsUrl = `https://www.google.com/maps/search/${query}`;
-        let extraHtml = `<br><a href="${mapsUrl}" target="_blank" class="action-link green">🌍 OPEN IN GOOGLE MAPS</a>`;
-
         const searchSummary = await web.getPlaceInfo(res.tool_params.query, res.tool_params.location);
-        const finalReply = `${res.text} I have marked them on the map for you. ${searchSummary}`;
+
+        let extraHtml = `<br>${searchSummary.html || ''}`;
+        const mapsUrl = `https://www.google.com/maps/search/${query}`;
+        extraHtml += `<br><a href="${mapsUrl}" target="_blank" class="action-link green">🌍 SEARCH ENTIRE AREA IN GOOGLE MAPS</a>`;
+
+        const finalReply = `${res.text} ${searchSummary.text || searchSummary}`;
 
         addToHub('link', `🌍 Map: ${res.tool_params.query} in ${res.tool_params.location}`, { url: mapsUrl });
 
@@ -569,6 +571,21 @@ const actionHandlers = {
         addToHub('link', `🔍 Search: ${res.tool_params.query}`, { url: `https://www.google.com/search?q=${encodeURIComponent(res.tool_params.query)}` });
         document.body.classList.add('projecting-visual');
         return { text: `${res.text} ${result.text}`, extraHtml: `<br>${result.html}` };
+    },
+
+    chart: async (res) => {
+        if (!res.tool_params?.labels || !res.tool_params?.data) return { text: res.text };
+        const title = res.tool_params.title || 'Data Graph';
+        const type = res.tool_params.type || 'bar';
+
+        renderChart(res.tool_params.labels, res.tool_params.data, title, type);
+
+        // Show panel
+        chartContainer.style.display = 'block';
+        document.body.classList.add('projecting-visual');
+
+        const extraHtml = `<br><button onclick="document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
+        return { text: res.text, extraHtml };
     }
 };
 
@@ -1011,7 +1028,7 @@ function createGoogleCalendarUrl(details) {
     return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}`;
 }
 
-function renderCurrencyChart(labels, data, title) {
+function renderChart(labels, data, title, type = 'line') {
     if (activeChart) activeChart.destroy();
 
     // Default chart.js settings for dark mode
@@ -1019,26 +1036,27 @@ function renderCurrencyChart(labels, data, title) {
     Chart.defaults.font.family = 'Inter';
 
     activeChart = new Chart(currencyChartCanvas, {
-        type: 'line',
+        type: type, // 'line' or 'bar' etc.
         data: {
             labels: labels,
             datasets: [{
                 label: title,
                 data: data,
                 borderColor: '#6366f1',
-                backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                borderWidth: 3,
+                backgroundColor: type === 'line' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.6)',
+                borderWidth: type === 'line' ? 3 : 1,
                 tension: 0.4,
-                fill: true,
+                fill: type === 'line',
                 pointBackgroundColor: '#fff',
-                pointRadius: 4
+                pointRadius: type === 'line' ? 4 : 0,
+                borderRadius: type === 'bar' ? 4 : 0
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { display: false },
+                legend: { display: type !== 'line' }, // Only show legend if it's not the simple currency line
                 tooltip: {
                     backgroundColor: 'rgba(0,0,0,0.8)',
                     padding: 10,

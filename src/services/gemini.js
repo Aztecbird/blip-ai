@@ -40,7 +40,7 @@ export async function askGemini(message, history = [], images = [], inputKey, mo
     {
       "emotion": "string",
       "text": "string",
-      "action": "none|weather|currency|map|reviews|movies|products|time|timer|calendar|youtube|search",
+      "action": "none|weather|currency|map|reviews|movies|products|time|timer|calendar|youtube|search|chart",
       "tool_params": { ... },
       "symbol": "optional emoji for face bubble"
     }
@@ -63,6 +63,7 @@ Actions & tool_params:
 - reviews: tool_params: {"query":"<name of place to review>", "location":"<city>"} (Use for rating/info about places)
 - movies: tool_params: {"location":"<city>"}
 - products: tool_params: {"query":"<product type>","recommendations":["<Model 1>","<Model 2>"]} — For physical items (Amazon, Media Markt, Carrefour). Mention specific stores if the user asks for them. NEVER use for restaurants.
+- chart: tool_params: {"title":"<title>", "labels":["A","B","C"], "data":[10,20,30], "type":"bar|line"} (Use when asked to visualize data or show a graph)
 
 CRITICAL: Never offer Amazon links or product recommendations for restaurants, bars, or physical locations. Use 'map' or 'reviews' instead.`;
 
