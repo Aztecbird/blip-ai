@@ -28,7 +28,7 @@
         </svg>
 
         <main class="container">
-            <div id="version-tag">V4.2.0</div>
+            <div id="version-tag">V4.3.0</div>
 
             <section id="face-area">
                 <div id="blip-status" class="persona-header">
@@ -42,9 +42,15 @@
                         <div class="cloud layer-1">☁️</div>
                         <div class="cloud layer-2">☁️</div>
                         <div class="cloud layer-3">☁️</div>
-                        <div id="bicycle-rider" class="scenery-object">🚲</div>
-                        <div id="walking-cat" class="scenery-object">🐈</div>
-                        <div id="traveler-person" class="scenery-object">🚶‍♂️</div>
+                        <div id="bicycle-rider" class="scenery-object active">🚲</div>
+                        <div id="walking-cat" class="scenery-object active">🐈</div>
+                        <div id="traveler-person" class="scenery-object active">🚶‍♂️</div>
+                        <div id="walking-dog" class="scenery-object active">🐕</div>
+                        <div id="walking-woman" class="scenery-object active">👩‍🦯</div>
+                        <div id="bouncing-ball" class="scenery-object active">🎾</div>
+                        <div id="rolling-dice" class="scenery-object active">🎲</div>
+                        <div id="music-notes" class="scenery-object active">🎶</div>
+                        <div id="walking-piano" class="scenery-object active">🎹</div>
                     </div>
                     <div id="face-container">
                         <div id="blip-aura"></div>
@@ -154,33 +160,6 @@
                 <button id="stopCameraBtn" class="secondary-btn" style="padding: 10px 20px;">⏹ STOP</button>
             </div>
             <canvas id="capture-canvas" style="display: none;"></canvas>
-            </section>
-
-            <section class="settings">
-                <!-- Dropdowns removed for simplification: standardizing on Gemini 2.5 Brain + Kore Voice -->
-                <div id="gemini-key-container" class="setting-item">
-                    <label for="geminiKeyInput">🔑 Access Key</label>
-                    <input type="password" id="geminiKeyInput" placeholder="Password (1234) or AI Studio Key">
-                    <small
-                        style="color: var(--text-secondary); font-size: 0.65rem; margin-top: 4px; display: block; opacity: 0.7;">
-                        Enter your master key or Gemini API key to unlock the brain.
-                    </small>
-                </div>
-
-                <!-- Hidden inputs to keep code compatibility with minimal refactor -->
-                <select id="voiceEngineSelect" style="display:none;">
-                    <option value="gemini">Gemini</option>
-                </select>
-                <select id="geminiVoiceSelect" style="display:none;">
-                    <option value="Kore">Kore</option>
-                </select>
-                <select id="modelSelectHidden" style="display:none;">
-                    <option value="gemini-2.5-flash">Gemini 2.5</option>
-                </select>
-                <select id="kokoroVoiceSelect" style="display:none;"></select>
-                <span id="kokoro-status" style="display:none;"></span>
-                <select id="voiceSelect" style="display:none;"></select>
-
             </section>
         </main>
     </div>

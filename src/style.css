@@ -510,6 +510,36 @@ body::before {
     animation: walk-around-edge 18s linear infinite;
 }
 
+#walking-dog.active {
+    font-size: 1.1rem;
+    animation: walk-around-edge 12s linear infinite reverse;
+}
+
+#walking-woman.active {
+    font-size: 1.3rem;
+    animation: walk-around-edge 16s linear infinite;
+}
+
+#bouncing-ball.active {
+    font-size: 1rem;
+    animation: walk-around-edge 8s linear infinite;
+}
+
+#rolling-dice.active {
+    font-size: 1.2rem;
+    animation: walk-around-edge 20s linear infinite;
+}
+
+#music-notes.active {
+    font-size: 1.4rem;
+    animation: walk-around-edge 15s linear infinite;
+}
+
+#walking-piano.active {
+    font-size: 1.5rem;
+    animation: walk-around-edge 22s linear infinite;
+}
+
 @keyframes walk-around-edge {
     0% {
         transform: translate(0px, 0px) rotate(0deg);
@@ -1688,6 +1718,28 @@ input[type="password"]:focus {
     border-color: var(--accent);
     background: rgba(255, 255, 255, 0.08);
     box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
+}
+
+/* 🎭 MODE SYSTEM OVERRIDES */
+body[data-mode="projector"] .container {
+    max-width: 1000px;
+}
+
+body[data-mode="projector"] #face-area {
+    margin-bottom: 40px;
+}
+
+body[data-mode="projector"] .face-frame {
+    width: 320px;
+    height: 320px;
+}
+
+body[data-mode="chart"] .chart-panel,
+body[data-mode="map"] .map-panel,
+body[data-mode="hub"] .hub-panel,
+body[data-mode="settings"] #under-the-hood {
+    display: block !important;
+    /* Fallback for legacy calls */
 }
 
 select {

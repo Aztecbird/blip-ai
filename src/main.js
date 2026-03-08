@@ -12,16 +12,6 @@ const talkBtn = document.getElementById('talkBtn');
 const transcriptText = document.getElementById('transcript');
 const meterLevel = document.getElementById('meter-level');
 const meterBox = document.querySelector('.mic-meter');
-const voiceSelect = document.getElementById('voiceSelect');
-const kokoroVoiceSelect = document.getElementById('kokoroVoiceSelect');
-const kokoroStatusDot = document.getElementById('kokoro-status');
-const geminiVoiceSelect = document.getElementById('geminiVoiceSelect');
-const voiceEngineSelect = document.getElementById('voiceEngineSelect');
-const modelSelect = document.getElementById('modelSelect');
-const geminiKeyInput = document.getElementById('geminiKeyInput');
-const gearBtn = document.getElementById('gearBtn');
-const underTheHood = document.getElementById('under-the-hood');
-const closePanelBtn = document.getElementById('closePanelBtn');
 const chatBtn = document.getElementById('chatBtn');
 const chatEntry = document.getElementById('chat-entry');
 const chatInput = document.getElementById('chatInput');
@@ -52,17 +42,18 @@ const hubInput = document.getElementById('hubInput');
 const sendHubBtn = document.getElementById('sendHubBtn');
 const saveToHubBtn = document.getElementById('save-to-hub-btn');
 
-// Chart Elements
-const chartContainer = document.getElementById('chart-container');
-const closeChartBtn = document.getElementById('closeChartBtn');
-const downloadChartBtn = document.getElementById('downloadChartBtn');
-const currencyChartCanvas = document.getElementById('currencyChart');
-let activeChart = null;
-
 // Map Elements
 const mapContainer = document.getElementById('map-container');
 const closeMapBtn = document.getElementById('closeMapBtn');
 const mapFrame = document.getElementById('map-frame');
+
+// Settings (Unified)
+const gearBtn = document.getElementById('gearBtn');
+const underTheHood = document.getElementById('under-the-hood');
+const closePanelBtn = document.getElementById('closePanelBtn');
+const geminiKeyInput = document.getElementById('geminiKeyInput');
+const voiceEngineSelect = document.getElementById('voiceEngineSelect');
+const modelSelect = document.getElementById('modelSelect');
 
 // ── APP STATE ────────────────────────────────────────────────────────────────
 const isGitHub = window.location.hostname.includes('github.io');
@@ -195,11 +186,19 @@ async function init() {
         }
     }, 600);
 
+    // Close panels on Esc
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') setMode('core');
+    });
+
+    // Initial Mode
+    setMode('core');
+
     talkBtn.onclick = toggleApp;
 
     // Appliance UI Toggles
-    gearBtn.onclick = () => underTheHood.classList.add('active');
-    closePanelBtn.onclick = () => underTheHood.classList.remove('active');
+    gearBtn.onclick = () => setMode('settings');
+    closePanelBtn.onclick = () => setMode('core');
 
     chatBtn.onclick = () => {
         chatEntry.classList.toggle('hidden');
@@ -210,6 +209,33 @@ async function init() {
     chatInput.onkeydown = (e) => { if (e.key === 'Enter') postChat(); };
 
     renderHub();
+}
+
+// ── MODE CONTROLLER (V4.3.0) ─────────────────────────────────────────────────
+function setMode(mode) {
+    console.log(`🎭 Switching to mode: ${mode}`);
+    state.currentMode = mode;
+
+    // Hide all panels first
+    const panels = [hubContainer, chartContainer, mapContainer, underTheHood, cameraControls];
+    panels.forEach(p => { if (p) p.classList.remove('active'); });
+
+    // Show specific panel based on mode
+    switch (mode) {
+        case 'hub': hubContainer.classList.add('active'); break;
+        case 'chart': chartContainer.classList.add('active'); break;
+        case 'map': mapContainer.classList.add('active'); break;
+        case 'settings': underTheHood.classList.add('active'); break;
+        case 'vision': cameraControls.style.display = 'flex'; break;
+        default:
+            // Core mode
+            if (cameraControls) cameraControls.style.display = 'none';
+            stopCamera();
+            break;
+    }
+
+    // Toggle body class for layout adjustments
+    document.body.setAttribute('data-mode', mode);
 }
 
 /**
@@ -831,14 +857,23 @@ Return a simple JSON object: {
             if (chartData) {
                 finalReply = chartData.text || "Here is the data visualization you requested.";
                 if (chartData.labels && chartData.data) {
+                    setMode('chart');
                     renderChart(chartData.labels, chartData.data, chartData.title || 'Data Graph', chartData.type || 'bar');
-                    chartContainer.style.display = 'block';
                     document.body.classList.add('projecting-visual');
-                    extraHtml += `<br><button onclick="document.body.classList.add('projecting-visual'); document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
+                    extraHtml += `<br><button onclick="setMode('chart')" class="action-link purple">📈 VIEW GRAPH</button>`;
                 }
             } else {
                 console.warn("Failed to extract chart JSON from synthesis.");
             }
+        }
+
+        // Specialized Map Rendering
+        if (intent.action === 'map' && intent.query) {
+            setMode('map');
+            const mapQuery = intent.query && intent.location ? `${intent.query} in ${intent.location}` : intent.query;
+            mapFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`;
+            document.body.classList.add('projecting-visual');
+            extraHtml += `<br><button onclick="setMode('map')" class="action-link blue">📍 VIEW MAP</button>`;
         }
 
         // Render transcript
