@@ -589,6 +589,7 @@ body::before {
     justify-content: space-around;
     align-items: center;
     transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    filter: url('#goo');
 }
 
 /* Eyebrows */
@@ -614,6 +615,30 @@ body::before {
     display: flex;
     gap: 3.5rem;
     transition: all 0.3s ease;
+    animation: drift-eyes 12s infinite alternate ease-in-out;
+}
+
+@keyframes drift-eyes {
+    0% {
+        gap: 3.5rem;
+        transform: translateY(0px) scale(1);
+    }
+
+    30% {
+        gap: 2rem;
+        transform: translateY(-4px) scale(1.05);
+    }
+
+    60% {
+        gap: 1rem;
+        transform: translateY(0px) scale(1.15);
+    }
+
+    /* Eyes will merge here due to gooey filter */
+    100% {
+        gap: 4rem;
+        transform: translateY(4px) scale(0.95);
+    }
 }
 
 .eye {
@@ -625,6 +650,29 @@ body::before {
     transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     position: relative;
     overflow: hidden;
+    animation: liquid-morph 8s ease-in-out infinite;
+}
+
+@keyframes liquid-morph {
+
+    0%,
+    100% {
+        border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+    }
+
+    25% {
+        border-radius: 58% 42% 64% 36% / 46% 62% 38% 54%;
+        transform: scale(1.05);
+    }
+
+    50% {
+        border-radius: 41% 59% 36% 64% / 64% 41% 59% 36%;
+    }
+
+    75% {
+        border-radius: 54% 46% 41% 59% / 53% 58% 42% 47%;
+        transform: scale(0.95);
+    }
 }
 
 .pupil {
