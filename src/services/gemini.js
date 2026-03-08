@@ -243,7 +243,8 @@ function parseGeminiResponse(raw) {
                 action: parsed.action || 'none',
                 value_ms: parsed.value_ms || null,
                 event_details: parsed.event_details || null,
-                tool_params: parsed.tool_params || null
+                tool_params: parsed.tool_params || null,
+                rawResponse: raw
             };
         }
         throw new Error("No JSON block found in response");
@@ -266,6 +267,6 @@ function parseGeminiResponse(raw) {
         }
 
         const fallbackEmotion = 'serious';
-        return { emotion: fallbackEmotion, text: fallbackText.trim(), symbol: fallbackSymbol, action: 'none', value_ms: null, event_details: null, tool_params: null };
+        return { emotion: fallbackEmotion, text: fallbackText.trim(), symbol: fallbackSymbol, action: 'none', value_ms: null, event_details: null, tool_params: null, rawResponse: raw };
     }
 }

@@ -89,6 +89,7 @@ const state = {
     idleBehavior: null, // 'dreamer', 'observer', 'squinter'
     isProjectorMode: false,
     isLiveWatch: false,
+    isListening: false,
     liveInterval: null,
     liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
@@ -112,7 +113,7 @@ const PERSONAS = {
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
     try {
-        console.log('🚀 Blip V4.3.8 initializing...');
+        console.log('🚀 Blip V4.3.9 initializing...');
 
         // Load voices
         const voices = await speech.init();
@@ -498,6 +499,10 @@ function startListeningLoop() {
     speech.startListening(
         // On Result
         (result) => {
+            if (speech.isSpeaking) {
+                stopListening();
+                return;
+            }
             transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${result.text}</i>`;
             if (result.isFinal) {
                 setPersona('thinking');
@@ -506,12 +511,14 @@ function startListeningLoop() {
         },
         // On End
         () => {
+            state.isListening = false;
             if (state.isActive && !state.isThinking && !speech.isSpeaking) {
                 setTimeout(startListeningLoop, 300);
             }
         },
         // On Error
         (err) => {
+            state.isListening = false;
             console.warn('Recognition error:', err);
             if (err.error === 'not-allowed') {
                 stopApp();
@@ -519,6 +526,11 @@ function startListeningLoop() {
             }
         }
     );
+}
+
+function stopListening() {
+    state.isListening = false;
+    speech.stopListening();
 }
 
 // ── ACTION HANDLERS ──────────────────────────────────────────────────────────
@@ -825,7 +837,7 @@ Return a simple JSON object: {
 }`;
 
         const intentResponse = await askGemini(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
-        let intent = extractJSON(intentResponse.text) || { action: 'none', query: cmd, entities: [] };
+        let intent = extractJSON(intentResponse.rawResponse) || { action: intentResponse.action || 'none', query: cmd, entities: [] };
 
         // --- STEP 2: DEEP RESEARCH ---
         console.log("📡 Step 2: Researching", intent);
