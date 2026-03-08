@@ -2,22 +2,22 @@
 
 /* ── TOKENS ──────────────────────────────────────────────────────────────── */
 :root {
-    --bg-deep: #030308;
-    --bg-mid: #0a0a1f;
-    --card-bg: rgba(255, 255, 255, 0.03);
-    --card-border: rgba(255, 255, 255, 0.1);
-    --text-primary: #ffffff;
+    --bg-deep: #020617;
+    --bg-mid: #0f172a;
+    --card-bg: rgba(16, 185, 129, 0.04);
+    --card-border: rgba(16, 185, 129, 0.12);
+    --text-primary: #f0f9ff;
     --text-secondary: #94a3b8;
-    --accent: #818cf8;
-    /* Softer Indigo */
+    --accent: #10b981;
+    /* Emerald */
     --accent-2: #22d3ee;
-    /* Vibrant Cyan */
-    --accent-vibrant: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #22d3ee 100%);
-    --accent-glow: rgba(129, 140, 248, 0.4);
+    /* Cyan */
+    --accent-vibrant: linear-gradient(135deg, #10b981 0%, #34d399 50%, #22d3ee 100%);
+    --accent-glow: rgba(16, 185, 129, 0.4);
     --accent-2-glow: rgba(34, 211, 238, 0.3);
     --error: #f43f5e;
     --success: #10b981;
-    --face-glow: rgba(129, 140, 248, 0.25);
+    --face-glow: rgba(34, 211, 238, 0.4);
 }
 
 * {
@@ -589,6 +589,17 @@ body::before {
     justify-content: space-around;
     align-items: center;
     transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    animation: face-breathe 4s ease-in-out infinite alternate;
+}
+
+@keyframes face-breathe {
+    0% {
+        filter: drop-shadow(0 0 5px var(--face-glow));
+    }
+
+    100% {
+        filter: drop-shadow(0 0 25px var(--face-glow));
+    }
 }
 
 /* Eyebrows */

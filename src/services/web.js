@@ -313,12 +313,21 @@ export const web = {
             }
         } catch (e) { /* ignore */ }
 
+        let extraHtml = `
+            <a href="${googleUrl}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>
+            <a href="${ddgUrl}" target="_blank" class="action-link green">🦆 SEARCH ON DUCKDUCKGO</a>
+        `;
+
+        // Data Detection for Voronoi
+        const dataKeywords = ['graph', 'population', 'stats', 'data', 'census', 'demographics', 'chart'];
+        if (dataKeywords.some(k => query.toLowerCase().includes(k))) {
+            const voronoiUrl = `https://www.voronoiapp.com/search/${encodeURIComponent(query)}`;
+            extraHtml = `<a href="${voronoiUrl}" target="_blank" class="action-link purple">📊 SEARCH ON VORONOI</a>` + extraHtml;
+        }
+
         return {
             text: extractedData,
-            html: `
-                <a href="${googleUrl}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>
-                <a href="${ddgUrl}" target="_blank" class="action-link green">🦆 SEARCH ON DUCKDUCKGO</a>
-            `
+            html: extraHtml
         };
     },
 
