@@ -994,6 +994,7 @@ function extractJSON(text) {
 }
 
 async function speak(text, emotion = 'serious') {
+    if (state.isListening) stopListening();
     setEmotion(emotion);
     const cfg = {
         happy: { pitch: 1.1, rate: 1.05 },
