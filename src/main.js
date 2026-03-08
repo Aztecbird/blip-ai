@@ -783,6 +783,11 @@ Return a simple JSON object: {
             const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
             extraHtml = standardResult.extraHtml;
         }
+        // SPECIAL CASE: Charts require research first
+        else if (intent.action === 'chart') {
+            const research = await web.search(intent.query || cmd, intent.entities || []);
+            evidence = research.text;
+        }
         // GENERIC CASE: Action Handlers (Supports 40 Scenarios)
         else if (actionHandlers[intent.action]) {
             const result = await actionHandlers[intent.action]({ tool_params: { ...intent, query: intent.query || cmd } }, state);
@@ -798,18 +803,44 @@ Return a simple JSON object: {
 
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
-        const synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 3000)}", 
-generate a final answer for the user's request: "${cmd}".
+        let synthesisPrompt = "";
 
-CRITICAL DATA RULES:
-1. ENTITY VERIFICATION: Only report data for the EXACT entities requested (e.g., Mexico, Spain). If the evidence discusses other places (e.g., UK, Trinidad), DO NOT report that as the answer.
-2. NO HALLUCINATION: If the evidence does not contain the specific numbers for the requested entities, state clearly that the research didn't return those exact figures yet.
-3. DATA FORMAT: Per the user's request, SKIP THE GRAPH. Focus on a clear, structured text output (using Markdown tables for comparisons).
-4. TOTAL POPULATION: Include Total Population, Men/Women counts/percentages, and Median Age if found.
-5. PERSONA: Maintain the "Identity Course" style (insightful, profound) but keep it grounded in the hard facts found in the evidence.`;
+        if (intent.action === 'chart') {
+            synthesisPrompt = `Based on this research: "${evidence.substring(0, 3000)}", 
+            extract data for a chart to answer: "${cmd}".
+            Return a JSON object: { "text": "natural explanation", "labels": ["label1", "label2"], "data": [value1, value2], "title": "Chart Title", "type": "bar|line|pie" }.
+            DO NOT apologize. If data is missing, estimate or provide best available numbers from the research.`;
+        } else {
+            synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 3000)}", 
+            generate a final answer for the user's request: "${cmd}".
+
+            CRITICAL DATA RULES:
+            1. ENTITY VERIFICATION: Only report data for the EXACT entities requested (e.g., Mexico, Spain). If the evidence discusses other places (e.g., UK, Trinidad), DO NOT report that as the answer.
+            2. NO HALLUCINATION: If the evidence does not contain the specific numbers for the requested entities, state clearly that the research didn't return those exact figures yet.
+            3. DATA FORMAT: Use Markdown tables for comparisons.
+            4. TOTAL POPULATION: Include Total Population, Men/Women counts/percentages, and Median Age if found.
+            5. PERSONA: Maintain the "Identity Course" style (insightful, profound) but keep it grounded in the hard facts found in the evidence.`;
+        }
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
         let finalReply = synthesisResponse.text;
+
+        // Specialized Chart Rendering
+        if (intent.action === 'chart') {
+            try {
+                const cleanJson = synthesisResponse.text.replace(/```json|```/g, "").trim();
+                const chartData = JSON.parse(cleanJson);
+                finalReply = chartData.text;
+                if (chartData.labels && chartData.data) {
+                    renderChart(chartData.labels, chartData.data, chartData.title || 'Data Graph', chartData.type || 'bar');
+                    chartContainer.style.display = 'block';
+                    document.body.classList.add('projecting-visual');
+                    extraHtml += `<br><button onclick="document.body.classList.add('projecting-visual'); document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
+                }
+            } catch (e) {
+                console.warn("Failed to parse chart JSON, showing raw text instead.");
+            }
+        }
 
         // Render transcript
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${extraHtml}`;

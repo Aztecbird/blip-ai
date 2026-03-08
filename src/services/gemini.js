@@ -1,4 +1,4 @@
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 // 🔐 GATEKEEPER: We split the key to prevent GitHub bots from auto-revoking it.
 // To update: Get a NEW key from AI Studio, split it in half, and paste below.
@@ -32,6 +32,7 @@ export async function askGemini(message, history = [], images = [], inputKey, mo
     2. map: Use ONLY for finding real-world physical locations/places.
     3. SEARCH DISAMBIGUATION: If a user says "a nice park" or "a good restaurant", "nice" and "good" are ADJECTIVES, not locations. Do NOT search for things in the city of Nice, France unless specifically mentioned.
     4. products: Use for finding things to buy across major retailers.
+    5. chart: For graphs or comparisons, do NOT apologize. Find the numbers and provide a JSON data object so the app can draw it.
     
     Current Date: ${dateStr}
     Current Time: ${timeStr}
@@ -52,6 +53,7 @@ export async function askGemini(message, history = [], images = [], inputKey, mo
 - Entertainment: YouTube, music control, trivia, storytelling.
 - Home/Health: light/temp simulation, energy, hydration/stretch breaks.
 - Travel: trip planning, currency, map guides.
+- Data Explorer: Graph-drawing, population comparisons, real-time stats extraction.
 
 
 Emotions: happy, excited, gentle, playful, thinking, surprised, confident, celebrate, sleepy, sad, serious.
