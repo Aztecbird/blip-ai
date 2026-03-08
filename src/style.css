@@ -33,11 +33,16 @@ body {
     color: var(--text-primary);
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
+    /* Changed from center to allow scrolling from top */
     min-height: 100vh;
-    overflow: hidden;
+    overflow-y: auto;
+    /* Allow scrolling */
+    overflow-x: hidden;
     position: relative;
     letter-spacing: -0.01em;
+    padding: 2rem 0;
+    /* Add top/bottom padding for the container */
 }
 
 body::before {
@@ -75,7 +80,7 @@ body::before {
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 1rem;
+    padding: 0 1rem;
 }
 
 .container {
@@ -92,13 +97,26 @@ body::before {
         "controls"
         "settings";
     gap: 1.5rem;
-    position: relative;
-    /* For version tag positioning */
+    border-radius: 2rem;
     box-shadow:
-        0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-        0 20px 50px -10px rgba(0, 0, 0, 0.8),
-        0 0 80px -20px var(--accent-glow);
-    transition: transform 0.4s cubic-bezier(0.2, 0, 0.2, 1);
+        0 25px 50px -12px rgba(0, 0, 0, 0.5),
+        0 0 20px rgba(129, 140, 248, 0.1);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10;
+    position: relative;
+    animation: floating 6s ease-in-out infinite;
+}
+
+@keyframes floating {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
 }
 
 .container:hover {
@@ -250,8 +268,34 @@ section.settings {
     height: 14px;
     background: white;
     border-radius: 50%;
-    box-shadow: 0 0 15px white;
+    box-shadow: 0 0 10px var(--face-glow);
     transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+}
+
+/* Eye scanning state */
+.eye.scanning {
+    animation: eye-scan 4s ease-in-out infinite;
+}
+
+@keyframes eye-scan {
+
+    0%,
+    100% {
+        transform: translate(0, 0);
+    }
+
+    25% {
+        transform: translate(3px, -2px);
+    }
+
+    50% {
+        transform: translate(-3px, 1px);
+    }
+
+    75% {
+        transform: translate(2px, 3px);
+    }
 }
 
 #mouth {
@@ -594,6 +638,37 @@ body.projector-mode.projecting-visual .hub-panel {
     height: 15px;
     border-radius: 5px 5px 40px 10px;
     /* Smirk */
+}
+
+/* Idle States */
+.face.bouncer {
+    animation: bounce-lil 0.5s ease infinite alternate;
+}
+
+.face.pulsar {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes bounce-lil {
+    from {
+        transform: translateY(0);
+    }
+
+    to {
+        transform: translateY(-5px);
+    }
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        filter: drop-shadow(0 0 5px var(--face-glow));
+    }
+
+    50% {
+        filter: drop-shadow(0 0 20px var(--face-glow));
+    }
 }
 
 #face.confident .eye {

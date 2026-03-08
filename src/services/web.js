@@ -145,6 +145,20 @@ export const web = {
                 const wideRes = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: wideQuery });
                 const wideData = await wideRes.json();
                 if (!wideData.elements.length) {
+                    // Wikipedia Fallback with Disambiguation Check
+                    console.log(`📖 Wikipedia fallback for: ${query}`);
+                    const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query.replace(/ /g, '_'))}`);
+                    if (wikiRes.ok) {
+                        const wikiData = await wikiRes.json();
+                        let summary = wikiData.extract || "";
+
+                        // DISAMBIGUATION: If the query is an adjective but the result is about the city of Nice, discard or flag.
+                        if (query.toLowerCase().trim() === 'nice' || (query.toLowerCase().includes('nice') && summary.includes('Nice is the seventh-most populous city in France'))) {
+                            return `I found results for "Nice" (the city), but I suspect you meant "nice" as in pleasant. Could you be more specific about what you are looking for?`;
+                        }
+
+                        return summary;
+                    }
                     // Final fallback: Wikipedia
                     return this._wikiPlaceInfo(query, location);
                 }

@@ -82,6 +82,7 @@ const state = {
     liveInterval: null,
     liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
+// V3.1.1
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
@@ -133,8 +134,19 @@ async function init() {
     updateKokoroStatus();                          // immediate check (async, non-blocking)
     setInterval(updateKokoroStatus, 15000);        // re-check every 15s
 
-    // Randomized Idle Personality (V3.0.0)
-    setInterval(triggerRandomIdle, 12000);
+    // Randomized Idle Personality (V3.1.0)
+    setInterval(() => {
+        if (!state.isActive || state.isThinking || speech.isSpeaking) return;
+
+        // Randomly trigger eye scanning
+        const eyes = document.querySelectorAll('.eye');
+        if (Math.random() > 0.7) {
+            eyes.forEach(e => e.classList.add('scanning'));
+            setTimeout(() => eyes.forEach(e => e.classList.remove('scanning')), 4000);
+        }
+
+        triggerRandomIdle();
+    }, 12000);
 
     // Face blinking
     setInterval(() => {
@@ -786,11 +798,22 @@ function triggerRandomIdle() {
     // Only idle if app is active but NOT thinking, NOT speaking, and NOT already emotional
     if (!state.isActive || state.isThinking || speech.isSpeaking || state.currentEmotion !== 'serious') return;
 
-    const behaviors = ['dreamer', 'observer', 'squinter'];
+    const behaviors = ['dreamer', 'observer', 'squinter', 'bouncer', 'pulsar'];
     const pick = behaviors[Math.floor(Math.random() * behaviors.length)];
 
     state.idleBehavior = pick;
     face.classList.add(pick);
+
+    // Spawn a matching symbol for the mood
+    const moodSymbols = {
+        'dreamer': '💤',
+        'observer': '👁️',
+        'squinter': '🤨',
+        'bouncer': '✨',
+        'pulsar': '💗'
+    };
+    if (Math.random() > 0.5) spawnSymbol(moodSymbols[pick]);
+
     console.log(`🎭 Blip is now: ${pick}`);
 
     // Revert to normal after 4-6 seconds
