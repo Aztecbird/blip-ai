@@ -756,9 +756,13 @@ async function handleCommand(text) {
         // --- STEP 1: INTERPRET INTENT ---
         console.log("🧠 Step 1: Interpret Intent");
         const intentPrompt = `Interpret the user's intent: "${cmd}". 
-Return a simple JSON object: {"action": "search|weather|chart|timer|list|nutrition|map|youtube|none", "query": "optimized search query or subject"}`;
+Return a simple JSON object: {
+  "action": "search|weather|chart|timer|list|nutrition|map|youtube|none", 
+  "query": "optimized search query",
+  "entities": ["entity1", "entity2"] (only if comparing multiple things)
+}`;
         const intentResponse = await askGemini(intentPrompt, [], [], state.geminiKey, state.selectedModel);
-        let intent = { action: 'none', query: cmd };
+        let intent = { action: 'none', query: cmd, entities: [] };
         try {
             const cleanText = intentResponse.text.replace(/```json|```/g, "").trim();
             intent = JSON.parse(cleanText);
@@ -769,9 +773,9 @@ Return a simple JSON object: {"action": "search|weather|chart|timer|list|nutriti
         let evidence = "No special data found.";
         let extraHtml = '';
 
-        // SPECIAL CASE: Deep Demographic Search (V3.5.0)
+        // SPECIAL CASE: Deep Demographic Search (V3.6.0)
         if (cmd.toLowerCase().includes('population') || cmd.toLowerCase().includes('demographic')) {
-            const research = await web.deepDemographicSearch(intent.query || cmd);
+            const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || []);
             evidence = research.text;
             const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
             extraHtml = standardResult.extraHtml;
@@ -792,14 +796,14 @@ Return a simple JSON object: {"action": "search|weather|chart|timer|list|nutriti
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
         const synthesisPrompt = `Based on the following research evidence: "${evidence.substring(0, 3000)}", 
-generate a deep, insightful final answer for the user's request: "${cmd}".
+generate a final answer for the user's request: "${cmd}".
 
-CRITICAL RULES:
-1. DATA PRIORITY: Include ALL hard numbers, percentages, and statistics found in the evidence.
-2. COMPARISON MODE: If a comparison is requested (e.g., Mexico vs Spain), YOU MUST use a Markdown table to present the data side-by-side.
-3. DEMOGRAPHIC DEPTH: Always try to report "Total Population", "Women %", "Men %", and "Median Age" if available in the evidence.
-4. TONE: Maintain a high-intelligence, "Identity Course" style persona (profound but data-driven).
-5. NO FLUFF: Do not mention tools, JSON, or "I searched". Just provide the insight and the data table.`;
+CRITICAL DATA RULES:
+1. ENTITY VERIFICATION: Only report data for the EXACT entities requested (e.g., Mexico, Spain). If the evidence discusses other places (e.g., UK, Trinidad), DO NOT report that as the answer.
+2. NO HALLUCINATION: If the evidence does not contain the specific numbers for the requested entities, state clearly that the research didn't return those exact figures yet.
+3. DATA FORMAT: Per the user's request, SKIP THE GRAPH. Focus on a clear, structured text output (using Markdown tables for comparisons).
+4. TOTAL POPULATION: Include Total Population, Men/Women counts/percentages, and Median Age if found.
+5. PERSONA: Maintain the "Identity Course" style (insightful, profound) but keep it grounded in the hard facts found in the evidence.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
         let finalReply = synthesisResponse.text;

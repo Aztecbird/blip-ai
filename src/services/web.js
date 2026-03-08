@@ -290,25 +290,21 @@ export const web = {
         return { text: spokenText, html };
     },
 
-    /**
-     * General Web Search (Uses Wikipedia for data extraction + Google/DDG links)
-     */
-    async search(query) {
-        console.log(`🔍 Web search: ${query}`);
+    async search(query, entities = []) {
+        console.log(`🔍 Web search: ${query}`, entities);
         const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
         const ddgUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
 
         let extractedData = "I've provided some links below for you to explore.";
         try {
-            // Smart Split for Comparisons (V3.6.0)
-            const splitRegex = / (and|compared with|vs|versus) /i;
-            const subQueries = query.toLowerCase().split(splitRegex).filter(q => q.trim().length > 3 && !['and', 'compared with', 'vs', 'versus'].includes(q));
-
+            // Smart Entity Research (V3.6.0)
+            // If entities are provided (e.g. from Gemini intent), search each one independently
+            const searchTargets = (entities && entities.length > 1) ? entities : [query];
             let combinedExtract = "";
             const dataKeywords = ['population', 'demographics', 'men', 'women', 'males', 'females', 'stats', 'data', 'breakdown'];
 
-            for (const q of (subQueries.length > 1 ? subQueries : [query])) {
-                const searchTerms = encodeURIComponent(q + (dataKeywords.some(k => q.toLowerCase().includes(k)) ? "" : " demographics"));
+            for (const target of searchTargets) {
+                const searchTerms = encodeURIComponent(target + (dataKeywords.some(k => target.toLowerCase().includes(k)) ? "" : " demographics"));
                 const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`);
                 const searchData = await searchRes.json();
 
@@ -351,9 +347,6 @@ export const web = {
      */
     async searchYouTube(query) {
         console.log(`🎬 YouTube search: ${query}`);
-        // Since we don't have a YouTube Data API key, we'll construct a direct search URL 
-        // and a plausible "Lucky" embed URL approach or just direct link.
-        // For a better "Projector" feel, we'll provide a direct link to the search results.
         const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
         return {
             text: `I've found some videos on ${query} for you to watch.`,
@@ -363,26 +356,24 @@ export const web = {
     },
 
     /**
-     * Deep Web Demographic Search (V3.5.0)
+     * Deep Web Demographic Search (V3.6.0)
      * Finds segments, interests, patterns, and culture signals.
      */
-    async deepDemographicSearch(query, context = '') {
-        console.log(`📡 Deep Demographic Search: ${query}`);
-        // This is a high-level tool that will be called during the Reasoning Loop.
-        // It performs a broad search and then filters for "People/Demographics" specific data.
+    async deepDemographicSearch(query, entities = []) {
+        console.log(`📡 Deep Demographic Search: ${query}`, entities);
 
-        const searchResult = await this.search(query + " demographics statistics audience profile");
+        // Multi-country support: fetch independent data for each entity
+        const searchResult = await this.search(query, entities);
 
-        // We return the raw search text to the Synthesize step
         return {
             text: searchResult.text,
             insights: [
                 "Audience Segments",
                 "Interest Patterns",
                 "Geographic Clusters",
-                "Purchasing Tendencies",
                 "Cultural Signals"
             ]
         };
     }
+
 };
