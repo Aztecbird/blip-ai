@@ -837,43 +837,50 @@ Return a simple JSON object: {
 }`;
 
         const intentResponse = await askGemini(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
-        let intent = extractJSON(intentResponse.rawResponse) || { actions: [intentResponse.action || 'none'], query: cmd, entities: [] };
-        if (!intent.actions) intent.actions = [intent.action || 'none'];
+        let intent = extractJSON(intentResponse.rawResponse) || { actions: [intentResponse.action || 'chat'], query: cmd, entities: [] };
+        if (!intent.actions) intent.actions = [intent.action || 'chat'];
 
         // --- STEP 2: DEEP RESEARCH ---
         console.log("📡 Step 2: Researching", intent);
         let evidence = "";
         let extraHtml = '';
 
-        for (const action of intent.actions) {
-            console.log(`🔍 Executing Action: ${action}`);
+        // Optimization: Skip research for pure chat/none or extremely short inputs
+        const isPureChat = intent.actions.every(a => a === 'chat' || a === 'none' || a === 'time');
 
-            // 1. Deep Demographic Search (V3.6.0)
-            if (cmd.toLowerCase().includes('population') || cmd.toLowerCase().includes('demographic')) {
-                const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || []);
-                evidence += research.text + "\n";
-                const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
-                extraHtml += standardResult.extraHtml;
-            }
-            // 2. Action Handlers
-            else if (actionHandlers[action]) {
-                const result = await actionHandlers[action]({ tool_params: { ...intent, query: intent.query || cmd } }, state);
-                evidence += result.text + "\n";
-                if (result.extraHtml && !extraHtml.includes(result.extraHtml)) {
-                    extraHtml += result.extraHtml;
+        if (!isPureChat && cmd.length > 2) {
+            for (const action of intent.actions) {
+                console.log(`🔍 Executing Action: ${action}`);
+
+                // 1. Deep Demographic Search (V3.6.0)
+                if (cmd.toLowerCase().includes('population') || cmd.toLowerCase().includes('demographic')) {
+                    const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || []);
+                    evidence += research.text + "\n";
+                    const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
+                    extraHtml += standardResult.extraHtml;
                 }
-            }
-            // 3. Fallback: Search / Research
-            else if (action === 'search' || action === 'chart') {
-                const research = await web.search(intent.query || cmd, intent.entities || []);
-                evidence += research.text + "\n";
-                if (research.html && !extraHtml.includes(research.html)) {
-                    extraHtml += research.html;
+                // 2. Action Handlers
+                else if (actionHandlers[action]) {
+                    const result = await actionHandlers[action]({ tool_params: { ...intent, query: intent.query || cmd } }, state);
+                    if (result) {
+                        evidence += (result.text || "") + "\n";
+                        if (result.extraHtml && !extraHtml.includes(result.extraHtml)) {
+                            extraHtml += result.extraHtml;
+                        }
+                    }
+                }
+                // 3. Fallback: Search / Research
+                else if (action === 'search' || action === 'chart') {
+                    const research = await web.search(intent.query || cmd, intent.entities || []);
+                    evidence += research.text + "\n";
+                    if (research.html && !extraHtml.includes(research.html)) {
+                        extraHtml += research.html;
+                    }
                 }
             }
         }
 
-        if (!evidence) evidence = "No special data found.";
+        if (!evidence && !isPureChat) evidence = "No special data found.";
 
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
