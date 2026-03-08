@@ -157,8 +157,9 @@ async function init() {
             eyes.forEach(e => e.style.height = '14px');
         }, 150);
     }, 4000);
-    // Start Living Scenery Eye Tracking
+    // Start Living Scenery Systems
     startSceneryTracking();
+    startSceneryDirector();
 
     // Floating Symbols
     setInterval(() => {
@@ -1043,3 +1044,38 @@ navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
 
 // Init on load
 window.addEventListener('DOMContentLoaded', init);
+
+/**
+ * 🎬 Scenery Director: Sequential Character Spawning
+ * Manages the sequence of character appearances (Cat, Bike, Traveler)
+ * to ensure the frame stays organized and dynamic.
+ */
+function startSceneryDirector() {
+    const objects = Array.from(document.querySelectorAll('.scenery-object'));
+    if (objects.length === 0) return;
+
+    let currentIndex = Math.floor(Math.random() * objects.length);
+
+    function spawnNext() {
+        const obj = objects[currentIndex];
+
+        // Show and animate
+        obj.classList.add('active');
+
+        // Find animation duration (+ small buffer)
+        const duration = 25000; // Average duration for our characters
+
+        setTimeout(() => {
+            obj.classList.remove('active');
+
+            // Wait for next character (5-10s random gap)
+            const waitTime = 5000 + Math.random() * 5000;
+
+            currentIndex = (currentIndex + 1) % objects.length;
+            setTimeout(spawnNext, waitTime);
+        }, duration);
+    }
+
+    // Initial start after a few seconds
+    setTimeout(spawnNext, 3000);
+}

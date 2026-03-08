@@ -250,29 +250,33 @@ section.settings {
     position: absolute;
     font-size: 1.4rem;
     filter: brightness(0) invert(1) drop-shadow(0 0 8px rgba(255, 255, 255, 0.4));
-    /* Premium White aesthetic */
     z-index: 1;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.scenery-object.active {
     opacity: 0.7;
 }
 
-#bicycle-rider {
+#bicycle-rider.active {
     bottom: 8px;
     left: -30px;
-    animation: ride-bike 18s linear infinite;
+    animation: ride-bike 12s linear forwards;
 }
 
-#walking-cat {
+#walking-cat.active {
     bottom: 5px;
     right: -30px;
     font-size: 1.1rem;
-    animation: walk-cat 28s linear infinite;
+    animation: walk-cat 22s linear forwards;
 }
 
-#traveler-person {
+#traveler-person.active {
     bottom: 8px;
     left: -40px;
     font-size: 1.3rem;
-    animation: walk-traveler 45s linear infinite;
+    animation: walk-traveler 30s linear forwards;
 }
 
 @keyframes ride-bike {
