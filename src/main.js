@@ -48,10 +48,15 @@ const hubInput = document.getElementById('hubInput');
 const sendHubBtn = document.getElementById('sendHubBtn');
 const saveToHubBtn = document.getElementById('save-to-hub-btn');
 
-// Map Elements
 const mapContainer = document.getElementById('map-container');
 const closeMapBtn = document.getElementById('closeMapBtn');
 const mapFrame = document.getElementById('map-frame');
+
+// Chart Elements
+const chartContainer = document.getElementById('chart-container');
+const closeChartBtn = document.getElementById('closeChartBtn');
+const currencyChartCanvas = document.getElementById('currencyChart');
+const downloadChartBtn = document.getElementById('downloadChartBtn');
 
 // Settings (Unified)
 const gearBtn = document.getElementById('gearBtn');
@@ -63,6 +68,8 @@ const modelSelect = document.getElementById('modelSelect');
 
 // ── APP STATE ────────────────────────────────────────────────────────────────
 const isGitHub = window.location.hostname.includes('github.io');
+
+let activeChart = null; // Chart.js instance
 
 const state = {
     isActive: false,
@@ -105,7 +112,7 @@ const PERSONAS = {
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
     try {
-        console.log('🚀 Blip V4.3.7 initializing...');
+        console.log('🚀 Blip V4.3.8 initializing...');
 
         // Load voices
         const voices = await speech.init();
@@ -210,6 +217,10 @@ async function init() {
         // Appliance UI Toggles
         gearBtn.onclick = () => setMode('settings');
         closePanelBtn.onclick = () => setMode('core');
+
+        // Chart Toggles
+        if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
+        if (downloadChartBtn) downloadChartBtn.onclick = downloadChart;
 
         // Scenery Orbit (V4.3.1)
 
