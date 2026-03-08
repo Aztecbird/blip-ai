@@ -764,12 +764,9 @@ Return a simple JSON object: {
   "query": "optimized search query",
   "entities": ["entity1", "entity2"] (only if comparing multiple things)
 }`;
+        // Nudge: If user says "graph", "chart", "compare", but action is none, force it to 'chart'
         const intentResponse = await askGemini(intentPrompt, [], [], state.geminiKey, state.selectedModel);
-        let intent = { action: 'none', query: cmd, entities: [] };
-        try {
-            const cleanText = intentResponse.text.replace(/```json|```/g, "").trim();
-            intent = JSON.parse(cleanText);
-        } catch (e) { /* fallback */ }
+        let intent = extractJSON(intentResponse.text) || { action: 'none', query: cmd, entities: [] };
 
         // --- STEP 2: DEEP RESEARCH ---
         console.log("📡 Step 2: Researching", intent);
@@ -827,18 +824,17 @@ Return a simple JSON object: {
 
         // Specialized Chart Rendering
         if (intent.action === 'chart') {
-            try {
-                const cleanJson = synthesisResponse.text.replace(/```json|```/g, "").trim();
-                const chartData = JSON.parse(cleanJson);
-                finalReply = chartData.text;
+            const chartData = extractJSON(synthesisResponse.text);
+            if (chartData) {
+                finalReply = chartData.text || "Here is the data visualization you requested.";
                 if (chartData.labels && chartData.data) {
                     renderChart(chartData.labels, chartData.data, chartData.title || 'Data Graph', chartData.type || 'bar');
                     chartContainer.style.display = 'block';
                     document.body.classList.add('projecting-visual');
                     extraHtml += `<br><button onclick="document.body.classList.add('projecting-visual'); document.getElementById('chart-container').style.display='block'" class="action-link purple">📈 VIEW GRAPH</button>`;
                 }
-            } catch (e) {
-                console.warn("Failed to parse chart JSON, showing raw text instead.");
+            } else {
+                console.warn("Failed to extract chart JSON from synthesis.");
             }
         }
 
@@ -895,6 +891,28 @@ Return a simple JSON object: {
 }
 
 // ── UTILITIES ───────────────────────────────────────────────────────────────
+function extractJSON(text) {
+    if (!text) return null;
+    try {
+        // Try direct parse first
+        return JSON.parse(text);
+    } catch (e) {
+        // Find first { and last }
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            const jsonStr = text.substring(start, end + 1);
+            try {
+                return JSON.parse(jsonStr);
+            } catch (e2) {
+                console.warn("Regex JSON parse failed:", e2.message);
+                return null;
+            }
+        }
+    }
+    return null;
+}
+
 async function speak(text, emotion = 'serious') {
     setEmotion(emotion);
     const cfg = {

@@ -70,12 +70,15 @@ Actions & tool_params:
 - time: tool_params: {}
 - map: tool_params: {"query":"<what you are looking for>", "location":"<city or area>"} (Use for restaurants, parks, etc.)
 - reviews: tool_params: {"query":"<name of place to review>", "location":"<city>"} (Use for rating/info about places)
-- chart: tool_params: {"title":"<title>", "labels":["A","B","C"], "data":[10,20,30], "type":"bar|line"}
+- chart: tool_params: {"query":"<topic to research for data>", "title":"<title>", "labels":["A","B","C"], "data":[10,20,30], "type":"bar|line|pie"}
 - timer: tool_params: {"ms": 300000, "label": "Pasta"} 
 - list: tool_params: {"type": "shopping|todo", "item": "Apples", "action": "add|remove|view"}
 - nutrition: tool_params: {"query": "100g Chicken Breast"}
 
-  -> CRITICAL GRAPH RULE: If the user explicitly asks for a graph/chart, YOU MUST USE THE "chart" ACTION. If you already have the numbers in your conversation history, output the JSON with the "chart" action. IF YOU DO NOT HAVE THE NUMBERS, DO NOT USE THE SEARCH ACTION. Instead, cleanly ask the user: "Sure! Please provide the exact numbers you'd like me to graph."
+  -> CRITICAL GRAPH MISSION: If the user asks for a graph, chart, or visual comparison, ALWAYS use the "chart" action. 
+  1. If you DON'T have the numbers: provide a clear "query" in tool_params so the system can research them. 
+  2. If you DO have numbers (from history): provide "labels" and "data" immediately in tool_params.
+  3. NEVER apologize for "not being able to draw". The app handles the drawing; you handle the DATA.
 
 CRITICAL: Never offer Amazon links or product recommendations for restaurants, bars, or physical locations. Use 'map' or 'reviews' instead.`;
 
@@ -215,11 +218,12 @@ export async function generateSpeech(text, inputKey, voice = 'Puck') {
 
 function parseGeminiResponse(raw) {
     try {
-        const cleanRaw = raw.replace(/```json|```/g, '').trim();
-        const jsonMatch = cleanRaw.match(/\{[\s\S]*\}/);
+        const start = raw.indexOf('{');
+        const end = raw.lastIndexOf('}');
 
-        if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
+        if (start !== -1 && end !== -1 && end > start) {
+            const jsonStr = raw.substring(start, end + 1);
+            const parsed = JSON.parse(jsonStr);
             return {
                 emotion: parsed.emotion || 'serious',
                 text: parsed.text || '',
@@ -230,7 +234,7 @@ function parseGeminiResponse(raw) {
                 tool_params: parsed.tool_params || null
             };
         }
-        throw new Error("No JSON found");
+        throw new Error("No JSON block found in response");
     } catch (error) {
         console.warn('Gemini JSON Parse Error (falling back):', error.message);
 
