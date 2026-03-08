@@ -222,10 +222,6 @@ async function init() {
         if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
         if (downloadChartBtn) downloadChartBtn.onclick = downloadChart;
 
-        // Chart Toggles
-        if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
-        if (downloadChartBtn) downloadChartBtn.onclick = downloadChart;
-
         // Scenery Orbit (V4.3.1)
 
         chatBtn.onclick = () => {
@@ -1284,6 +1280,14 @@ function renderChart(labels, data, title, type = 'line') {
             }
         }
     });
+}
+
+function downloadChart() {
+    if (!activeChart) return;
+    const link = document.createElement('a');
+    link.download = `blip-chart-${Date.now()}.png`;
+    link.href = activeChart.toBase64Image();
+    link.click();
 }
 
 // Start Audio Visualizer (Minimal)
