@@ -104,7 +104,7 @@ const PERSONAS = {
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
-    console.log('🚀 Blip V4.3.4 initializing...');
+    console.log('🚀 Blip V4.3.5 initializing...');
 
     // Load voices
     const voices = await speech.init();
@@ -211,7 +211,6 @@ async function init() {
     closePanelBtn.onclick = () => setMode('core');
 
     // Scenery Orbit (V4.3.1)
-    initSceneryOrbit();
 
     chatBtn.onclick = () => {
         chatEntry.classList.toggle('hidden');

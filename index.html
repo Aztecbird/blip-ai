@@ -30,7 +30,7 @@
         <main class="container">
             <!-- Hidden Compatibility Elements for Legacy JS -->
             <div style="display:none;">
-                <div id="version-tag">V4.3.4</div>
+                <div id="version-tag">V4.3.5</div>
                 <select id="voiceSelect"></select>
                 <select id="geminiVoiceSelect"></select>
                 <select id="kokoroVoiceSelect"></select>
@@ -40,7 +40,7 @@
             <section id="face-area">
                 <div id="blip-status" class="persona-header">
                     <span id="persona-emoji">✨</span>
-                    <span id="persona-label">BLIP V4.3.3</span>
+                    <span id="persona-label">BLIP V4.3.5</span>
                 </div>
 
                 <div class="face-frame">
@@ -61,8 +61,18 @@
                     <div id="face-container">
                         <div id="blip-aura"></div>
                         <div id="face" class="serious">
-                            <div class="eye left"></div>
-                            <div class="eye right"></div>
+                            <div class="eyebrow-container">
+                                <div id="eyebrowL" class="eyebrow"></div>
+                                <div id="eyebrowR" class="eyebrow"></div>
+                            </div>
+                            <div class="eye-container">
+                                <div id="eyeL" class="eye left">
+                                    <div class="pupil"></div>
+                                </div>
+                                <div id="eyeR" class="eye right">
+                                    <div class="pupil"></div>
+                                </div>
+                            </div>
                             <div id="mouth"></div>
                         </div>
                     </div>
