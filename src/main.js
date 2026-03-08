@@ -689,6 +689,7 @@ async function handleCommand(text) {
     state.isThinking = true;
     speech.stopListening();
 
+
     talkBtn.innerText = '⏳ THINKING...';
     talkBtn.classList.remove('listening');
     talkBtn.classList.add('thinking');
