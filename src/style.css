@@ -494,7 +494,13 @@ body::before {
 
 #bicycle-rider,
 #walking-cat,
-#traveler-person {
+#traveler-person,
+#walking-dog,
+#walking-woman,
+#bouncing-ball,
+#rolling-dice,
+#music-notes,
+#walking-piano {
     bottom: 5px;
     left: 245px;
     transform-origin: center;
@@ -689,6 +695,8 @@ body::before {
     animation: face-breathe 4s ease-in-out infinite alternate;
     position: relative;
     z-index: 1;
+    filter: url('#goo');
+    /* THE LIQUID FACE EFFECT */
 }
 
 #face.listening {

@@ -85,7 +85,7 @@ const state = {
     liveInterval: null,
     liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
 };
-// V4.3.3 - The Emergency UI Restore
+// V4.3.4 - The Deep UI & Animation Restoration
 
 // ── PERSONA CONFIGURATION (V3.4.0) ───────────────────────────────────────────
 const PERSONAS = {
@@ -104,19 +104,21 @@ const PERSONAS = {
 
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
-    console.log('🚀 Blip V4.3.3 initializing...');
+    console.log('🚀 Blip V4.3.4 initializing...');
 
     // Load voices
     const voices = await speech.init();
-    voiceSelect.innerHTML = voices
-        .filter(v => v.lang.startsWith('en'))
-        .map((v, i) => `<option value="${i}">${v.name}</option>`)
-        .join('');
+    if (voiceSelect && voices.length) {
+        voiceSelect.innerHTML = voices
+            .filter(v => v.lang.startsWith('en'))
+            .map((v, i) => `<option value="${i}">${v.name}</option>`)
+            .join('');
 
-    state.selectedVoice = voices[0];
-    voiceSelect.onchange = (e) => {
-        state.selectedVoice = voices[parseInt(e.target.value)];
-    };
+        state.selectedVoice = voices[0];
+        voiceSelect.onchange = (e) => {
+            state.selectedVoice = voices[parseInt(e.target.value)];
+        };
+    }
 
     // Kokoro voice selector
     if (kokoroVoiceSelect) {
