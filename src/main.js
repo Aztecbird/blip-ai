@@ -136,12 +136,12 @@ async function init() {
     try {
         console.log(`🚀 Blip V${BLIP_VERSION} initializing...`);
 
-        // Place version in UI (single source: BLIP_VERSION)
+        // Version only in upper-right corner; label above face stays "BLIP" (no version)
         const versionTagEl = document.getElementById('version-tag');
         const personaLabelEl = document.getElementById('persona-label');
         if (versionTagEl) versionTagEl.textContent = `V${BLIP_VERSION}`;
-        if (personaLabelEl) personaLabelEl.textContent = `BLIP V${BLIP_VERSION}`;
-        if (PERSONAS.idle) PERSONAS.idle.label = `BLIP V${BLIP_VERSION}`;
+        if (personaLabelEl) personaLabelEl.textContent = "BLIP";
+        if (PERSONAS.idle) PERSONAS.idle.label = "BLIP";
 
         // Restore conversation history from last session (better context)
         try {
@@ -959,15 +959,21 @@ Return a simple JSON object: {
         let intent = extractJSON(intentResponse.rawResponse) || { actions: [intentResponse.action || 'chat'], query: cmd, entities: [] };
         if (!intent.actions) intent.actions = [intent.action || 'chat'];
 
+        const lowerCmd = cmd.toLowerCase();
+        const isLookForIt = /\b(look for it|search for it|find it|get it|look it up|go find|go look|just search|then search)\b/i.test(cmd);
+        if (isLookForIt && state.lastContext.lastSearchTopic) {
+            intent.query = state.lastContext.lastSearchTopic;
+            intent.entities = state.lastContext.lastSearchTopic.split(/\s+/).filter(w => w.length > 2).slice(0, 3);
+            if (!intent.actions.includes('search')) intent.actions = ['search', ...intent.actions];
+        }
+
         // --- STEP 2: DEEP RESEARCH ---
         console.log("📡 Step 2: Researching", intent);
         let evidence = "";
         let extraHtml = '';
 
-        // Optimization: Skip research for pure chat/none or extremely short inputs
-        const isPureChat = intent.actions.every(a => a === 'chat' || a === 'none' || a === 'time');
-
-        const lowerCmd = cmd.toLowerCase();
+        // Optimization: Skip research for pure chat/none or extremely short inputs (unless "look for it")
+        const isPureChat = !isLookForIt && intent.actions.every(a => a === 'chat' || a === 'none' || a === 'time');
         const wantsChart = intent.actions.includes('chart') || lowerCmd.includes('graph') || lowerCmd.includes('chart');
         const wantsPopulation = lowerCmd.includes('population') || lowerCmd.includes('demographic') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('male') || lowerCmd.includes('female');
 
@@ -975,8 +981,11 @@ Return a simple JSON object: {
             for (const action of intent.actions) {
                 console.log(`🔍 Executing Action: ${action}`);
 
-                // 1. Demographic / population / chart-with-numbers: always run research so synthesis has data to use
-                if (wantsPopulation || (wantsChart && (lowerCmd.includes('population') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('demographic') || lowerCmd.includes('stat') || lowerCmd.includes('data')))) {
+                // 1. Demographic / population / chart-with-numbers: always run research (or when "look for it" and last topic was population)
+                const lastTopic = state.lastContext.lastSearchTopic || '';
+                const lastTopicWantsData = /population|demographic|men|women|stat|graph|chart/i.test(lastTopic);
+                const runDataResearch = wantsPopulation || (wantsChart && (lowerCmd.includes('population') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('demographic') || lowerCmd.includes('stat') || lowerCmd.includes('data'))) || (isLookForIt && lastTopicWantsData);
+                if (runDataResearch) {
                     const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || [], state.geminiKey);
                     evidence += research.text + "\n";
                     const searchQuery = (intent.query || cmd).replace(/\b(graph|chart|make me a)\b/gi, '').trim() || intent.query || cmd;
@@ -1021,7 +1030,7 @@ ${evidence.substring(0, 4000)}
 
 Guide your reply by these values when relevant: ${valuesLine}. Be clear and kind.
 
-TASK: Reply with a short CONCLUSION (main answer with the key facts) and optionally an EXPLANATION (1–2 sentences why it matters or where it comes from). Bring the information into the main answer — not just "here is a link".
+TASK: Reply with a short CONCLUSION (main answer with the key facts) and optionally an EXPLANATION (1–2 sentences). Bring the information into the main answer. When the app shows a link below (map, search, etc.), you may say so (e.g. "I've put a link below") — never say you cannot give links; the app does show links.
 
 Return JSON: { "conclusion": "Short main answer with facts/numbers.", "explanation": "Optional 1–2 sentences.", "chart": { ... } only if user asked for a graph and you have numbers. }
 
@@ -1029,7 +1038,8 @@ RULES:
 1. "conclusion" must contain the concrete information (numbers, names, facts) from the evidence. Example: "Valencia has about 800,000 people; roughly 52% women and 48% men."
 2. "explanation" can add context or source in one line (optional).
 3. CHARTS: If user asked for a graph and evidence has numbers, add "chart": { "title": "...", "labels": ["Women","Men"], "data": [52, 48], "type": "bar" or "pie" }.
-4. If evidence is unrelated, reply naturally. PERSONA: Punchy, expressive, digital.`;
+4. If evidence is unrelated, reply naturally.
+5. NEVER say you don't have the information when the Research Evidence above contains relevant data. If the user said "look for it" or "find it", the system has already run a search — use the evidence. PERSONA: Punchy, expressive, digital.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
         const synthData = extractJSON(synthesisResponse.rawResponse);

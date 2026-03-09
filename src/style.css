@@ -788,66 +788,28 @@ body.projecting-visual .small-ui {
     animation: face-breathe 4s ease-in-out infinite alternate, thinkingWobble 1.2s infinite;
 }
 
-/* Fun "looking for a book in the library" overlay when thinking */
-.thinking-library {
-    display: none;
-    position: absolute;
-    inset: 0;
-    align-items: center;
-    justify-content: center;
-    background: rgba(10, 10, 31, 0.85);
-    border-radius: 1.5rem;
-    z-index: 3;
-    pointer-events: none;
+/* Nose: center point so eyes can orbit around it when thinking */
+.nose {
+    width: 8px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 50% 50% 40% 40%;
+    margin: -4px 0 2px 0;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+    flex-shrink: 0;
 }
-body.thinking-mode .thinking-library {
-    display: flex;
+
+/* When thinking: eyes orbit around the nose */
+#face.thinking .eye-container {
+    animation: eyesAroundNose 3s ease-in-out infinite;
+    transform-origin: center center;
 }
-body.thinking-mode #face-container #face {
-    opacity: 0.15;
-}
-.thinking-library-inner {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    position: relative;
-}
-.thinking-book {
-    font-size: 2rem;
-    animation: library-float 2s ease-in-out infinite;
-}
-.thinking-search {
-    font-size: 1.5rem;
-    animation: library-search 1.5s ease-in-out infinite;
-}
-.thinking-face {
-    font-size: 1.2rem;
-    opacity: 0.9;
-    animation: library-blink 2.5s ease-in-out infinite;
-}
-.thinking-label {
-    font-size: 0.65rem;
-    color: var(--text-secondary);
-    margin: 0;
-    letter-spacing: 0.05em;
-    animation: library-pulse 1.8s ease-in-out infinite;
-}
-@keyframes library-float {
-    0%, 100% { transform: translateY(0) rotate(-5deg); }
-    50% { transform: translateY(-8px) rotate(5deg); }
-}
-@keyframes library-search {
-    0%, 100% { transform: translateX(-6px) scale(1); }
-    50% { transform: translateX(6px) scale(1.1); }
-}
-@keyframes library-blink {
-    0%, 90%, 100% { opacity: 0.9; }
-    95% { opacity: 0.4; }
-}
-@keyframes library-pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
+@keyframes eyesAroundNose {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    25% { transform: translate(6px, -4px) rotate(8deg); }
+    50% { transform: translate(0, -6px) rotate(0deg); }
+    75% { transform: translate(-6px, -4px) rotate(-8deg); }
+    100% { transform: translate(0, 0) rotate(0deg); }
 }
 
 @keyframes thinkingWobble {

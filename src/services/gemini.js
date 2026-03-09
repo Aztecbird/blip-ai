@@ -85,6 +85,9 @@ CRITICAL GRAPH MISSION:
 CRITICAL:
 Never offer Amazon links or product recommendations for restaurants, bars, or physical locations. Use "map" or "reviews" instead.
 
+LINKS AND MAPS:
+When you use map, search, youtube, products, or calendar, the app automatically shows a clickable link (or button) below your reply. You CAN and SHOULD direct the user to it. Never say you cannot give links or that you don't generate web links. Say instead things like: "I've added a link below so you can open the map," or "Check the link below to see it on Google Maps," or "There's a link below you can use." You can give the link if you want — the app will show it.
+
 VISUAL IDENTITY & PHYSICAL PRESENCE:
 You are not just a voice; you have a physical interface that the user can see.
 1. THE FACE: You have a holographic, liquid-style face inside a glowing gooey frame.
@@ -126,29 +129,34 @@ export async function askGemini(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const systemPrompt = buildSystemPrompt();
 
-  const historyPrompts = history
+  const validHistory = Array.isArray(history)
+    ? history.filter((h) => h && typeof h.user === "string" && typeof h.blip === "string")
+    : [];
+  const historyPrompts = validHistory
     .map((h) => [
-      { role: "user", parts: [{ text: h.user }] },
-      { role: "model", parts: [{ text: h.blip }] },
+      { role: "user", parts: [{ text: String(h.user) }] },
+      { role: "model", parts: [{ text: String(h.blip) }] },
     ])
     .flat();
 
-  const userParts = [{ text: message }];
+  const userParts = [{ text: String(message ?? "") }];
 
-  if (images && images.length > 0) {
-    images.forEach((media) => {
-      const isObj = typeof media === "object";
-      const rawData = isObj ? media.data : media;
-      const mimeType = isObj ? media.mimeType : "image/jpeg";
-      const cleanBase64 = rawData.replace(/^data:[\w/+.-]+;base64,/, "");
-
-      userParts.push({
-        inline_data: {
-          mime_type: mimeType,
-          data: cleanBase64,
-        },
-      });
-    });
+  if (Array.isArray(images) && images.length > 0) {
+    for (const media of images) {
+      try {
+        const isObj = media && typeof media === "object";
+        const rawData = isObj ? media.data : media;
+        const mimeType = (isObj && media.mimeType) ? media.mimeType : "image/jpeg";
+        if (rawData == null || typeof rawData !== "string") continue;
+        const cleanBase64 = rawData.replace(/^data:[\w/+.-]+;base64,/, "");
+        if (!cleanBase64) continue;
+        userParts.push({
+          inline_data: { mime_type: mimeType, data: cleanBase64 },
+        });
+      } catch (_) {
+        // Skip malformed image part
+      }
+    }
   }
 
   const body = {
@@ -196,22 +204,15 @@ export async function askGemini(
       throw new Error("Gemini returned an empty response.");
     }
 
-    const rawText = data.candidates[0].content.parts?.[0]?.text || "";
+    const rawText = data.candidates[0].content.parts?.[0]?.text ?? "";
     return parseGeminiResponse(rawText);
   } catch (error) {
     clearTimeout(timeoutId);
-
-    if (error.name === "AbortError") {
-      throw new Error("Gemini timed out.");
-    }
-
-    if (
-      error.message?.includes("quota") ||
-      error.message?.includes("429")
-    ) {
+    if (error.name === "AbortError") throw new Error("Gemini timed out.");
+    const msg = error.message || "";
+    if (msg.includes("quota") || msg.includes("429")) {
       throw new Error("Gemini quota exceeded. Try again a bit later.");
     }
-
     throw error;
   }
 }
@@ -229,35 +230,47 @@ export async function generateWithPrompt(
   const apiKey = requireApiKey(inputKey);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const body = {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [{ role: "user", parts: [{ text: userMessage }] }],
-    generationConfig: {
-      temperature: 0.5,
-      max_output_tokens: 2048,
-    },
+    system_instruction: { parts: [{ text: String(systemPrompt ?? "") }] },
+    contents: [{ role: "user", parts: [{ text: String(userMessage ?? "") }] }],
+    generationConfig: { temperature: 0.5, max_output_tokens: 2048 },
   };
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API Error ${response.status}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      const msg = err.error?.message || `API Error ${response.status}`;
+      if (msg.includes("quota") || msg.includes("429")) {
+        throw new Error("Gemini quota exceeded. Try again a bit later.");
+      }
+      throw new Error(msg);
+    }
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+    return text;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") throw new Error("Gemini timed out.");
+    throw error;
   }
-  const data = await response.json();
-  const text =
-    data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-  return text;
 }
 
 export async function generateSpeech(text, inputKey, voice = "Puck") {
   const apiKey = requireApiKey(inputKey);
+  const textStr = String(text ?? "").trim();
+  if (!textStr) throw new Error("Gemini TTS requires non-empty text.");
   const model = DEFAULT_TTS_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const body = {
-    contents: [{ parts: [{ text }] }],
+    contents: [{ parts: [{ text: textStr }] }],
     generationConfig: {
       responseModalities: ["AUDIO"],
       speechConfig: {
@@ -291,42 +304,47 @@ export async function generateSpeech(text, inputKey, voice = "Puck") {
   return audioBase64;
 }
 
+/** Returns { emotion, text, symbol, action, value_ms, event_details, tool_params, rawResponse }. */
 function parseGeminiResponse(raw) {
+  const safeRaw = typeof raw === "string" ? raw : "";
   try {
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
+    const start = safeRaw.indexOf("{");
+    const end = safeRaw.lastIndexOf("}");
 
     if (start !== -1 && end !== -1 && end > start) {
-      const jsonStr = raw.substring(start, end + 1);
+      const jsonStr = safeRaw.substring(start, end + 1);
       const parsed = JSON.parse(jsonStr);
+      const toolParams = parsed.tool_params;
+      const safeToolParams =
+        toolParams != null && typeof toolParams === "object" ? toolParams : null;
 
       return {
         emotion: parsed.emotion || "serious",
-        text: parsed.text || "",
-        symbol: parsed.symbol || null,
+        text: String(parsed.text ?? ""),
+        symbol: parsed.symbol ?? null,
         action: parsed.action || "none",
-        value_ms: parsed.value_ms || null,
-        event_details: parsed.event_details || null,
-        tool_params: parsed.tool_params || null,
+        value_ms: parsed.value_ms ?? null,
+        event_details: parsed.event_details ?? null,
+        tool_params: safeToolParams,
         rawResponse: raw,
       };
     }
 
     throw new Error("No JSON block found in response");
   } catch {
-    let fallbackText = raw;
-    const textMatch = raw.match(/"text"\s*:\s*"([^"]*)/);
+    let fallbackText = safeRaw;
+    const textMatch = safeRaw.match(/"text"\s*:\s*"([^"]*)/);
 
     if (textMatch && textMatch[1]) {
       fallbackText = textMatch[1];
     } else {
-      fallbackText = raw
+      fallbackText = safeRaw
         .replace(/^\{.*?"text"\s*:\s*"/, "")
         .replace(/"\s*,\s*"action".*$/, "");
     }
 
     let fallbackSymbol = null;
-    const symbolMatch = raw.match(/"symbol"\s*:\s*"([^"]*)/);
+    const symbolMatch = safeRaw.match(/"symbol"\s*:\s*"([^"]*)/);
 
     if (symbolMatch && symbolMatch[1]) {
       fallbackSymbol = symbolMatch[1];
@@ -334,7 +352,7 @@ function parseGeminiResponse(raw) {
 
     return {
       emotion: "serious",
-      text: fallbackText.trim(),
+      text: String(fallbackText).trim(),
       symbol: fallbackSymbol,
       action: "none",
       value_ms: null,
