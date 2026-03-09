@@ -70,6 +70,9 @@ const modelSelect = document.getElementById('modelSelect');
 // ── APP STATE ────────────────────────────────────────────────────────────────
 const isGitHub = window.location.hostname.includes('github.io');
 
+/** Single source of truth for app version — update here (and package.json) when releasing. */
+const BLIP_VERSION = '4.3.12';
+
 let activeChart = null; // Chart.js instance
 
 const HISTORY_STORAGE_KEY = 'blip_history';
@@ -126,7 +129,14 @@ const PERSONAS = {
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
     try {
-        console.log('🚀 Blip V4.3.11 initializing...');
+        console.log(`🚀 Blip V${BLIP_VERSION} initializing...`);
+
+        // Place version in UI (single source: BLIP_VERSION)
+        const versionTagEl = document.getElementById('version-tag');
+        const personaLabelEl = document.getElementById('persona-label');
+        if (versionTagEl) versionTagEl.textContent = `V${BLIP_VERSION}`;
+        if (personaLabelEl) personaLabelEl.textContent = `BLIP V${BLIP_VERSION}`;
+        if (PERSONAS.idle) PERSONAS.idle.label = `BLIP V${BLIP_VERSION}`;
 
         // Restore conversation history from last session (better context)
         try {
