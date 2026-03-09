@@ -118,6 +118,7 @@ const PERSONAS = {
     thinking: { emoji: "🧠", label: "THINKING", color: "#8b5cf6", emotion: "thinking" },
     happy: { emoji: "😊", label: "HAPPY", color: "#10b981", emotion: "happy" },
     sad: { emoji: "😢", label: "SAD", color: "#64748b", emotion: "sad" },
+    despair: { emoji: "😰", label: "DESPAIR", color: "#475569", emotion: "despair" },
     warning: { emoji: "⚠️", label: "ALERT", color: "#f59e0b", emotion: "surprised" },
     sleepy: { emoji: "💤", label: "SLEEPY", color: "#334155", emotion: "sleepy" },
     cooking: { emoji: "👨‍🍳", label: "CHEF MODE", color: "#fb923c", emotion: "gentle" },
@@ -987,33 +988,42 @@ Return a simple JSON object: {
         const synthesisPrompt = `${synthesisContextBlock}You are Blip.
 User Request: "${cmd}"
 
-Research Evidence (this is your source — use it):
+Research Evidence (this is what you found — bring it into your answer):
 """
 ${evidence.substring(0, 4000)}
 """
 
-TASK: Generate the final response using ONLY the Research Evidence above. What you find there becomes your answer.
+TASK: Your reply must BRING THE INFORMATION into the main answer. The user sees your "text" in the UI — so put the key facts, numbers, and summary there. Do NOT give a reply that only says "search on Google" or "here is a link". The actual content from the evidence must appear in your text reply.
 
 RULES:
-1. USE THE EVIDENCE: The text above is what Blip "found". Your reply MUST be based on it. Summarize or quote the numbers/facts from the evidence; do not say "I don't have that" if the evidence contains relevant info.
-2. CHARTS: If the user asked for a graph/chart and the evidence contains ANY relevant numbers (population, men/women, percentages, etc.), you MUST extract those numbers and include a chart. Use approximate numbers if exact ones aren't given (e.g. "around 51% women" → use 51). Format: { "text": "Short reply citing the numbers.", "chart": { "title": "...", "labels": ["Men", "Women"] or ["Category A", "Category B"], "data": [number, number], "type": "bar" or "pie" } }.
-3. If the evidence is unrelated to the request, reply naturally without forcing it.
-4. PERSONA: Punchy, expressive, digital.`;
+1. INCLUDE THE FINDINGS IN YOUR ANSWER: Your "text" must contain the concrete information (numbers, names, facts) from the evidence. Example: instead of "I found something, click the link", say "Valencia has about 800,000 people; roughly 52% women and 48% men. Here's a link for more."
+2. The link is optional extra. The main UI should show the information; the link is for going deeper.
+3. CHARTS: If the user asked for a graph/chart and the evidence has relevant numbers, include a chart block and put the numbers in your text too. Format: { "text": "Reply with the actual numbers/facts in the message.", "chart": { "title": "...", "labels": [...], "data": [...], "type": "bar" or "pie" } }.
+4. If the evidence is unrelated, reply naturally without forcing it.
+5. PERSONA: Punchy, expressive, digital.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
         const synthData = extractJSON(synthesisResponse.rawResponse);
         let finalReply = synthData?.text || synthesisResponse.text;
 
-        // Auto-Chart Rendering (V4.3.10)
+        // Auto-Chart Rendering: face despairs → then graph appears animated (V4.3.12)
         const chartData = synthData?.chart || extractJSON(synthesisResponse.text);
         if (chartData && chartData.labels && chartData.data) {
             console.log("📈 Auto-Rendering Chart:", chartData.title);
-            setMode('chart');
-            renderChart(chartData.labels, chartData.data, chartData.title || 'Data Graph', chartData.type || 'bar');
+            setPersona('despair');
+            face.classList.add('despair');
             document.body.classList.add('projecting-visual');
+            setMode('chart');
+            chartContainer.classList.add('reveal');
+            renderChart(chartData.labels, chartData.data, chartData.title || 'Data Graph', chartData.type || 'bar');
             if (!extraHtml.includes("VIEW GRAPH")) {
                 extraHtml += `<br><button onclick="setMode('chart')" class="action-link purple">📈 VIEW GRAPH</button>`;
             }
+            setTimeout(() => {
+                setPersona('happy');
+                face.classList.remove('despair');
+            }, 600);
+            setTimeout(() => chartContainer.classList.remove('reveal'), 700);
         }
 
         // Specialized Map Rendering
@@ -1033,8 +1043,17 @@ RULES:
         state.lastContext.lastSearchTopic = intent.query || cmd;
         state.lastContext.lastIntentActions = intent.actions || [];
 
-        // Render transcript
-        transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${extraHtml}`;
+        // Bring findings into main UI: show a short snippet of what was found (not only the link)
+        const hasRealEvidence = evidence && evidence.trim() && !evidence.includes('No special data found');
+        const findingsSnippet = hasRealEvidence
+            ? evidence.replace(/\s+/g, ' ').trim().slice(0, 420).replace(/\s+\S*$/, '') + (evidence.length > 420 ? '…' : '')
+            : '';
+        const findingsBlock = findingsSnippet
+            ? `<div class="blip-findings" aria-label="What I found">📋 <strong>What I found:</strong> ${escapeHtml(findingsSnippet)}</div>`
+            : '';
+
+        // Render transcript (answer + findings in main UI + link as extra)
+        transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${findingsBlock}${extraHtml}`;
 
         // Add to history and persist for next session
         state.history.push({ user: cmd, blip: finalReply });
@@ -1089,6 +1108,15 @@ RULES:
 }
 
 // ── UTILITIES ───────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 /** Build a short "memory" block from lastContext + recent history for better continuity. */
 function getContextBlock() {
     const c = state.lastContext;
