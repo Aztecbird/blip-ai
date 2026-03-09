@@ -1579,6 +1579,16 @@ body.projector-mode.projecting-visual .hub-panel {
     color: rgba(255, 255, 255, 0.7);
 }
 
+/* Diamond-style: explanation under the conclusion */
+.blip-explanation {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.9;
+    font-style: italic;
+}
+
 /* ── VISION UI ───────────────────────────────────────────────────────────── */
 .button-group {
     display: flex;

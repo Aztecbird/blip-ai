@@ -73,6 +73,9 @@ const isGitHub = window.location.hostname.includes('github.io');
 /** Single source of truth for app version — update here (and package.json) when releasing. */
 const BLIP_VERSION = '4.3.12';
 
+/** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
+const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emotional Intelligence', 'Ethics & Responsibility'];
+
 let activeChart = null; // Chart.js instance
 
 const HISTORY_STORAGE_KEY = 'blip_history';
@@ -985,6 +988,7 @@ Return a simple JSON object: {
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
         const synthesisContextBlock = getContextBlock();
+        const valuesLine = BLIP_VALUES.slice(0, 3).join(', ');
         const synthesisPrompt = `${synthesisContextBlock}You are Blip.
 User Request: "${cmd}"
 
@@ -993,21 +997,34 @@ Research Evidence (this is what you found — bring it into your answer):
 ${evidence.substring(0, 4000)}
 """
 
-TASK: Your reply must BRING THE INFORMATION into the main answer. The user sees your "text" in the UI — so put the key facts, numbers, and summary there. Do NOT give a reply that only says "search on Google" or "here is a link". The actual content from the evidence must appear in your text reply.
+Guide your reply by these values when relevant: ${valuesLine}. Be clear and kind.
+
+TASK: Reply with a short CONCLUSION (main answer with the key facts) and optionally an EXPLANATION (1–2 sentences why it matters or where it comes from). Bring the information into the main answer — not just "here is a link".
+
+Return JSON: { "conclusion": "Short main answer with facts/numbers.", "explanation": "Optional 1–2 sentences.", "chart": { ... } only if user asked for a graph and you have numbers. }
 
 RULES:
-1. INCLUDE THE FINDINGS IN YOUR ANSWER: Your "text" must contain the concrete information (numbers, names, facts) from the evidence. Example: instead of "I found something, click the link", say "Valencia has about 800,000 people; roughly 52% women and 48% men. Here's a link for more."
-2. The link is optional extra. The main UI should show the information; the link is for going deeper.
-3. CHARTS: If the user asked for a graph/chart and the evidence has relevant numbers, include a chart block and put the numbers in your text too. Format: { "text": "Reply with the actual numbers/facts in the message.", "chart": { "title": "...", "labels": [...], "data": [...], "type": "bar" or "pie" } }.
-4. If the evidence is unrelated, reply naturally without forcing it.
-5. PERSONA: Punchy, expressive, digital.`;
+1. "conclusion" must contain the concrete information (numbers, names, facts) from the evidence. Example: "Valencia has about 800,000 people; roughly 52% women and 48% men."
+2. "explanation" can add context or source in one line (optional).
+3. CHARTS: If user asked for a graph and evidence has numbers, add "chart": { "title": "...", "labels": ["Women","Men"], "data": [52, 48], "type": "bar" or "pie" }.
+4. If evidence is unrelated, reply naturally. PERSONA: Punchy, expressive, digital.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
         const synthData = extractJSON(synthesisResponse.rawResponse);
-        let finalReply = synthData?.text || synthesisResponse.text;
+        const conclusion = synthData?.conclusion || synthData?.text;
+        const explanation = synthData?.explanation || '';
+        let finalReply = conclusion || synthesisResponse.text;
+        const finalReplyPlain = finalReply + (explanation && typeof explanation === 'string' && explanation.trim() ? ' ' + explanation.trim() : '');
+        if (explanation && typeof explanation === 'string' && explanation.trim()) {
+            finalReply = finalReply + '\n<span class="blip-explanation">' + escapeHtml(explanation.trim()) + '</span>';
+        }
 
-        // Auto-Chart Rendering: face despairs → then graph appears animated (V4.3.12)
-        const chartData = synthData?.chart || extractJSON(synthesisResponse.text);
+        // Auto-Chart Rendering: from model or fallback from evidence (V4.3.12)
+        let chartData = synthData?.chart || extractJSON(synthesisResponse.text);
+        if (!chartData && wantsChart && evidence && !evidence.includes('No special data found')) {
+            chartData = tryBuildChartFromEvidence(evidence, cmd);
+            if (chartData) console.log("📈 Fallback chart from evidence:", chartData.title);
+        }
         if (chartData && chartData.labels && chartData.data) {
             console.log("📈 Auto-Rendering Chart:", chartData.title);
             setPersona('despair');
@@ -1055,8 +1072,8 @@ RULES:
         // Render transcript (answer + findings in main UI + link as extra)
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${findingsBlock}${extraHtml}`;
 
-        // Add to history and persist for next session
-        state.history.push({ user: cmd, blip: finalReply });
+        // Add to history and persist for next session (plain text for history/TTS)
+        state.history.push({ user: cmd, blip: finalReplyPlain });
         if (state.history.length > HISTORY_MAX) state.history.shift();
         try {
             localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX)));
@@ -1081,7 +1098,7 @@ RULES:
         }
 
         talkBtn.innerText = '🔊 SPEAKING...';
-        await speak(finalReply, 'serious');
+        await speak(finalReplyPlain, 'serious');
     } catch (error) {
         face.classList.remove('thinking');
         console.error('AI Error:', error);
@@ -1115,6 +1132,52 @@ function escapeHtml(s) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+
+/**
+ * Try to build chart { labels, data, title, type } from evidence text when the model didn't return a chart.
+ * Looks for percentages (e.g. 51% women, 49% men), "X Million (Y%)", or two numbers near "women"/"men".
+ */
+function tryBuildChartFromEvidence(evidence, userQuery = '') {
+    if (!evidence || typeof evidence !== 'string') return null;
+    const text = evidence.replace(/\s+/g, ' ');
+    const lower = text.toLowerCase();
+    const title = userQuery.slice(0, 50) || 'From research';
+
+    // Percentages: e.g. "51% women" / "49% men" or "women 51%" / "men 49%"
+    const pctWomen = text.match(/(?:women|female|femenin[oa])\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*%|(\d+(?:\.\d+)?)\s*%\s*(?:women|female)/i);
+    const pctMen = text.match(/(?:men|male|masculin[oa])\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*%|(\d+(?:\.\d+)?)\s*%\s*(?:men|male)/i);
+    const n1 = pctWomen ? parseFloat(pctWomen[1] || pctWomen[2]) : null;
+    const n2 = pctMen ? parseFloat(pctMen[1] || pctMen[2]) : null;
+    if (n1 != null && n2 != null && n1 + n2 >= 95 && n1 + n2 <= 105) {
+        return { labels: ['Women', 'Men'], data: [n1, n2], title, type: 'pie' };
+    }
+    if (n1 != null && n2 != null) {
+        return { labels: ['Women', 'Men'], data: [n1, n2], title, type: 'bar' };
+    }
+
+    // Two numbers in "X Million (Y%)" or "X.Y Million" pattern
+    const millions = text.match(/(\d+(?:\.\d+)?)\s*[Mm]illion\s*\(?\s*(\d+(?:\.\d+)?)\s*%?\)?/g);
+    if (millions && millions.length >= 2) {
+        const nums = millions.slice(0, 2).map(s => {
+            const m = s.match(/(\d+(?:\.\d+)?)/);
+            return m ? parseFloat(m[1]) : 0;
+        });
+        if (nums[0] > 0 && nums[1] > 0) {
+            return { labels: ['Women', 'Men'], data: nums, title, type: 'bar' };
+        }
+    }
+
+    // Any two numbers that look like a split (e.g. 51 and 49, 24.9 and 23.9)
+    const pairs = text.match(/(\d+(?:\.\d+)?)\s*(?:%|million|M)/gi);
+    if (pairs && pairs.length >= 2) {
+        const a = parseFloat(pairs[0]);
+        const b = parseFloat(pairs[1]);
+        if (!isNaN(a) && !isNaN(b) && a > 0 && b > 0 && (lower.includes('women') || lower.includes('men') || lower.includes('female') || lower.includes('male'))) {
+            return { labels: ['Category A', 'Category B'], data: [a, b], title, type: 'bar' };
+        }
+    }
+    return null;
 }
 
 /** Build a short "memory" block from lastContext + recent history for better continuity. */
