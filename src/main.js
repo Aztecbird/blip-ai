@@ -72,13 +72,17 @@ const isGitHub = window.location.hostname.includes('github.io');
 
 let activeChart = null; // Chart.js instance
 
+const HISTORY_STORAGE_KEY = 'blip_history';
+const HISTORY_MAX = 30;
+const HISTORY_PERSIST_MAX = 20;
+
 const state = {
     isActive: false,
     isThinking: false,
     sensitivity: 20,
     selectedVoice: null,
     currentEmotion: 'serious',
-    history: [],
+    history: [], // Loaded from localStorage in init
     timers: [],
     pendingImage: null, // Base64 string
     cameraStream: null,
@@ -92,7 +96,15 @@ const state = {
     isLiveWatch: false,
     isListening: false,
     liveInterval: null,
-    liveFrames: [] // Queue of last 5 frames [{data, mimeType}]
+    liveFrames: [], // Queue of last 5 frames [{data, mimeType}]
+    // Working memory: what we just did (so "another graph", "there", "that" make sense)
+    lastContext: {
+        lastUserQuery: '',
+        lastChartTitle: '',
+        lastLocation: '',
+        lastSearchTopic: '',
+        lastIntentActions: []
+    }
 };
 // V4.3.4 - The Deep UI & Animation Restoration
 
@@ -115,6 +127,17 @@ const PERSONAS = {
 async function init() {
     try {
         console.log('🚀 Blip V4.3.11 initializing...');
+
+        // Restore conversation history from last session (better context)
+        try {
+            const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    state.history = parsed.length > HISTORY_MAX ? parsed.slice(-HISTORY_MAX) : parsed;
+                }
+            }
+        } catch (e) { state.history = []; }
 
         // Load voices
         const voices = await speech.init();
@@ -478,7 +501,9 @@ function cancelInteraction() {
 
 function stopApp() {
     state.isActive = false;
-    state.history = []; // Clear context on stop
+    state.history = [];
+    state.lastContext = { lastUserQuery: '', lastChartTitle: '', lastLocation: '', lastSearchTopic: '', lastIntentActions: [] };
+    try { localStorage.removeItem(HISTORY_STORAGE_KEY); } catch (e) { }
     clearPendingImage();
     stopCamera();
     speech.stopListening();
@@ -855,8 +880,14 @@ async function handleCommand(text) {
                 const displayText = typeof answer === "string" ? answer : (answer?.text || JSON.stringify(answer, null, 2));
                 const extraHtml = `<br><a href="https://www.google.com/search?q=${encodeURIComponent(cmd)}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>`;
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${displayText}${extraHtml}`;
+                state.lastContext.lastUserQuery = cmd;
+                state.lastContext.lastSearchTopic = cmd;
                 state.history.push({ user: cmd, blip: displayText });
-                if (state.history.length > 25) state.history.shift();
+                if (state.history.length > HISTORY_MAX) state.history.shift();
+                try {
+                    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX)));
+                } catch (e) { /* quota or private */ }
+
                 spawnSymbol("brain");
                 if (state.pendingImage) clearPendingImage();
 
@@ -877,13 +908,14 @@ async function handleCommand(text) {
 
         // --- STEP 1: INTERPRET INTENT (Context Aware) ---
         console.log("🧠 Step 1: Interpret Intent");
-        const intentPrompt = `You are the Intent Interpreter. 
+        const contextBlock = getContextBlock();
+        const intentPrompt = `${contextBlock}You are the Intent Interpreter.
 Analyze the user's latest request: "${cmd}".
-Use the conversation history for context if the user is referring to previous topics (like countries, data, or graphs).
+Use the context above and conversation history so that "another graph", "that place", "same" etc. refer to the last topic (e.g. same city, same chart subject).
 
 Return a simple JSON object: {
-  "actions": ["search", "youtube", "map", "chart", "chat", "none"], 
-  "query": "optimized search query based on current and previous context (leave empty for casual chat)",
+  "actions": ["search", "youtube", "map", "chart", "chat", "none"],
+  "query": "optimized search query — if user said 'another graph' or 'same' use the last search topic; if they said 'there' use last location (leave empty for casual chat)",
   "entities": ["entity1", "entity2"]
 }`;
 
@@ -899,19 +931,25 @@ Return a simple JSON object: {
         // Optimization: Skip research for pure chat/none or extremely short inputs
         const isPureChat = intent.actions.every(a => a === 'chat' || a === 'none' || a === 'time');
 
+        const lowerCmd = cmd.toLowerCase();
+        const wantsChart = intent.actions.includes('chart') || lowerCmd.includes('graph') || lowerCmd.includes('chart');
+        const wantsPopulation = lowerCmd.includes('population') || lowerCmd.includes('demographic') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('male') || lowerCmd.includes('female');
+
         if (!isPureChat && cmd.length > 2) {
             for (const action of intent.actions) {
                 console.log(`🔍 Executing Action: ${action}`);
 
-                // 1. Deep Demographic Search (V3.6.0)
-                if (cmd.toLowerCase().includes('population') || cmd.toLowerCase().includes('demographic')) {
+                // 1. Demographic / population / chart-with-numbers: always run research so synthesis has data to use
+                if (wantsPopulation || (wantsChart && (lowerCmd.includes('population') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('demographic') || lowerCmd.includes('stat') || lowerCmd.includes('data')))) {
                     const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || [], state.geminiKey);
                     evidence += research.text + "\n";
-                    const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
-                    extraHtml += standardResult.extraHtml;
+                    const searchQuery = (intent.query || cmd).replace(/\b(graph|chart|make me a)\b/gi, '').trim() || intent.query || cmd;
+                    const standardResult = await actionHandlers.search({ tool_params: { query: searchQuery } }, state);
+                    evidence += (standardResult?.text || '') + "\n";
+                    if (standardResult?.extraHtml && !extraHtml.includes(standardResult.extraHtml)) extraHtml += standardResult.extraHtml;
                 }
-                // 2. Action Handlers
-                else if (actionHandlers[action]) {
+                // 2. Action Handlers (skip chart handler here; synthesis will produce chart from evidence)
+                else if (actionHandlers[action] && action !== 'chart') {
                     const result = await actionHandlers[action]({ tool_params: { ...intent, query: intent.query || cmd } }, state);
                     if (result) {
                         evidence += (result.text || "") + "\n";
@@ -920,7 +958,7 @@ Return a simple JSON object: {
                         }
                     }
                 }
-                // 3. Fallback: Search / Research
+                // 3. Fallback: Search / Research (e.g. chart without demographic keywords still gets search)
                 else if (action === 'search' || action === 'chart') {
                     const research = await web.search(intent.query || cmd, intent.entities || []);
                     evidence += research.text + "\n";
@@ -935,18 +973,22 @@ Return a simple JSON object: {
 
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
-        const synthesisPrompt = `You are Blip. 
-        User Request: "${cmd}"
-        Research Evidence Found: "${evidence.substring(0, 4000)}"
+        const synthesisContextBlock = getContextBlock();
+        const synthesisPrompt = `${synthesisContextBlock}You are Blip.
+User Request: "${cmd}"
 
-        TASK: Generate the final response.
-        
-        CRITICAL RULES:
-        1. RELEVANCE: If the 'Research Evidence' is unrelated to the request (e.g., user said "lips" and evidence is about "Brazil"), IGNORE the evidence and just reply naturally as a chat assistant.
-        2. NO HALLUCINATION: Do NOT force facts from the research into the answer if they don't apply.
-        3. AUTO-CHART: Only include the JSON "chart" block if the research contains ACTUAL relevant numbers/stats.
-        4. FORMAT: If a chart is needed, return: { "text": "...", "chart": { ... } }. Otherwise, just return your text reply.
-        5. PERSONA: Punchy, expressive, and digital.`;
+Research Evidence (this is your source — use it):
+"""
+${evidence.substring(0, 4000)}
+"""
+
+TASK: Generate the final response using ONLY the Research Evidence above. What you find there becomes your answer.
+
+RULES:
+1. USE THE EVIDENCE: The text above is what Blip "found". Your reply MUST be based on it. Summarize or quote the numbers/facts from the evidence; do not say "I don't have that" if the evidence contains relevant info.
+2. CHARTS: If the user asked for a graph/chart and the evidence contains ANY relevant numbers (population, men/women, percentages, etc.), you MUST extract those numbers and include a chart. Use approximate numbers if exact ones aren't given (e.g. "around 51% women" → use 51). Format: { "text": "Short reply citing the numbers.", "chart": { "title": "...", "labels": ["Men", "Women"] or ["Category A", "Category B"], "data": [number, number], "type": "bar" or "pie" } }.
+3. If the evidence is unrelated to the request, reply naturally without forcing it.
+4. PERSONA: Punchy, expressive, digital.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
         const synthData = extractJSON(synthesisResponse.rawResponse);
@@ -965,20 +1007,31 @@ Return a simple JSON object: {
         }
 
         // Specialized Map Rendering
+        let mapQueryUsed = null;
         if (intent.action === 'map' && intent.query) {
             setMode('map');
-            const mapQuery = intent.query && intent.location ? `${intent.query} in ${intent.location}` : intent.query;
-            mapFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`;
+            mapQueryUsed = intent.query && intent.location ? `${intent.query} in ${intent.location}` : intent.query;
+            mapFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(mapQueryUsed)}&output=embed`;
             document.body.classList.add('projecting-visual');
             extraHtml += `<br><button onclick="setMode('map')" class="action-link blue">📍 VIEW MAP</button>`;
         }
 
+        // Update working memory so next turn has context (another graph, that place, etc.)
+        state.lastContext.lastUserQuery = cmd;
+        state.lastContext.lastChartTitle = (chartData && chartData.title) ? chartData.title : (state.lastContext.lastChartTitle || '');
+        state.lastContext.lastLocation = mapQueryUsed || state.lastContext.lastLocation || '';
+        state.lastContext.lastSearchTopic = intent.query || cmd;
+        state.lastContext.lastIntentActions = intent.actions || [];
+
         // Render transcript
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${extraHtml}`;
 
-        // Add to history
+        // Add to history and persist for next session
         state.history.push({ user: cmd, blip: finalReply });
-        if (state.history.length > 25) state.history.shift();
+        if (state.history.length > HISTORY_MAX) state.history.shift();
+        try {
+            localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX)));
+        } catch (e) { /* quota or private */ }
 
         // Visual Reactions
         spawnSymbol('brain');
@@ -1026,6 +1079,22 @@ Return a simple JSON object: {
 }
 
 // ── UTILITIES ───────────────────────────────────────────────────────────────
+/** Build a short "memory" block from lastContext + recent history for better continuity. */
+function getContextBlock() {
+    const c = state.lastContext;
+    const parts = [];
+    if (c.lastUserQuery) parts.push(`Last user question: "${c.lastUserQuery}"`);
+    if (c.lastChartTitle) parts.push(`Last chart shown: ${c.lastChartTitle}`);
+    if (c.lastLocation) parts.push(`Last location/map: ${c.lastLocation}`);
+    if (c.lastSearchTopic) parts.push(`Last search topic: ${c.lastSearchTopic}`);
+    if (state.history.length > 0) {
+        const recent = state.history.slice(-3).map(h => `User: ${h.user.slice(0, 60)}${h.user.length > 60 ? '…' : ''} → Blip replied.`).join(' | ');
+        parts.push(`Recent turns: ${recent}`);
+    }
+    if (parts.length === 0) return '';
+    return `[Context from this session — use it when the user says "that", "another graph", "there", "same place", etc.]\n${parts.join('\n')}\n\n`;
+}
+
 function extractJSON(text) {
     if (!text) return null;
     try {
