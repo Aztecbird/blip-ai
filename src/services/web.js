@@ -3,6 +3,8 @@
  * Weather (wttr.in) and Currency (ExchangeRate-API)
  */
 
+import { generateWithPrompt } from './gemini.js';
+
 export const web = {
     /**
      * Get weather for a specific location
@@ -379,14 +381,42 @@ export const web = {
 
     /**
      * Deep Web Demographic Search (V3.6.0)
-     * Finds segments, interests, patterns, and culture signals.
+     * When apiKey is provided, uses Gemini with a research-assistant prompt.
+     * Otherwise falls back to Wikipedia + data-bank.
      */
-    async deepDemographicSearch(query, entities = []) {
+    async deepDemographicSearch(query, entities = [], apiKey = null) {
         console.log(`📡 Deep Demographic Search: ${query}`, entities);
 
-        // Multi-country support: fetch independent data for each entity
-        const searchResult = await this.search(query, entities);
+        if (apiKey && apiKey.trim()) {
+            const prompt = `
+You are a research assistant.
+Find demographic insights, behavioral trends, and audience profiles related to:
 
+${query}
+
+Return:
+- audience segments
+- interests
+- geographic patterns
+- purchasing tendencies
+- cultural signals
+`;
+            try {
+                const text = await generateWithPrompt(
+                    "You are a research assistant. Reply with clear, structured demographic insights. No JSON, plain text.",
+                    prompt.trim(),
+                    apiKey
+                );
+                return {
+                    text: text || "No demographic insights could be generated.",
+                    insights: ["Audience Segments", "Interest Patterns", "Geographic Clusters", "Cultural Signals"]
+                };
+            } catch (e) {
+                console.warn("Deep demographic (Gemini) failed, falling back to search:", e.message);
+            }
+        }
+
+        const searchResult = await this.search(query, entities);
         return {
             text: searchResult.text,
             insights: [
@@ -399,3 +429,35 @@ export const web = {
     }
 
 };
+
+/**
+ * Deep demographic search via a backend /api/search endpoint.
+ * Use this when you have a server that accepts POST { prompt } and returns JSON (e.g. { text: "..." }).
+ */
+export async function deepDemographicSearchViaApi(query) {
+    const prompt = `
+You are a research assistant.
+Find demographic insights, behavioral trends, and audience profiles related to:
+
+${query}
+
+Return:
+- audience segments
+- interests
+- geographic patterns
+- purchasing tendencies
+- cultural signals
+`;
+
+    const response = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt })
+    });
+
+    if (!response.ok) {
+        throw new Error("Deep demographic search failed.");
+    }
+
+    return await response.json();
+}

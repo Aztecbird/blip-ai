@@ -216,6 +216,41 @@ export async function askGemini(
   }
 }
 
+/**
+ * One-shot generate with custom system + user prompt. Returns raw text.
+ * Used for research/demographic-style prompts without chat history.
+ */
+export async function generateWithPrompt(
+  systemPrompt,
+  userMessage,
+  inputKey,
+  model = DEFAULT_GEMINI_MODEL
+) {
+  const apiKey = requireApiKey(inputKey);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: "user", parts: [{ text: userMessage }] }],
+    generationConfig: {
+      temperature: 0.5,
+      max_output_tokens: 2048,
+    },
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API Error ${response.status}`);
+  }
+  const data = await response.json();
+  const text =
+    data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+  return text;
+}
+
 export async function generateSpeech(text, inputKey, voice = "Puck") {
   const apiKey = requireApiKey(inputKey);
   const model = DEFAULT_TTS_MODEL;

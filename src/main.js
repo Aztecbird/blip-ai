@@ -3,6 +3,7 @@ import { askOllama, checkOllamaStatus, warmUpModel, cancelCurrentRequest } from 
 import { askGemini, generateSpeech } from './services/gemini'
 import { speech } from './services/speech'
 import { web } from './services/web'
+import { interpretIntent, reasoningLoop } from './services/reasoning'
 
 // ── DOM ELEMENTS ─────────────────────────────────────────────────────────────
 const face = document.getElementById('face');
@@ -494,7 +495,12 @@ function startListeningLoop() {
     if (!state.isActive || state.isThinking) return;
 
     setPersona('listening');
-    talkBtn.classList.add('active');
+    face.classList.remove('thinking');
+    face.classList.add('listening');
+    faceFrame?.classList.add('listening-glow');
+    talkBtn.classList.remove('thinking');
+    talkBtn.classList.add('active', 'listening');
+    talkBtn.innerText = 'Ask Blip';
 
     speech.startListening(
         // On Result
@@ -824,6 +830,51 @@ async function handleCommand(text) {
         const images = state.pendingImage ? [state.pendingImage] : [];
         if (state.isLiveWatch && state.liveFrames.length > 0) images.push(...state.liveFrames);
 
+        // Optional: keyword-based reasoning loop for audience/demographic/behavior/market questions
+        const lowerInput = (cmd || "").toLowerCase();
+        const useReasoningLoop =
+            lowerInput.includes("audience") ||
+            lowerInput.includes("demographic") ||
+            lowerInput.includes("behavior") ||
+            lowerInput.includes("market") ||
+            lowerInput.includes("customer") ||
+            lowerInput.includes("who buys") ||
+            lowerInput.includes("who listens") ||
+            lowerInput.includes("profile");
+
+        if (useReasoningLoop) {
+            try {
+                setPersona("thinking");
+                face.classList.add("thinking");
+
+                const answer = await reasoningLoop(cmd, state.geminiKey);
+
+                face.classList.remove("thinking");
+                setPersona("happy");
+
+                const displayText = typeof answer === "string" ? answer : (answer?.text || JSON.stringify(answer, null, 2));
+                const extraHtml = `<br><a href="https://www.google.com/search?q=${encodeURIComponent(cmd)}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>`;
+                transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${displayText}${extraHtml}`;
+                state.history.push({ user: cmd, blip: displayText });
+                if (state.history.length > 25) state.history.shift();
+                spawnSymbol("brain");
+                if (state.pendingImage) clearPendingImage();
+
+                talkBtn.innerText = "🔊 SPEAKING...";
+                await speak(displayText, "happy");
+                return;
+            } catch (err) {
+                console.error("Reasoning loop failed:", err);
+                face.classList.remove("thinking");
+                setPersona("sad");
+                const errorMsg = "I hit a snag during the reasoning loop.";
+                transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><span style="color:#ef4444">⚠️ ${errorMsg}</span>`;
+                talkBtn.innerText = "🔊 SPEAKING...";
+                await speak(errorMsg, "sad");
+                return;
+            }
+        }
+
         // --- STEP 1: INTERPRET INTENT (Context Aware) ---
         console.log("🧠 Step 1: Interpret Intent");
         const intentPrompt = `You are the Intent Interpreter. 
@@ -854,7 +905,7 @@ Return a simple JSON object: {
 
                 // 1. Deep Demographic Search (V3.6.0)
                 if (cmd.toLowerCase().includes('population') || cmd.toLowerCase().includes('demographic')) {
-                    const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || []);
+                    const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || [], state.geminiKey);
                     evidence += research.text + "\n";
                     const standardResult = await actionHandlers.search({ tool_params: { query: intent.query || cmd } }, state);
                     extraHtml += standardResult.extraHtml;

@@ -622,6 +622,20 @@ body::before {
     }
 }
 
+/* ─────────────────────────────────────────────────────────
+   BLIP HOLOGRAPHIC STAGE
+───────────────────────────────────────────────────────── */
+
+#blip-stage {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 520px;
+    isolation: isolate;
+    overflow: visible;
+}
+
 #face-container {
     position: relative;
     display: flex;
@@ -637,30 +651,15 @@ body::before {
     height: 420px;
     border-radius: 50%;
     filter: blur(40px);
-    background: radial-gradient(circle,
-            rgba(0, 255, 255, 0.4) 0%,
-            rgba(124, 58, 237, 0.2) 40%,
-            transparent 70%);
+    background: radial-gradient(
+        circle,
+        rgba(0, 255, 255, 0.4) 0%,
+        rgba(124, 58, 237, 0.2) 40%,
+        transparent 70%
+    );
     animation: auraPulse 4s ease-in-out infinite;
     z-index: 0;
     pointer-events: none;
-}
-
-@keyframes auraPulse {
-    0% {
-        transform: scale(1);
-        opacity: 0.6;
-    }
-
-    50% {
-        transform: scale(1.1);
-        opacity: 1;
-    }
-
-    100% {
-        transform: scale(1);
-        opacity: 0.6;
-    }
 }
 
 #blip-radar {
@@ -672,16 +671,98 @@ body::before {
     animation: radarSpin 12s linear infinite;
     z-index: 0;
     pointer-events: none;
+    box-shadow:
+        0 0 30px rgba(0, 255, 255, 0.08),
+        inset 0 0 30px rgba(124, 58, 237, 0.08);
+}
+
+#blip-radar::before,
+#blip-radar::after {
+    content: "";
+    position: absolute;
+    inset: 40px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 255, 255, 0.10);
+}
+
+#blip-radar::after {
+    inset: 110px;
+    border-color: rgba(124, 58, 237, 0.12);
+}
+
+@keyframes auraPulse {
+    0% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.1); opacity: 1; }
+    100% { transform: scale(1); opacity: 0.6; }
 }
 
 @keyframes radarSpin {
-    from {
-        transform: rotate(0deg);
-    }
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
 
-    to {
-        transform: rotate(360deg);
-    }
+#face {
+    position: relative;
+    z-index: 2;
+    transition: transform 0.25s ease, filter 0.25s ease;
+}
+
+#face.listening {
+    transform: scale(1.08);
+}
+
+#face.thinking {
+    animation: thinkingWobble 1.2s infinite;
+}
+
+@keyframes thinkingWobble {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+    100% { transform: translateY(0px); }
+}
+
+/* holographic ambient wash */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 50% 35%, rgba(0,255,255,0.08), transparent 35%),
+        radial-gradient(circle at 50% 60%, rgba(124,58,237,0.10), transparent 40%);
+    z-index: -1;
+}
+
+/* projector mode */
+body.projector-mode #blip-aura,
+body.projecting-visual #blip-aura {
+    opacity: 1;
+    filter: blur(48px);
+}
+
+body.projector-mode #blip-radar,
+body.projecting-visual #blip-radar {
+    opacity: 1;
+}
+
+body.projector-mode #face,
+body.projecting-visual #face {
+    width: 420px !important;
+    height: 420px !important;
+}
+
+body.projector-mode .subtitle,
+body.projector-mode #subtitle,
+body.projecting-visual .subtitle,
+body.projecting-visual #subtitle {
+    font-size: 1.25rem !important;
+}
+
+body.projector-mode .mini-ui,
+body.projector-mode .small-ui,
+body.projecting-visual .mini-ui,
+body.projecting-visual .small-ui {
+    display: none !important;
 }
 
 #face {
