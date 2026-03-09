@@ -701,26 +701,6 @@ body::before {
     to { transform: rotate(360deg); }
 }
 
-#face {
-    position: relative;
-    z-index: 2;
-    transition: transform 0.25s ease, filter 0.25s ease;
-}
-
-#face.listening {
-    transform: scale(1.08);
-}
-
-#face.thinking {
-    animation: thinkingWobble 1.2s infinite;
-}
-
-@keyframes thinkingWobble {
-    0% { transform: translateY(0px); }
-    50% { transform: translateY(-8px); }
-    100% { transform: translateY(0px); }
-}
-
 /* holographic ambient wash */
 body::before {
     content: "";
@@ -745,8 +725,8 @@ body.projecting-visual #blip-radar {
     opacity: 1;
 }
 
-body.projector-mode #face,
-body.projecting-visual #face {
+body.projector-mode #blip-face,
+body.projecting-visual #blip-face {
     width: 420px !important;
     height: 420px !important;
 }
@@ -765,354 +745,583 @@ body.projecting-visual .small-ui {
     display: none !important;
 }
 
-#face {
-    width: 180px;
-    height: 140px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-around;
-    align-items: center;
-    transition: transform 0.25s ease, all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    animation: face-breathe 4s ease-in-out infinite alternate;
+/* =========================
+   BLIP FACE BASE
+   ========================= */
+#blip-face.blip-face {
     position: relative;
-    z-index: 1;
-    filter: url('#goo');
-    /* THE LIQUID FACE EFFECT */
-}
-
-#face.listening {
-    transform: scale(1.08);
-}
-
-#face.thinking {
-    animation: face-breathe 4s ease-in-out infinite alternate, thinkingWobble 1.2s infinite;
-}
-
-/* Nose: center point so eyes can orbit around it when thinking */
-.nose {
-    width: 8px;
-    height: 10px;
-    background: rgba(255, 255, 255, 0.7);
-    border-radius: 50% 50% 40% 40%;
-    margin: -4px 0 2px 0;
-    box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
-    flex-shrink: 0;
-}
-
-/* When thinking: eyes orbit around the nose */
-#face.thinking .eye-container {
-    animation: eyesAroundNose 3s ease-in-out infinite;
-    transform-origin: center center;
-}
-@keyframes eyesAroundNose {
-    0% { transform: translate(0, 0) rotate(0deg); }
-    25% { transform: translate(6px, -4px) rotate(8deg); }
-    50% { transform: translate(0, -6px) rotate(0deg); }
-    75% { transform: translate(-6px, -4px) rotate(-8deg); }
-    100% { transform: translate(0, 0) rotate(0deg); }
-}
-
-@keyframes thinkingWobble {
-    0% {
-        transform: translateY(0px);
-    }
-
-    50% {
-        transform: translateY(-8px);
-    }
-
-    100% {
-        transform: translateY(0px);
-    }
-}
-
-@keyframes face-breathe {
-    0% {
-        filter: drop-shadow(0 0 5px var(--face-glow));
-    }
-
-    100% {
-        filter: drop-shadow(0 0 25px var(--face-glow));
-    }
-}
-
-/* Eyebrows */
-.eyebrow-container {
-    display: flex;
-    gap: 3.5rem;
-    position: absolute;
-    top: 20px;
     z-index: 2;
-}
-
-.eyebrow {
-    width: 20px;
-    height: 3px;
-    background: white;
-    border-radius: 4px;
-    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    opacity: 0;
-    box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
-}
-
-.eye-container {
+    width: 260px;
+    height: 260px;
     display: flex;
-    gap: 3.5rem;
-    transition: all 0.3s ease;
-    animation: drift-eyes 12s infinite alternate ease-in-out;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease, filter 0.3s ease, opacity 0.3s ease;
 }
 
-@keyframes drift-eyes {
-    0% {
-        gap: 3.5rem;
-        transform: translateY(0px) scale(1);
-    }
-
-    30% {
-        gap: 2rem;
-        transform: translateY(-4px) scale(1.05);
-    }
-
-    60% {
-        gap: 1rem;
-        transform: translateY(0px) scale(1.15);
-    }
-
-    /* Eyes will merge here due to gooey filter */
-    100% {
-        gap: 4rem;
-        transform: translateY(4px) scale(0.95);
-    }
-}
-
-.eye {
-    width: 14px;
-    height: 14px;
-    background: white;
-    border-radius: 50%;
-    box-shadow: 0 0 10px var(--face-glow);
-    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+#blip-face .face-core {
     position: relative;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+    box-shadow:
+        0 0 20px rgba(0,255,255,0.25),
+        0 0 50px rgba(124,58,237,0.18),
+        inset 0 0 20px rgba(255,255,255,0.03);
+    backdrop-filter: blur(10px);
     overflow: hidden;
-    animation: liquid-morph 8s ease-in-out infinite;
+    animation: blipIdleFloat 4s ease-in-out infinite;
 }
 
-@keyframes liquid-morph {
-
-    0%,
-    100% {
-        border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
-    }
-
-    25% {
-        border-radius: 58% 42% 64% 36% / 46% 62% 38% 54%;
-        transform: scale(1.05);
-    }
-
-    50% {
-        border-radius: 41% 59% 36% 64% / 64% 41% 59% 36%;
-    }
-
-    75% {
-        border-radius: 54% 46% 41% 59% / 53% 58% 42% 47%;
-        transform: scale(0.95);
-    }
-}
-
-.pupil {
+#blip-face .eye {
     position: absolute;
-    width: 6px;
-    height: 6px;
-    background: #000;
+    top: 82px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 0 12px rgba(255,255,255,0.6);
+    transition: all 0.25s ease;
+    overflow: hidden;
+}
+
+#blip-face .eye-left { left: 58px; }
+#blip-face .eye-right { right: 58px; }
+
+#blip-face .pupil {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #0a0a0a;
     border-radius: 50%;
     top: 50%;
     left: 50%;
+    transition: all 0.2s ease;
     transform: translate(calc(-50% + var(--pupil-x, 0px)), calc(-50% + var(--pupil-y, 0px)));
-    transition: transform 0.1s ease-out;
 }
 
-/* Eye scanning state */
-.eye.scanning {
-    animation: eye-scan 4s ease-in-out infinite;
-}
-
-@keyframes eye-scan {
-
-    0%,
-    100% {
-        transform: translate(0, 0);
-    }
-
-    25% {
-        transform: translate(3px, -2px);
-    }
-
-    50% {
-        transform: translate(-3px, 1px);
-    }
-
-    75% {
-        transform: translate(2px, 3px);
-    }
-}
-
-#mouth {
-    width: 44px;
+#blip-face .brow {
+    position: absolute;
+    top: 62px;
+    width: 42px;
     height: 6px;
-    background: white;
-    border-radius: 20px;
-    box-shadow: 0 0 10px white;
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.95);
+    box-shadow: 0 0 8px rgba(255,255,255,0.4);
+    transition: all 0.25s ease;
 }
 
-/* ── EMOTIONAL OVERLAYS ──────────────────────────────────────────────────── */
-#face.happy .eye-container {
-    gap: 4rem;
+#blip-face .brow-left { left: 54px; }
+#blip-face .brow-right { right: 54px; }
+
+/* Nose: always visible for projector; subtle animations per emotion below */
+#blip-face .nose {
+    position: absolute;
+    top: 108px;
+    left: 50%;
+    width: 16px;
+    height: 24px;
+    transform: translateX(-50%);
+    border-radius: 50% 50% 60% 60%;
+    background: rgba(255,255,255,0.22);
+    box-shadow:
+        0 0 10px rgba(255,255,255,0.2),
+        inset 0 0 6px rgba(255,255,255,0.1);
+    transition: all 0.25s ease;
+    opacity: 0.95;
 }
 
-#face.happy #mouth {
+#blip-face .mouth {
+    position: absolute;
+    left: 50%;
+    top: 148px;
+    width: 58px;
+    height: 24px;
+    transform: translateX(-50%);
+    border-bottom: 5px solid #ffffff;
+    border-radius: 0 0 60px 60px;
+    box-shadow: 0 0 10px rgba(255,255,255,0.25);
+    transition: all 0.25s ease;
+}
+
+#blip-face.listening {
+    transform: scale(1.08);
+}
+
+/* =========================
+   DEFAULT IDLE
+   ========================= */
+#blip-face.emotion-idle .face-core {
+    animation: blipIdleFloat 4s ease-in-out infinite;
+}
+
+#blip-face.emotion-idle .brow-left,
+#blip-face.emotion-idle .brow-right {
+    opacity: 0.85;
+}
+
+/* =========================
+   1. HAPPY
+   ========================= */
+#blip-face.emotion-happy .mouth {
+    width: 70px;
+    height: 30px;
+    border-bottom-width: 6px;
+    border-radius: 0 0 80px 80px;
+}
+
+#blip-face.emotion-happy .eye {
+    top: 84px;
+}
+
+#blip-face.emotion-happy .face-core {
+    animation: happyBounce 1.6s ease-in-out infinite;
+}
+
+#blip-face.emotion-happy .brow-left,
+#blip-face.emotion-happy .brow-right {
+    opacity: 1;
+    top: 58px;
+}
+
+/* =========================
+   2. SAD
+   ========================= */
+#blip-face.emotion-sad .mouth {
+    top: 165px;
     width: 56px;
-    height: 22px;
-    border-radius: 5px 5px 25px 25px;
-    background: #fff;
-    box-shadow: 0 5px 15px var(--accent-glow);
+    height: 18px;
+    border-bottom: none;
+    border-top: 5px solid #ffffff;
+    border-radius: 60px 60px 0 0;
 }
 
-#face.happy #eyebrowL {
+#blip-face.emotion-sad .brow-left,
+#blip-face.emotion-sad .brow-right {
     opacity: 1;
-    transform: translateY(-5px) rotate(-10deg);
 }
 
-#face.happy #eyebrowR {
+#blip-face.emotion-sad .brow-left {
+    transform: rotate(18deg);
+}
+
+#blip-face.emotion-sad .brow-right {
+    transform: rotate(-18deg);
+}
+
+#blip-face.emotion-sad .eye {
+    top: 88px;
+}
+
+#blip-face.emotion-sad .face-core {
+    animation: sadDroop 2.5s ease-in-out infinite;
+}
+
+/* =========================
+   3. ANGRY
+   ========================= */
+#blip-face.emotion-angry .mouth {
+    width: 48px;
+    top: 154px;
+    border-bottom-width: 4px;
+    border-radius: 0 0 20px 20px;
+}
+
+#blip-face.emotion-angry .brow-left,
+#blip-face.emotion-angry .brow-right {
     opacity: 1;
-    transform: translateY(-5px) rotate(10deg);
 }
 
-#face.sad .eye-container {
-    gap: 2.5rem;
-    transform: translateY(5px);
+#blip-face.emotion-angry .brow-left {
+    transform: rotate(-24deg);
+    top: 68px;
 }
 
-#face.sad .eye {
-    height: 8px;
-    opacity: 0.8;
+#blip-face.emotion-angry .brow-right {
+    transform: rotate(24deg);
+    top: 68px;
 }
 
-/* ── IDLE BEHAVIORS (V2.6.3) ────────────────────────────────────────────── */
-#face.dreamer .eye-container {
-    animation: eye-float-up 4s ease-in-out infinite;
+#blip-face.emotion-angry .eye {
+    transform: scaleY(0.85);
 }
 
-@keyframes eye-float-up {
-
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-
-    50% {
-        transform: translateY(-15px);
-    }
+#blip-face.emotion-angry .face-core {
+    animation: angryShake 0.45s ease-in-out infinite;
 }
 
-#face.observer .eye {
-    animation: eye-dart 3s steps(1) infinite;
+/* =========================
+   4. CURIOUS
+   ========================= */
+#blip-face.emotion-curious .eye-left {
+    transform: scale(1.15);
 }
 
-@keyframes eye-dart {
-
-    0%,
-    100% {
-        transform: translateX(0);
-    }
-
-    25% {
-        transform: translateX(-12px);
-    }
-
-    50% {
-        transform: translateX(12px);
-    }
-
-    75% {
-        transform: translateX(0) translateY(-5px);
-    }
+#blip-face.emotion-curious .brow-left {
+    top: 54px;
 }
 
-#face.squinter .eye {
-    height: 4px;
-    border-radius: 20px;
-    transform: scaleX(1.3);
-    transition: all 0.5s ease;
+#blip-face.emotion-curious .brow-right {
+    top: 66px;
 }
 
-#face.squinter .eyebrow-container {
-    opacity: 1;
-    transform: translateY(2px);
-}
-
-#face.sad #mouth {
+#blip-face.emotion-curious .mouth {
     width: 34px;
-    height: 10px;
-    border-radius: 12px 12px 4px 4px;
-    opacity: 0.6;
+    height: 18px;
+    border-bottom-width: 4px;
+    border-radius: 0 0 24px 24px;
 }
 
-#face.sad #eyebrowL {
+#blip-face.emotion-curious .face-core {
+    animation: curiousTilt 2s ease-in-out infinite;
+}
+
+#blip-face.emotion-curious .brow-left,
+#blip-face.emotion-curious .brow-right {
     opacity: 1;
-    transform: translateY(2px) rotate(15deg);
 }
 
-#face.sad #eyebrowR {
+#blip-face.emotion-curious .nose {
+    animation: emotionNoseCurious 2.5s ease-in-out infinite;
+}
+
+@keyframes emotionNoseCurious {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-3px); }
+}
+
+/* =========================
+   5. SURPRISED
+   ========================= */
+#blip-face.emotion-surprised .eye {
+    transform: scale(1.18);
+}
+
+#blip-face.emotion-surprised .mouth {
+    width: 26px;
+    height: 26px;
+    border: 4px solid #ffffff;
+    border-radius: 50%;
+    border-bottom-width: 4px;
+    background: transparent;
+    box-shadow: 0 0 10px rgba(255,255,255,0.2);
+}
+
+#blip-face.emotion-surprised .brow {
+    top: 54px;
+}
+
+#blip-face.emotion-surprised .face-core {
+    animation: surprisedPop 1.2s ease-in-out infinite;
+}
+
+#blip-face.emotion-surprised .brow-left,
+#blip-face.emotion-surprised .brow-right {
     opacity: 1;
-    transform: translateY(2px) rotate(-15deg);
 }
 
-#face.angry .eye {
-    width: 14px;
-    height: 4px;
+#blip-face.emotion-surprised .nose {
+    animation: emotionNoseSurprised 1.2s ease-in-out infinite;
+}
+
+@keyframes emotionNoseSurprised {
+    0%, 100% { transform: translateX(-50%) scale(1); }
+    50% { transform: translateX(-50%) scale(1.08); }
+}
+
+/* =========================
+   6. THINKING
+   ========================= */
+#blip-face.emotion-thinking .mouth {
+    width: 42px;
+    height: 8px;
+    top: 158px;
+    border-bottom-width: 4px;
     border-radius: 0;
 }
 
-#face.angry #mouth {
-    width: 48px;
-    height: 3px;
+#blip-face.emotion-thinking .brow-left {
+    top: 58px;
 }
 
-#face.angry #eyebrowL {
+#blip-face.emotion-thinking .brow-right {
+    top: 66px;
+}
+
+#blip-face.emotion-thinking .eye-left .pupil {
+    transform: translate(calc(-50% + 5px + var(--pupil-x, 0px)), calc(-50% + var(--pupil-y, 0px)));
+}
+
+#blip-face.emotion-thinking .eye-right .pupil {
+    transform: translate(calc(-50% + 5px + var(--pupil-x, 0px)), calc(-50% + var(--pupil-y, 0px)));
+}
+
+#blip-face.emotion-thinking .face-core {
+    animation: thinkingWobble 1.4s ease-in-out infinite;
+}
+
+#blip-face.emotion-thinking .brow-left,
+#blip-face.emotion-thinking .brow-right {
     opacity: 1;
-    transform: translateY(5px) rotate(15deg);
 }
 
-#face.angry #eyebrowR {
+/* =========================
+   7. SLEEPY
+   ========================= */
+#blip-face.emotion-sleepy .eye {
+    height: 10px;
+    top: 98px;
+    border-radius: 999px;
+}
+
+#blip-face.emotion-sleepy .pupil {
+    opacity: 0;
+}
+
+#blip-face.emotion-sleepy .mouth {
+    width: 34px;
+    top: 162px;
+    border-bottom-width: 3px;
+}
+
+#blip-face.emotion-sleepy .nose {
+    opacity: 0.65;
+}
+
+#blip-face.emotion-sleepy .face-core {
+    animation: sleepyDrift 3s ease-in-out infinite;
+}
+
+/* =========================
+   8. EXCITED
+   ========================= */
+#blip-face.emotion-excited .eye {
+    transform: scale(1.08);
+}
+
+#blip-face.emotion-excited .mouth {
+    width: 76px;
+    height: 34px;
+    border-bottom-width: 7px;
+    border-radius: 0 0 90px 90px;
+}
+
+#blip-face.emotion-excited .brow-left,
+#blip-face.emotion-excited .brow-right {
     opacity: 1;
-    transform: translateY(5px) rotate(-15deg);
+    top: 56px;
 }
 
-#face.curious {
-    transform: rotate(5deg);
+#blip-face.emotion-excited .face-core {
+    animation: excitedJump 0.9s ease-in-out infinite;
 }
 
-/* Despair: "my radar can't find the numbers" — before graph appears */
-#face.despair #mouth {
+/* =========================
+   9. SERIOUS
+   ========================= */
+#blip-face.emotion-serious .mouth {
+    width: 44px;
+    height: 0;
+    top: 160px;
+    border-bottom-width: 4px;
+    border-radius: 0;
+}
+
+#blip-face.emotion-serious .brow-left {
+    top: 64px;
+}
+
+#blip-face.emotion-serious .brow-right {
+    top: 64px;
+}
+
+#blip-face.emotion-serious .brow-left,
+#blip-face.emotion-serious .brow-right {
+    opacity: 1;
+}
+
+#blip-face.emotion-serious .face-core {
+    animation: none;
+}
+
+/* =========================
+   10. PLAYFUL
+   ========================= */
+#blip-face.emotion-playful .eye-left {
+    height: 12px;
+    top: 95px;
+    border-radius: 999px;
+}
+
+#blip-face.emotion-playful .eye-left .pupil {
+    opacity: 0;
+}
+
+#blip-face.emotion-playful .eye-right {
+    transform: scale(1.1);
+}
+
+#blip-face.emotion-playful .mouth {
+    width: 64px;
+    transform: translateX(-50%) rotate(-8deg);
+    border-bottom-width: 6px;
+}
+
+#blip-face.emotion-playful .brow-left,
+#blip-face.emotion-playful .brow-right {
+    opacity: 1;
+}
+
+#blip-face.emotion-playful .face-core {
+    animation: playfulSwing 1.8s ease-in-out infinite;
+}
+
+/* =========================
+   DESPAIR (chart loading)
+   ========================= */
+#blip-face.emotion-despair .mouth {
     width: 24px;
     height: 14px;
     border-radius: 50% 50% 45% 55%;
     opacity: 0.8;
     animation: despair-mouth 1.2s ease-in-out infinite;
 }
-#face.despair #eyebrowL,
-#face.despair #eyebrowR {
+
+#blip-face.emotion-despair .brow-left,
+#blip-face.emotion-despair .brow-right {
     opacity: 1;
     transform: translateY(4px) rotate(12deg);
 }
-#face.despair #eyebrowR { transform: translateY(4px) rotate(-12deg); }
-#face.despair .eye-container {
-    transform: scale(0.95);
+
+#blip-face.emotion-despair .brow-right {
+    transform: translateY(4px) rotate(-12deg);
 }
+
 @keyframes despair-mouth {
     0%, 100% { height: 12px; }
     50% { height: 16px; }
+}
+
+/* =========================
+   IDLE BEHAVIORS
+   ========================= */
+#blip-face.bouncer {
+    animation: bounce-lil 0.5s ease infinite alternate;
+}
+
+#blip-face.pulsar {
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+#blip-face.dreamer .eye {
+    animation: eye-float-up 4s ease-in-out infinite;
+}
+
+#blip-face.observer .eye {
+    animation: eye-dart 3s steps(1) infinite;
+}
+
+#blip-face.squinter .eye {
+    height: 10px;
+    border-radius: 999px;
+    transform: scaleX(1.2);
+}
+
+@keyframes bounce-lil {
+    from { transform: translateY(0); }
+    to { transform: translateY(-5px); }
+}
+
+@keyframes pulse-glow {
+    0%, 100% { filter: drop-shadow(0 0 5px var(--face-glow)); }
+    50% { filter: drop-shadow(0 0 20px var(--face-glow)); }
+}
+
+@keyframes eye-float-up {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes eye-dart {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-8px); }
+    50% { transform: translateX(8px); }
+    75% { transform: translateX(0) translateY(-4px); }
+}
+
+/* =========================
+   FACE KEYFRAMES
+   ========================= */
+@keyframes blipIdleFloat {
+    0%   { transform: translateY(0px); }
+    50%  { transform: translateY(-8px); }
+    100% { transform: translateY(0px); }
+}
+
+@keyframes happyBounce {
+    0%   { transform: translateY(0px) scale(1); }
+    30%  { transform: translateY(-10px) scale(1.03); }
+    60%  { transform: translateY(0px) scale(1); }
+    100% { transform: translateY(-4px) scale(1.01); }
+}
+
+@keyframes sadDroop {
+    0%   { transform: translateY(0px); opacity: 1; }
+    50%  { transform: translateY(6px); opacity: 0.92; }
+    100% { transform: translateY(0px); opacity: 1; }
+}
+
+@keyframes angryShake {
+    0%   { transform: translateX(-2px); }
+    25%  { transform: translateX(2px); }
+    50%  { transform: translateX(-1px); }
+    75%  { transform: translateX(1px); }
+    100% { transform: translateX(0px); }
+}
+
+@keyframes curiousTilt {
+    0%   { transform: rotate(0deg) translateY(0px); }
+    25%  { transform: rotate(-3deg) translateY(-2px); }
+    50%  { transform: rotate(2deg) translateY(0px); }
+    75%  { transform: rotate(-2deg) translateY(-1px); }
+    100% { transform: rotate(0deg) translateY(0px); }
+}
+
+@keyframes surprisedPop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+@keyframes thinkingWobble {
+    0%   { transform: translateY(0px) rotate(0deg); }
+    25%  { transform: translateY(-4px) rotate(-2deg); }
+    50%  { transform: translateY(0px) rotate(2deg); }
+    75%  { transform: translateY(-2px) rotate(-1deg); }
+    100% { transform: translateY(0px) rotate(0deg); }
+}
+
+@keyframes sleepyDrift {
+    0%   { transform: translateY(0px); opacity: 0.96; }
+    50%  { transform: translateY(4px); opacity: 0.88; }
+    100% { transform: translateY(0px); opacity: 0.96; }
+}
+
+@keyframes excitedJump {
+    0%   { transform: translateY(0px) scale(1); }
+    20%  { transform: translateY(-14px) scale(1.04); }
+    40%  { transform: translateY(0px) scale(1); }
+    60%  { transform: translateY(-8px) scale(1.02); }
+    100% { transform: translateY(0px) scale(1); }
+}
+
+@keyframes playfulSwing {
+    0%   { transform: rotate(0deg) translateY(0px); }
+    25%  { transform: rotate(-4deg) translateY(-2px); }
+    50%  { transform: rotate(4deg) translateY(0px); }
+    75%  { transform: rotate(-3deg) translateY(-1px); }
+    100% { transform: rotate(0deg) translateY(0px); }
 }
 
 /* Chart panel: animated reveal after face despair */
@@ -1160,12 +1369,12 @@ body.projector-mode .face-frame {
     box-shadow: 0 0 100px rgba(99, 102, 241, 0.4);
 }
 
-body.projector-mode #face {
+body.projector-mode #blip-face {
     width: 420px;
     height: 340px;
 }
 
-body.projector-mode #face.serious #mouth {
+body.projector-mode #blip-face.emotion-serious .mouth {
     width: 120px;
     height: 15px;
 }
@@ -1218,7 +1427,7 @@ body.projector-mode.projecting-visual .face-frame {
     border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
-body.projector-mode.projecting-visual #face {
+body.projector-mode.projecting-visual #blip-face {
     width: 100px !important;
     height: 80px !important;
 }
@@ -1228,7 +1437,7 @@ body.projector-mode.projecting-visual .eye {
     height: 8px !important;
 }
 
-body.projector-mode.projecting-visual #mouth {
+body.projector-mode.projecting-visual .mouth {
     width: 25px !important;
     height: 4px !important;
 }
@@ -1261,168 +1470,178 @@ body.projector-mode.projecting-visual .hub-panel {
     max-height: none !important;
 }
 
-
-#face.curious .eye#eyeR {
-    transform: translateY(-6px);
-}
-
-#face.curious #eyebrowR {
-    opacity: 1;
-    transform: translateY(-10px) rotate(-10deg);
-}
-
-#face.curious #mouth {
-    width: 30px;
-    border-radius: 10px;
-}
-
-#face.surprised .eye {
-    width: 20px;
-    height: 20px;
-}
-
-#face.surprised #mouth {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-}
-
-#face.surprised #eyebrowL {
-    opacity: 1;
-    transform: translateY(-12px) rotate(-5deg);
-}
-
-#face.surprised #eyebrowR {
-    opacity: 1;
-    transform: translateY(-12px) rotate(5deg);
-}
-
-#face.serious #mouth {
-    width: 40px;
-    height: 5px;
-    opacity: 0.9;
-}
-
-#face.excited .eye {
-    animation: eye-vibrate 0.1s infinite alternate;
-}
-
-@keyframes eye-vibrate {
-    0% {
-        transform: scale(1.2);
-    }
-
-    100% {
-        transform: scale(1.4);
-    }
-}
-
-#face.excited #mouth {
-    width: 60px;
-    height: 30px;
-    border-radius: 5px 5px 30px 30px;
-}
-
-#face.playful .eye#eyeL {
-    height: 3px;
-    border-radius: 20px;
-    transform: translateY(2px) rotate(-10deg);
-}
-
-#face.playful #mouth {
-    width: 45px;
-    height: 15px;
-    border-radius: 5px 5px 40px 10px;
-    /* Smirk */
-}
-
-/* Idle States */
-.face.bouncer {
-    animation: bounce-lil 0.5s ease infinite alternate;
-}
-
-.face.pulsar {
-    animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes bounce-lil {
-    from {
-        transform: translateY(0);
-    }
-
-    to {
-        transform: translateY(-5px);
-    }
-}
-
-@keyframes pulse-glow {
-
-    0%,
-    100% {
-        filter: drop-shadow(0 0 5px var(--face-glow));
-    }
-
-    50% {
-        filter: drop-shadow(0 0 20px var(--face-glow));
-    }
-}
-
-#face.confident .eye {
-    height: 6px;
+/* confident / celebrate: reuse excited/serious styling when needed */
+#blip-face.emotion-confident .eye {
+    height: 10px;
     transform: scaleX(1.1);
 }
 
-#face.confident #eyebrowL,
-#face.confident #eyebrowR {
-    opacity: 1;
-    transform: translateY(-8px) rotate(-5deg);
+#blip-face.emotion-confident .brow-left,
+#blip-face.emotion-confident .brow-right {
+    top: 56px;
 }
 
-#face.celebrate {
-    animation: celebratory-jump 0.5s infinite alternate ease-in-out;
+#blip-face.emotion-celebrate .face-core {
+    animation: excitedJump 0.9s ease-in-out infinite;
 }
 
-@keyframes celebratory-jump {
-    0% {
-        transform: translateY(0) rotate(0deg);
-    }
-
-    100% {
-        transform: translateY(-20px) rotate(5deg);
-    }
+/* ── 10 FACE CONTAINER ANIMATIONS (apply class to #face-container) ───────── */
+#face-container.face-anim-wiggle #blip-face {
+    animation: faceAnimWiggle 0.6s ease-in-out infinite;
+}
+#face-container.face-anim-wiggle .nose {
+    animation: noseWiggle 0.6s ease-in-out infinite;
+}
+@keyframes faceAnimWiggle {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-4deg); }
+    75% { transform: rotate(4deg); }
+}
+@keyframes noseWiggle {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
 }
 
-#face.celebrate .eye {
-    width: 18px;
-    height: 18px;
-    background: linear-gradient(45deg, #fff, #fbbf24);
+#face-container.face-anim-bounce #blip-face {
+    animation: faceAnimBounce 0.8s ease-in-out infinite;
+}
+#face-container.face-anim-bounce .nose {
+    animation: noseBounce 0.8s ease-in-out infinite;
+}
+@keyframes faceAnimBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+@keyframes noseBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
 }
 
-#face.sleepy .eye {
-    height: 2px;
-    opacity: 0.5;
-    transform: translateY(4px);
+#face-container.face-anim-pulse #blip-face {
+    animation: faceAnimPulse 2s ease-in-out infinite;
+}
+#face-container.face-anim-pulse .nose {
+    animation: nosePulse 2s ease-in-out infinite;
+}
+@keyframes faceAnimPulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 6px var(--face-glow)); }
+    50% { transform: scale(1.06); filter: drop-shadow(0 0 18px var(--face-glow)); }
+}
+@keyframes nosePulse {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.1); opacity: 1; }
 }
 
-#face.sleepy #mouth {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    opacity: 0.3;
+#face-container.face-anim-blink #blip-face {
+    animation: faceAnimBlink 3s ease-in-out infinite;
+}
+#face-container.face-anim-blink .nose {
+    animation: noseBlink 3s ease-in-out infinite;
+}
+@keyframes faceAnimBlink {
+    0%, 45%, 55%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(0.92); }
+}
+@keyframes noseBlink {
+    0%, 45%, 55%, 100% { transform: scale(1); }
+    50% { transform: scale(0.95); }
 }
 
-#face.thinking .eye {
-    transform: translateX(10px) translateY(-5px);
+#face-container.face-anim-nod #blip-face {
+    animation: faceAnimNod 1.2s ease-in-out infinite;
+}
+#face-container.face-anim-nod .nose {
+    animation: noseNod 1.2s ease-in-out infinite;
+}
+@keyframes faceAnimNod {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(8deg); }
+}
+@keyframes noseNod {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(2px); }
 }
 
-#face.thinking #eyebrowL {
-    opacity: 1;
-    transform: translateY(-2px) rotate(-15deg);
+#face-container.face-anim-shake #blip-face {
+    animation: faceAnimShake 0.5s ease-in-out infinite;
+}
+#face-container.face-anim-shake .nose {
+    animation: noseShake 0.5s ease-in-out infinite;
+}
+@keyframes faceAnimShake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-8deg); }
+    75% { transform: rotate(8deg); }
+}
+@keyframes noseShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
 }
 
-#face.thinking #eyebrowR {
-    opacity: 1;
-    transform: translateY(-8px) rotate(10deg);
+#face-container.face-anim-float #blip-face {
+    animation: faceAnimFloat 3s ease-in-out infinite;
+}
+#face-container.face-anim-float .nose {
+    animation: noseFloat 3s ease-in-out infinite;
+}
+@keyframes faceAnimFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+}
+@keyframes noseFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+}
+
+#face-container.face-anim-glow #blip-face {
+    animation: faceAnimGlow 2.5s ease-in-out infinite;
+}
+#face-container.face-anim-glow .nose {
+    animation: noseGlow 2.5s ease-in-out infinite;
+}
+@keyframes faceAnimGlow {
+    0%, 100% { filter: drop-shadow(0 0 6px var(--face-glow)); opacity: 0.95; }
+    50% { filter: drop-shadow(0 0 22px var(--face-glow)); opacity: 1; }
+}
+@keyframes noseGlow {
+    0%, 100% { box-shadow: 0 0 4px rgba(255,255,255,0.4); }
+    50% { box-shadow: 0 0 12px rgba(255,255,255,0.8); }
+}
+
+#face-container.face-anim-sniff #blip-face {
+    animation: faceAnimSniff 1.5s ease-in-out infinite;
+}
+#face-container.face-anim-sniff .nose {
+    animation: noseSniff 1.5s ease-in-out infinite;
+}
+@keyframes faceAnimSniff {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+@keyframes noseSniff {
+    0%, 100% { transform: translateY(0) scale(1); }
+    25% { transform: translateY(-4px) scale(1.15); }
+    50% { transform: translateY(-2px) scale(1.05); }
+    75% { transform: translateY(-5px) scale(1.12); }
+}
+
+#face-container.face-anim-sway #blip-face {
+    animation: faceAnimSway 4s ease-in-out infinite;
+}
+#face-container.face-anim-sway .nose {
+    animation: noseSway 4s ease-in-out infinite;
+}
+@keyframes faceAnimSway {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    25% { transform: translateX(6px) rotate(2deg); }
+    75% { transform: translateX(-6px) rotate(-2deg); }
+}
+@keyframes noseSway {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(3px); }
+    75% { transform: translateX(-3px); }
 }
 
 /* ── FLOATING SYMBOLS ────────────────────────────────────────────────────── */

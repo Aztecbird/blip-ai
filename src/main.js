@@ -5,11 +5,14 @@ import { speech } from './services/speech'
 import { web } from './services/web'
 import { interpretIntent, reasoningLoop } from './services/reasoning'
 import * as contextAgent from './services/contextAgent.js'
+/* Blip face emotions: setBlipEmotion(emotion) applies .emotion-{name} to #blip-face; used in setPersona and after synthesis. */
+import { setBlipEmotion } from './services/emotions.js'
 
 // ── DOM ELEMENTS ─────────────────────────────────────────────────────────────
-const face = document.getElementById('face');
+const face = document.getElementById('blip-face');
+const faceContainer = document.getElementById('face-container');
 const faceFrame = document.querySelector('.face-frame');
-const mouth = document.getElementById('mouth');
+const mouth = document.querySelector('#blip-face .mouth');
 const talkBtn = document.getElementById('talkBtn');
 const transcriptText = document.getElementById('transcript');
 const meterLevel = document.getElementById('meter-level');
@@ -116,6 +119,13 @@ const state = {
 // V4.3.4 - The Deep UI & Animation Restoration
 
 // ── PERSONA CONFIGURATION (V3.4.0) ───────────────────────────────────────────
+/** Reusable face animation states: add one to #face-container to run. Nose is included where appropriate. */
+const FACE_ANIMATIONS = [
+    'face-anim-wiggle', 'face-anim-bounce', 'face-anim-pulse', 'face-anim-blink',
+    'face-anim-nod', 'face-anim-shake', 'face-anim-float', 'face-anim-glow',
+    'face-anim-sniff', 'face-anim-sway'
+];
+
 const PERSONAS = {
     idle: { emoji: "✨", label: "BLIP", color: "#818cf8", emotion: "serious" },
     listening: { emoji: "👂", label: "LISTENING", color: "#f43f5e", emotion: "surprised" },
@@ -1042,6 +1052,7 @@ RULES:
 5. NEVER say you don't have the information when the Research Evidence above contains relevant data. If the user said "look for it" or "find it", the system has already run a search — use the evidence. PERSONA: Punchy, expressive, digital.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
+        setBlipEmotion(synthesisResponse.emotion);
         const synthData = extractJSON(synthesisResponse.rawResponse);
         const conclusion = synthData?.conclusion || synthData?.text;
         const explanation = synthData?.explanation || '';
@@ -1124,9 +1135,10 @@ RULES:
         const decision = contextAgent.decide();
         applyContextDecision(decision);
 
-        // Ensure face is visible and happy after answering (avoid stuck despair/thinking)
+        // Ensure face is visible and shows response emotion after answering (avoid stuck despair/thinking)
         face.classList.remove('thinking', 'despair');
-        setPersona('happy');
+        setBlipEmotion(synthesisResponse.emotion);
+        setEmotion(synthesisResponse.emotion);
 
         // Visual Reactions
         spawnSymbol('brain');
@@ -1333,9 +1345,21 @@ function setPersona(key) {
         face.classList.remove(state.idleBehavior);
         state.idleBehavior = null;
     }
-    face.className = p.emotion || 'serious';
+    setBlipEmotion(p.emotion || 'serious');
+    face.classList.add('blip-face');
+    if (state.idleBehavior) face.classList.add(state.idleBehavior);
     face.style.visibility = 'visible';
     face.style.opacity = '';
+}
+
+/**
+ * Apply one of the 10 face-container animations, or clear it.
+ * @param {string|null} name - One of FACE_ANIMATIONS (e.g. 'face-anim-wiggle'), or null to clear.
+ */
+function setFaceAnimation(name) {
+    if (!faceContainer) return;
+    FACE_ANIMATIONS.forEach(c => faceContainer.classList.remove(c));
+    if (name && FACE_ANIMATIONS.includes(name)) faceContainer.classList.add(name);
 }
 
 // Deprecated: Alias for backward compatibility
