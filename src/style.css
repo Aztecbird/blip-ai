@@ -788,6 +788,68 @@ body.projecting-visual .small-ui {
     animation: face-breathe 4s ease-in-out infinite alternate, thinkingWobble 1.2s infinite;
 }
 
+/* Fun "looking for a book in the library" overlay when thinking */
+.thinking-library {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 10, 31, 0.85);
+    border-radius: 1.5rem;
+    z-index: 3;
+    pointer-events: none;
+}
+body.thinking-mode .thinking-library {
+    display: flex;
+}
+body.thinking-mode #face-container #face {
+    opacity: 0.15;
+}
+.thinking-library-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    position: relative;
+}
+.thinking-book {
+    font-size: 2rem;
+    animation: library-float 2s ease-in-out infinite;
+}
+.thinking-search {
+    font-size: 1.5rem;
+    animation: library-search 1.5s ease-in-out infinite;
+}
+.thinking-face {
+    font-size: 1.2rem;
+    opacity: 0.9;
+    animation: library-blink 2.5s ease-in-out infinite;
+}
+.thinking-label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin: 0;
+    letter-spacing: 0.05em;
+    animation: library-pulse 1.8s ease-in-out infinite;
+}
+@keyframes library-float {
+    0%, 100% { transform: translateY(0) rotate(-5deg); }
+    50% { transform: translateY(-8px) rotate(5deg); }
+}
+@keyframes library-search {
+    0%, 100% { transform: translateX(-6px) scale(1); }
+    50% { transform: translateX(6px) scale(1.1); }
+}
+@keyframes library-blink {
+    0%, 90%, 100% { opacity: 0.9; }
+    95% { opacity: 0.4; }
+}
+@keyframes library-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
 @keyframes thinkingWobble {
     0% {
         transform: translateY(0px);
@@ -2261,4 +2323,18 @@ input[type="range"] {
 .secondary-btn:hover {
     background: rgba(255, 255, 255, 0.14);
     transform: translateY(-1px);
+}
+
+/* BlipContextAgent: focus mode — reduce motion for study/focus */
+body.reduce-motion .scenery-layer,
+body.reduce-motion .cloud,
+body.reduce-motion [class*="layer-"],
+body.reduce-motion .scenery-object {
+    animation: none !important;
+}
+body.reduce-motion #blip-radar {
+    animation-duration: 30s !important;
+}
+body.reduce-motion #blip-aura {
+    animation-duration: 8s !important;
 }

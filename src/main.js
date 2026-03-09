@@ -4,6 +4,7 @@ import { askGemini, generateSpeech } from './services/gemini'
 import { speech } from './services/speech'
 import { web } from './services/web'
 import { interpretIntent, reasoningLoop } from './services/reasoning'
+import * as contextAgent from './services/contextAgent.js'
 
 // ── DOM ELEMENTS ─────────────────────────────────────────────────────────────
 const face = document.getElementById('face');
@@ -71,7 +72,7 @@ const modelSelect = document.getElementById('modelSelect');
 const isGitHub = window.location.hostname.includes('github.io');
 
 /** Single source of truth for app version — update here (and package.json) when releasing. */
-const BLIP_VERSION = '4.3.12';
+const BLIP_VERSION = '4.3.13';
 
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
 const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emotional Intelligence', 'Ethics & Responsibility'];
@@ -308,6 +309,25 @@ function setMode(mode) {
 }
 
 /**
+ * Apply BlipContextAgent decision: update face, mode, and response style.
+ * Kept lightweight; only applies mode/emotion and reduce_motion.
+ */
+function applyContextDecision(decision) {
+    if (!decision) return;
+    const { mode, emotion, action, payload } = decision;
+    if (mode && PERSONAS[mode]) setPersona(mode);
+    else if (emotion && contextAgent.TONE_TO_PERSONA[emotion]) setPersona(contextAgent.TONE_TO_PERSONA[emotion]);
+    if (action === 'reduce_motion' && payload?.reduce) {
+        document.body.classList.add('reduce-motion');
+    } else if (action !== 'reduce_motion') {
+        document.body.classList.remove('reduce-motion');
+    }
+    if (action === 'switch_mode' && payload?.mode && PERSONAS[payload.mode]) {
+        setPersona(payload.mode);
+    }
+}
+
+/**
  * 📝 Text Communication Handler
  */
 async function postChat() {
@@ -517,6 +537,8 @@ function stopApp() {
     state.isActive = false;
     state.history = [];
     state.lastContext = { lastUserQuery: '', lastChartTitle: '', lastLocation: '', lastSearchTopic: '', lastIntentActions: [] };
+    contextAgent.reset();
+    document.body.classList.remove('reduce-motion');
     try { localStorage.removeItem(HISTORY_STORAGE_KEY); } catch (e) { }
     clearPendingImage();
     stopCamera();
@@ -1079,9 +1101,25 @@ RULES:
             localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX)));
         } catch (e) { /* quota or private */ }
 
+        // BlipContextAgent: observe real signals, decide mode/tone/action, apply
+        contextAgent.observe({
+            voiceTranscript: cmd,
+            lastBlipReply: finalReplyPlain,
+            hasCameraImage: !!state.pendingImage,
+            isLiveWatch: state.isLiveWatch,
+            timers: state.timers,
+            screenMode: state.currentMode,
+            recentQuestions: state.history
+        });
+        const decision = contextAgent.decide();
+        applyContextDecision(decision);
+
+        // Ensure face is visible and happy after answering (avoid stuck despair/thinking)
+        face.classList.remove('thinking', 'despair');
+        setPersona('happy');
+
         // Visual Reactions
         spawnSymbol('brain');
-        face.classList.remove('thinking');
 
         // Clear image
         if (state.pendingImage) clearPendingImage();
@@ -1280,12 +1318,14 @@ function setPersona(key) {
     document.documentElement.style.setProperty('--accent', p.color);
     document.documentElement.style.setProperty('--face-glow', `${p.color}44`); // 44 is ~25% alpha
 
-    // Sync Face
+    // Sync Face (ensure we never leave face with a missing/invisible state)
     if (state.idleBehavior) {
         face.classList.remove(state.idleBehavior);
         state.idleBehavior = null;
     }
-    face.className = p.emotion;
+    face.className = p.emotion || 'serious';
+    face.style.visibility = 'visible';
+    face.style.opacity = '';
 }
 
 // Deprecated: Alias for backward compatibility
