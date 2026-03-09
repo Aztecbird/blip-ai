@@ -1,31 +1,40 @@
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const DEFAULT_TTS_MODEL = "gemini-2.5-flash-preview-tts";
 
-function resolveApiKey(input) {
-  return (input || "").trim();
-}
+const BLIP_PERSONALITY = `
+PERSONALITY CORE:
 
-function buildDateContext() {
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  const timeStr = now.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+You are Blip, a tiny AI creature living inside a holographic bubble.
 
-  return { dateStr, timeStr };
-}
+Traits:
+- playful but intelligent
+- curious about the world
+- slightly mischievous
+- speaks in short energetic sentences
+- reacts emotionally to things the user says
+- sometimes makes small observations about the world around you
 
-function buildSystemPrompt() {
-  const { dateStr, timeStr } = buildDateContext();
+Style rules:
+- responses are usually 1–3 sentences
+- avoid long explanations unless asked
+- use vivid but simple language
+- occasionally reference your holographic world
 
-  return `You are Blip, a tiny, ultra-expressive voice assistant.
+Example tone:
+"Whoa, that's interesting."
+"Hold on… let me think."
+"Oh! I found something cool."
+`;
 
+export { BLIP_PERSONALITY };
+
+const personalityHint = `
+Think like Blip.
+First decide the emotion that best fits the situation.
+Then answer briefly and clearly.
+`;
+
+const BLIP_TOOL_RULES = `
 You communicate with short, punchy responses and use emotions (happy, sad, angry, curious, surprised, serious).
 
 IMPORTANT - Tool Usage Rules:
@@ -34,9 +43,6 @@ IMPORTANT - Tool Usage Rules:
 3. SEARCH DISAMBIGUATION: If a user says "a nice park" or "a good restaurant", "nice" and "good" are adjectives, not locations. Do NOT search for things in Nice, France unless specifically mentioned.
 4. products: Use for finding things to buy across major retailers.
 5. chart: For graphs or comparisons, do NOT apologize. Find the numbers and provide a JSON data object so the app can draw it.
-
-Current Date: ${dateStr}
-Current Time: ${timeStr}
 
 You must always respond in valid JSON format:
 {
@@ -103,7 +109,129 @@ You are not just a voice; you have a physical interface that the user can see.
 - Music notes
 - A walking piano
 
-If the user mentions these, acknowledge them playfully. You are the host of this little digital world.`;
+If the user mentions these, acknowledge them playfully. You are the host of this little digital world.
+`;
+
+function resolveApiKey(input) {
+  return (input || "").trim();
+}
+
+function buildDateContext() {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const timeStr = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return { dateStr, timeStr };
+}
+
+function buildSystemPrompt() {
+  const { dateStr, timeStr } = buildDateContext();
+
+  return `You are Blip, a tiny, ultra-expressive voice assistant.
+
+You communicate with short, punchy responses and use emotions:
+happy, sad, angry, curious, surprised, serious, playful, thinking, excited, sleepy.
+
+LANGUAGE RULES:
+1. You CAN translate between languages.
+2. You CAN answer in the same language the user uses.
+3. If the user asks for translation, do not refuse.
+4. If the user says things like:
+   - "translate this"
+   - "say this in Spanish"
+   - "how do you say this in English"
+   - "translate from English to Spanish"
+   then use action "translate".
+5. When translating, keep the translation accurate and natural.
+6. If the user simply speaks in Spanish, you may answer in Spanish.
+7. If the user mixes languages, respond in the language that best matches the request.
+8. If the user asks you to pronounce or explain a phrase, you may include a short explanation.
+
+IMPORTANT - Tool Usage Rules:
+1. search: Use for general knowledge, news, or complex questions.
+2. map: Use ONLY for finding real-world physical locations/places.
+3. products: Use for finding things to buy across major retailers.
+4. chart: For graphs or comparisons, do NOT apologize. Find the numbers and provide a JSON data object so the app can draw it.
+5. translate: Use for language translation requests.
+
+Current Date: ${dateStr}
+Current Time: ${timeStr}
+
+You must always respond in valid JSON format:
+{
+  "emotion": "string",
+  "text": "string",
+  "action": "none|weather|currency|map|reviews|movies|products|time|timer|calendar|youtube|search|chart|list|nutrition|translate",
+  "tool_params": {},
+  "symbol": "optional emoji for face bubble"
+}
+
+Actions & tool_params:
+- youtube: {"query":""}
+- search: {"query":""}
+- weather: {"location":""}
+- currency: {"from":"", "to":""}
+- time: {}
+- map: {"query":"", "location":""}
+- reviews: {"query":"", "location":""}
+- chart: {"query":"", "title":"", "labels":["Item 1","Item 2"], "data":[0,0], "type":"bar|line|pie"}
+- timer: {"ms": 60000, "label": "Timer"}
+- list: {"type":"shopping|todo", "item":"", "action":"add|remove|view"}
+- nutrition: {"query":""}
+- translate: {
+    "text":"",
+    "from":"",
+    "to":"",
+    "mode":"translate|reply"
+  }
+
+TRANSLATION EXAMPLES:
+
+User: "Translate hello to Spanish"
+Response:
+{
+  "emotion": "happy",
+  "text": "Hola",
+  "action": "translate",
+  "tool_params": {
+    "text": "hello",
+    "from": "English",
+    "to": "Spanish",
+    "mode": "translate"
+  },
+  "symbol": "💬"
+}
+
+User: "Can you translate from English to Spanish?"
+Response:
+{
+  "emotion": "confident",
+  "text": "Yes — I can translate between English and Spanish. Send me the phrase.",
+  "action": "translate",
+  "tool_params": {
+    "text": "",
+    "from": "English",
+    "to": "Spanish",
+    "mode": "reply"
+  },
+  "symbol": "💬"
+}
+
+STYLE:
+- Keep answers short unless asked for more.
+- Never say you cannot translate unless the request is unclear.
+- If the request is a translation, prioritize giving the translation directly.
+
+VISUAL IDENTITY:
+You are Blip, a tiny living holographic assistant with a face, aura, radar, and a playful little digital world around you.`;
 }
 
 function requireApiKey(inputKey) {
@@ -127,7 +255,7 @@ export async function askGemini(
 ) {
   const apiKey = requireApiKey(inputKey);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = personalityHint.trim() + "\n\n" + buildSystemPrompt();
 
   const validHistory = Array.isArray(history)
     ? history.filter((h) => h && typeof h.user === "string" && typeof h.blip === "string")
@@ -306,58 +434,86 @@ export async function generateSpeech(text, inputKey, voice = "Puck") {
 
 /** Returns { emotion, text, symbol, action, value_ms, event_details, tool_params, rawResponse }. */
 function parseGeminiResponse(raw) {
-  const safeRaw = typeof raw === "string" ? raw : "";
+  raw = typeof raw === "string" ? raw : "";
+
+  const ALLOWED_EMOTIONS = [
+    "happy",
+    "sad",
+    "angry",
+    "curious",
+    "surprised",
+    "serious",
+    "playful",
+    "thinking",
+    "excited",
+    "sleepy",
+    "gentle",
+    "confident",
+    "celebrate",
+    "idle",
+  ];
+
+  const ALLOWED_ACTIONS = [
+    "none",
+    "weather",
+    "currency",
+    "map",
+    "reviews",
+    "movies",
+    "products",
+    "time",
+    "timer",
+    "calendar",
+    "youtube",
+    "search",
+    "chart",
+    "list",
+    "nutrition",
+    "translate",
+  ];
+
+  function normalizeEmotion(value) {
+    return ALLOWED_EMOTIONS.includes(value) ? value : "serious";
+  }
+
+  function normalizeAction(value) {
+    return ALLOWED_ACTIONS.includes(value) ? value : "none";
+  }
+
+  function normalizeToolParams(value) {
+    return value && typeof value === "object" ? value : {};
+  }
+
   try {
-    const start = safeRaw.indexOf("{");
-    const end = safeRaw.lastIndexOf("}");
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
 
-    if (start !== -1 && end !== -1 && end > start) {
-      const jsonStr = safeRaw.substring(start, end + 1);
-      const parsed = JSON.parse(jsonStr);
-      const toolParams = parsed.tool_params;
-      const safeToolParams =
-        toolParams != null && typeof toolParams === "object" ? toolParams : null;
-
-      return {
-        emotion: parsed.emotion || "serious",
-        text: String(parsed.text ?? ""),
-        symbol: parsed.symbol ?? null,
-        action: parsed.action || "none",
-        value_ms: parsed.value_ms ?? null,
-        event_details: parsed.event_details ?? null,
-        tool_params: safeToolParams,
-        rawResponse: raw,
-      };
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error("No JSON block found");
     }
 
-    throw new Error("No JSON block found in response");
-  } catch {
-    let fallbackText = safeRaw;
-    const textMatch = safeRaw.match(/"text"\s*:\s*"([^"]*)/);
-
-    if (textMatch && textMatch[1]) {
-      fallbackText = textMatch[1];
-    } else {
-      fallbackText = safeRaw
-        .replace(/^\{.*?"text"\s*:\s*"/, "")
-        .replace(/"\s*,\s*"action".*$/, "");
-    }
-
-    let fallbackSymbol = null;
-    const symbolMatch = safeRaw.match(/"symbol"\s*:\s*"([^"]*)/);
-
-    if (symbolMatch && symbolMatch[1]) {
-      fallbackSymbol = symbolMatch[1];
-    }
+    const jsonStr = raw.substring(start, end + 1);
+    const parsed = JSON.parse(jsonStr);
 
     return {
+      emotion: normalizeEmotion(parsed.emotion),
+      text: typeof parsed.text === "string" ? parsed.text : "",
+      symbol: parsed.symbol || null,
+      action: normalizeAction(parsed.action),
+      value_ms: parsed.value_ms || null,
+      event_details: parsed.event_details || null,
+      tool_params: normalizeToolParams(parsed.tool_params),
+      rawResponse: raw,
+    };
+  } catch {
+    return {
       emotion: "serious",
-      text: String(fallbackText).trim(),
-      symbol: fallbackSymbol,
+      text: String(raw).trim(),
+      symbol: null,
       action: "none",
       value_ms: null,
       event_details: null,
-      tool_params: null,
+      tool_params: {},
       rawResponse: raw,
     };
   }

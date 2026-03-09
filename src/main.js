@@ -6,7 +6,7 @@ import { web } from './services/web'
 import { interpretIntent, reasoningLoop } from './services/reasoning'
 import * as contextAgent from './services/contextAgent.js'
 /* Blip face emotions: setBlipEmotion(emotion) applies .emotion-{name} to #blip-face; used in setPersona and after synthesis. */
-import { setBlipEmotion } from './services/emotions.js'
+import { setBlipEmotion, addBlipFlavor } from './services/emotions.js'
 
 // ── DOM ELEMENTS ─────────────────────────────────────────────────────────────
 const face = document.getElementById('blip-face');
@@ -1055,8 +1055,9 @@ RULES:
         setBlipEmotion(synthesisResponse.emotion);
         const synthData = extractJSON(synthesisResponse.rawResponse);
         const conclusion = synthData?.conclusion || synthData?.text;
+        const conclusionWithFlavor = addBlipFlavor(conclusion || '', synthesisResponse.emotion);
         const explanation = synthData?.explanation || '';
-        let finalReply = conclusion || synthesisResponse.text;
+        let finalReply = conclusionWithFlavor || synthesisResponse.text;
         const finalReplyPlain = finalReply + (explanation && typeof explanation === 'string' && explanation.trim() ? ' ' + explanation.trim() : '');
         if (explanation && typeof explanation === 'string' && explanation.trim()) {
             finalReply = finalReply + '\n<span class="blip-explanation">' + escapeHtml(explanation.trim()) + '</span>';

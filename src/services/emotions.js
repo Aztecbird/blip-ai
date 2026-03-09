@@ -34,6 +34,27 @@ export function setBlipEmotion(emotion = "idle") {
   face.classList.add(`emotion-${safeEmotion}`);
 }
 
+/**
+ * Prepend a random emotion-based prefix to Blip's reply for extra personality.
+ * @param {string} text - The reply text
+ * @param {string} [emotion] - Current emotion (happy, curious, surprised, thinking, serious, etc.)
+ * @returns {string} text with optional prefix
+ */
+export function addBlipFlavor(text, emotion) {
+  const prefixes = {
+    happy: ["Nice!", "Oh that's great.", "Love that."],
+    curious: ["Hmm…", "Interesting.", "Let me see."],
+    surprised: ["Whoa!", "Wait a second!", "Oh wow."],
+    thinking: ["Hold on…", "Let me think.", "Okay…"],
+    serious: [""],
+  };
+
+  const options = prefixes[emotion] || [""];
+  const prefix = options[Math.floor(Math.random() * options.length)];
+
+  return prefix ? `${prefix} ${text}` : text;
+}
+
 /* Example manual testing */
 if (typeof window !== "undefined") {
   window.setBlipEmotion = setBlipEmotion;
