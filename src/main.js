@@ -81,7 +81,7 @@ const modelSelect = document.getElementById('modelSelect');
 const isGitHub = window.location.hostname.includes('github.io');
 
 /** Single source of truth for app version — update here (and package.json) when releasing. */
-const BLIP_VERSION = '4.3.14';
+const BLIP_VERSION = '4.3.15';
 
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
 const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emotional Intelligence', 'Ethics & Responsibility'];
