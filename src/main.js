@@ -731,11 +731,13 @@ const actionHandlers = {
 
     reviews: async (res, state) => {
         if (!res.tool_params?.query || !res.tool_params?.location) return { text: res.text };
-        const reviewText = await web.getPlaceReviews(res.tool_params.query, res.tool_params.location);
+        const reviewResult = await web.getPlaceReviews(res.tool_params.query, res.tool_params.location);
+        const reviewText = typeof reviewResult === 'string' ? reviewResult : (reviewResult?.text || "I couldn't find reviews right now.");
+        const reviewHtml = (reviewResult && typeof reviewResult === 'object' && reviewResult.html) ? `<br>${reviewResult.html}` : '';
         addToHub('ai', `⭐ Reviews for ${res.tool_params.query}: ${reviewText.substring(0, 100)}...`);
         state.history.push({ user: `(System: Fetched reviews for ${res.tool_params.query})`, blip: reviewText });
         document.body.classList.add('projecting-visual');
-        return { text: `${res.text} ${reviewText}` };
+        return { text: `${res.text} ${reviewText}`.trim(), extraHtml: reviewHtml };
     },
 
     movies: async (res, state) => {
@@ -765,11 +767,6 @@ const actionHandlers = {
         const now = new Date();
         const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         return { text: `${res.text} It is currently ${timeStr}.` };
-    },
-
-    timer: async (res) => {
-        if (res.value_ms) setBlipTimer(res.text, res.value_ms);
-        return { text: res.text };
     },
 
     calendar: async (res) => {
@@ -817,17 +814,19 @@ const actionHandlers = {
     },
 
     timer: async (res) => {
-        const ms = res.tool_params?.ms || 0;
-        const label = res.tool_params?.label || 'Timer';
-        if (ms <= 0) return { text: "I can't set a timer for 0 seconds!" };
+        const ms = Number(res.tool_params?.ms ?? res.value_ms ?? 0);
+        const label = String(res.tool_params?.label || 'Timer');
+        if (!Number.isFinite(ms) || ms <= 0) return { text: "I can't set a timer for 0 seconds!" };
 
-        setTimeout(() => {
-            spawnSymbol('🔔');
-            speak(`Time is up for your ${label}!`, 'happy');
-            alert(`🔔 Blip Timer: ${label} is finished!`);
-        }, ms);
+        setBlipTimer(label, ms);
 
-        return { text: `OK! I've set a timer for ${label} for ${Math.round(ms / 60000)} minutes.` };
+        const durationText = ms >= 60000
+            ? `${Math.round(ms / 60000)} minute${Math.round(ms / 60000) === 1 ? '' : 's'}`
+            : `${Math.max(1, Math.round(ms / 1000))} second${Math.max(1, Math.round(ms / 1000)) === 1 ? '' : 's'}`;
+        const reply = (typeof res.text === 'string' && res.text.trim())
+            ? res.text.trim()
+            : `OK! I've set a timer for ${label} for ${durationText}.`;
+        return { text: reply };
     },
 
     list: async (res) => {
@@ -1138,7 +1137,20 @@ Return a simple JSON object: {
 
         const intentResponse = await askGemini(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
         let intent = extractJSON(intentResponse.rawResponse) || { actions: [intentResponse.action || 'chat'], query: cmd, entities: [] };
-        if (!intent.actions) intent.actions = [intent.action || 'chat'];
+        const fallbackIntentAction = intent.action || intentResponse.action || 'chat';
+        if (Array.isArray(intent.actions)) {
+            intent.actions = intent.actions;
+        } else if (typeof intent.actions === 'string') {
+            intent.actions = [intent.actions];
+        } else {
+            intent.actions = [fallbackIntentAction];
+        }
+        intent.actions = intent.actions
+            .map((a) => String(a || '').toLowerCase().trim())
+            .filter(Boolean);
+        if (intent.actions.length === 0) intent.actions = ['chat'];
+        if (typeof intent.query !== 'string' || !intent.query.trim()) intent.query = cmd;
+        if (!Array.isArray(intent.entities)) intent.entities = [];
 
         const lowerCmd = cmd.toLowerCase();
         const isLookForIt = /\b(look for it|search for it|find it|get it|look it up|go find|go look|just search|then search)\b/i.test(cmd);
@@ -1272,7 +1284,7 @@ RULES:
 
         // Specialized Map Rendering
         let mapQueryUsed = null;
-        if (intent.action === 'map' && intent.query) {
+        if (intent.actions.includes('map') && intent.query) {
             setMode('map');
             mapQueryUsed = intent.query && intent.location ? `${intent.query} in ${intent.location}` : intent.query;
             mapFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(mapQueryUsed)}&output=embed`;
