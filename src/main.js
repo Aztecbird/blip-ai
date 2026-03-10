@@ -75,7 +75,7 @@ const modelSelect = document.getElementById('modelSelect');
 const isGitHub = window.location.hostname.includes('github.io');
 
 /** Single source of truth for app version — update here (and package.json) when releasing. */
-const BLIP_VERSION = '4.3.13';
+const BLIP_VERSION = '4.3.14';
 
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
 const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emotional Intelligence', 'Ethics & Responsibility'];
@@ -997,7 +997,7 @@ Return a simple JSON object: {
                 const runDataResearch = wantsPopulation || (wantsChart && (lowerCmd.includes('population') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('demographic') || lowerCmd.includes('stat') || lowerCmd.includes('data'))) || (isLookForIt && lastTopicWantsData);
                 if (runDataResearch) {
                     const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || [], state.geminiKey);
-                    evidence += research.text + "\n";
+                    evidence += (research?.text != null ? String(research.text) : '') + "\n";
                     const searchQuery = (intent.query || cmd).replace(/\b(graph|chart|make me a)\b/gi, '').trim() || intent.query || cmd;
                     const standardResult = await actionHandlers.search({ tool_params: { query: searchQuery } }, state);
                     evidence += (standardResult?.text || '') + "\n";
@@ -1016,7 +1016,7 @@ Return a simple JSON object: {
                 // 3. Fallback: Search / Research (e.g. chart without demographic keywords still gets search)
                 else if (action === 'search' || action === 'chart') {
                     const research = await web.search(intent.query || cmd, intent.entities || []);
-                    evidence += research.text + "\n";
+                    evidence += (research?.text != null ? String(research.text) : '') + "\n";
                     if (research.html && !extraHtml.includes(research.html)) {
                         extraHtml += research.html;
                     }
@@ -1048,7 +1048,7 @@ RULES:
 1. "conclusion" must contain the concrete information (numbers, names, facts) from the evidence. Example: "Valencia has about 800,000 people; roughly 52% women and 48% men."
 2. "explanation" can add context or source in one line (optional).
 3. CHARTS: If user asked for a graph and evidence has numbers, add "chart": { "title": "...", "labels": ["Women","Men"], "data": [52, 48], "type": "bar" or "pie" }.
-4. If evidence is unrelated, reply naturally.
+4. If evidence is unrelated, reply naturally — and for simple factual questions (e.g. "capital of X", "when did Y", basic geography or history), you may answer from general knowledge; do not say you don't have that information.
 5. NEVER say you don't have the information when the Research Evidence above contains relevant data. If the user said "look for it" or "find it", the system has already run a search — use the evidence. PERSONA: Punchy, expressive, digital.`;
 
         const synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
@@ -1109,8 +1109,9 @@ RULES:
         const findingsSnippet = hasRealEvidence
             ? evidence.replace(/\s+/g, ' ').trim().slice(0, 420).replace(/\s+\S*$/, '') + (evidence.length > 420 ? '…' : '')
             : '';
-        const findingsBlock = findingsSnippet
-            ? `<div class="blip-findings" aria-label="What I found">📋 <strong>What I found:</strong> ${escapeHtml(findingsSnippet)}</div>`
+        const safeSnippet = (findingsSnippet && findingsSnippet !== 'undefined' && !/^undefined\s*$/i.test(findingsSnippet.trim())) ? findingsSnippet : '';
+        const findingsBlock = safeSnippet
+            ? `<div class="blip-findings" aria-label="What I found">📋 <strong>What I found:</strong> ${escapeHtml(safeSnippet)}</div>`
             : '';
 
         // Render transcript (answer + findings in main UI + link as extra)
