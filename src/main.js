@@ -1637,6 +1637,7 @@ function setVideoBigMode(big) {
             if (faceEl) {
                 faceEl.id = 'blip-face-mini';
                 faceEl.classList.add('blip-face-mini');
+                styleMiniBlipFace(faceEl);
             }
             miniWrap.innerHTML = '';
             miniWrap.appendChild(clone);
@@ -1677,6 +1678,97 @@ function syncMiniBlipEmotion() {
     if (emotionClass) {
         mini.classList.remove(...Array.from(mini.classList).filter(c => c.startsWith('emotion-')));
         mini.classList.add(emotionClass);
+    }
+}
+
+/** Apply explicit mini-face styling so the side avatar is visible even though main face CSS is id-scoped to #blip-face. */
+function styleMiniBlipFace(faceEl) {
+    if (!faceEl) return;
+    faceEl.style.position = 'relative';
+    faceEl.style.width = '94px';
+    faceEl.style.height = '94px';
+    faceEl.style.display = 'flex';
+    faceEl.style.alignItems = 'center';
+    faceEl.style.justifyContent = 'center';
+    faceEl.style.filter = 'drop-shadow(0 0 10px rgba(34, 211, 238, 0.28))';
+
+    const core = faceEl.querySelector('.face-core');
+    if (core) {
+        core.style.position = 'relative';
+        core.style.width = '78px';
+        core.style.height = '78px';
+        core.style.borderRadius = '50%';
+        core.style.background = 'radial-gradient(circle at 50% 40%, rgba(255,255,255,0.12), rgba(255,255,255,0.04))';
+        core.style.boxShadow = '0 0 12px rgba(34, 211, 238, 0.24), 0 0 24px rgba(124, 58, 237, 0.18), inset 0 0 12px rgba(255,255,255,0.05)';
+        core.style.overflow = 'hidden';
+    }
+
+    const eyes = faceEl.querySelectorAll('.eye');
+    eyes.forEach((el) => {
+        el.style.position = 'absolute';
+        el.style.top = '28px';
+        el.style.width = '14px';
+        el.style.height = '14px';
+        el.style.borderRadius = '50%';
+        el.style.background = '#ffffff';
+        el.style.boxShadow = '0 0 7px rgba(255,255,255,0.55)';
+        el.style.overflow = 'hidden';
+    });
+    const leftEye = faceEl.querySelector('.eye-left');
+    const rightEye = faceEl.querySelector('.eye-right');
+    if (leftEye) leftEye.style.left = '20px';
+    if (rightEye) rightEye.style.right = '20px';
+
+    const pupils = faceEl.querySelectorAll('.pupil');
+    pupils.forEach((el) => {
+        el.style.position = 'absolute';
+        el.style.width = '5px';
+        el.style.height = '5px';
+        el.style.borderRadius = '50%';
+        el.style.background = '#0a0a0a';
+        el.style.top = '50%';
+        el.style.left = '50%';
+        el.style.transform = 'translate(-50%, -50%)';
+    });
+
+    const brows = faceEl.querySelectorAll('.brow');
+    brows.forEach((el) => {
+        el.style.position = 'absolute';
+        el.style.top = '18px';
+        el.style.width = '16px';
+        el.style.height = '2px';
+        el.style.borderRadius = '999px';
+        el.style.background = 'rgba(255,255,255,0.9)';
+    });
+    const leftBrow = faceEl.querySelector('.brow-left');
+    const rightBrow = faceEl.querySelector('.brow-right');
+    if (leftBrow) leftBrow.style.left = '18px';
+    if (rightBrow) rightBrow.style.right = '18px';
+
+    const nose = faceEl.querySelector('.nose');
+    if (nose) {
+        nose.style.position = 'absolute';
+        nose.style.top = '38px';
+        nose.style.left = '50%';
+        nose.style.width = '6px';
+        nose.style.height = '6px';
+        nose.style.borderRadius = '50%';
+        nose.style.transform = 'translateX(-50%)';
+        nose.style.background = 'rgba(255,255,255,0.75)';
+        nose.style.boxShadow = '0 0 5px rgba(255,255,255,0.35)';
+    }
+
+    const mouth = faceEl.querySelector('.mouth');
+    if (mouth) {
+        mouth.style.position = 'absolute';
+        mouth.style.top = '52px';
+        mouth.style.left = '50%';
+        mouth.style.width = '20px';
+        mouth.style.height = '8px';
+        mouth.style.transform = 'translateX(-50%)';
+        mouth.style.borderBottom = '2px solid rgba(255,255,255,0.95)';
+        mouth.style.borderRadius = '0 0 18px 18px';
+        mouth.style.background = 'transparent';
     }
 }
 
