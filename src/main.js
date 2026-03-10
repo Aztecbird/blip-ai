@@ -112,56 +112,87 @@ body {
   max-width: none !important;
   min-height: 100dvh !important;
   height: 100dvh !important;
+  display: grid !important;
+  grid-template-rows: auto 1fr auto !important;
   border-radius: 0 !important;
-  padding: clamp(1rem, 2.4vw, 2.5rem) !important;
-  justify-content: space-between !important;
-  gap: clamp(0.8rem, 1.5vh, 1.5rem) !important;
+  padding: clamp(0.8rem, 2vw, 2rem) !important;
+  justify-content: initial !important;
+  gap: clamp(0.5rem, 1.2vh, 1rem) !important;
   box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.7), inset 0 0 40px rgba(255, 255, 255, 0.02) !important;
 }
 #face-area {
-  width: min(92vw, 1120px) !important;
+  width: min(96vw, 1280px) !important;
   flex: 1 !important;
   justify-content: center !important;
-  gap: clamp(0.8rem, 2vh, 1.6rem) !important;
+  gap: clamp(0.6rem, 1.5vh, 1.2rem) !important;
+  align-self: center !important;
+  margin: 0 auto !important;
+}
+#transcript-area {
+  width: min(92vw, 980px) !important;
+  margin: 0 auto !important;
 }
 #interaction-area {
-  width: min(92vw, 680px) !important;
-  gap: 1rem !important;
-  margin-bottom: 0.5rem !important;
+  width: min(94vw, 1040px) !important;
+  gap: 0.9rem !important;
+  margin: 0 auto 0.3rem !important;
+  padding: 0.75rem 0.9rem 0.95rem !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(2, 6, 23, 0.58) !important;
+  backdrop-filter: blur(16px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(150%) !important;
+}
+#chat-entry {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.mini-actions {
+  opacity: 0.88 !important;
 }
 .face-frame {
-  width: min(88vw, 860px) !important;
-  height: min(54vh, 520px) !important;
+  width: min(92vw, 1160px) !important;
+  height: min(62vh, 680px) !important;
+  border-radius: 2.2rem !important;
 }
 #blip-stage {
-  min-height: min(56vh, 700px) !important;
+  min-height: min(64vh, 760px) !important;
 }
 #blip-face.blip-face {
-  width: clamp(260px, 26vw, 380px) !important;
-  height: clamp(260px, 26vw, 380px) !important;
+  width: clamp(280px, 28vw, 430px) !important;
+  height: clamp(280px, 28vw, 430px) !important;
 }
 @media (max-width: 900px) {
   .container {
-    padding: 1rem 0.8rem 1.2rem !important;
+    grid-template-rows: auto 1fr auto !important;
+    padding: 0.6rem 0.5rem 0.7rem !important;
   }
   #face-area {
     width: 100% !important;
   }
+  #transcript-area {
+    width: 98vw !important;
+  }
   .face-frame {
     width: 96vw !important;
-    height: min(44vh, 340px) !important;
+    height: min(46vh, 360px) !important;
     border-radius: 1.4rem !important;
   }
   #blip-stage {
-    min-height: min(46vh, 440px) !important;
+    min-height: min(48vh, 460px) !important;
   }
   #blip-face.blip-face {
-    width: clamp(210px, 46vw, 300px) !important;
-    height: clamp(210px, 46vw, 300px) !important;
+    width: clamp(220px, 48vw, 320px) !important;
+    height: clamp(220px, 48vw, 320px) !important;
   }
   #interaction-area {
-    width: 96vw !important;
-    gap: 0.8rem !important;
+    width: 98vw !important;
+    gap: 0.7rem !important;
+    border-radius: 14px !important;
+    padding: 0.55rem 0.5rem 0.7rem !important;
+  }
+  .mini-actions {
+    gap: 1rem !important;
   }
 }
 `;
