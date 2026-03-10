@@ -283,14 +283,22 @@ const PERSONAS = {
     advice: { emoji: "💡", label: "ADVISOR", color: "#eab308", emotion: "gentle" }
 };
 
+function injectAppStyle(id, cssText) {
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = cssText;
+    document.head.appendChild(style);
+}
+
 // ── INITIALIZATION ───────────────────────────────────────────────────────────
 async function init() {
     try {
         console.log(`🚀 Blip V${BLIP_VERSION} initializing...`);
 
         // Fill the browser real estate by default.
-        enableFullBrowserLayout();
-        enableScenerySuppressionStyles();
+        injectAppStyle('blip-full-browser-layout', FULL_BROWSER_LAYOUT_CSS);
+        injectAppStyle('blip-scenery-suppression', SCENERY_SUPPRESSION_CSS);
         syncScenerySuppression();
 
         // Version only in upper-right corner; label above face stays "BLIP" (no version)
@@ -2734,20 +2742,4 @@ function startSceneryDirector() {
 
     // Initial start after a few seconds
     setTimeout(spawnNext, 3000);
-}
-
-function enableFullBrowserLayout() {
-    if (document.getElementById('blip-full-browser-layout')) return;
-    const style = document.createElement('style');
-    style.id = 'blip-full-browser-layout';
-    style.textContent = FULL_BROWSER_LAYOUT_CSS;
-    document.head.appendChild(style);
-}
-
-function enableScenerySuppressionStyles() {
-    if (document.getElementById('blip-scenery-suppression')) return;
-    const style = document.createElement('style');
-    style.id = 'blip-scenery-suppression';
-    style.textContent = SCENERY_SUPPRESSION_CSS;
-    document.head.appendChild(style);
 }
