@@ -1205,11 +1205,15 @@ async function handleCommand(text) {
         if (volCmd) {
             face.classList.remove('thinking');
             let msg = '';
+            const lowerCmdForVolume = cmd.toLowerCase();
+            const wantsVideoVolume = /\b(video|youtube|yt|sound)\b/.test(lowerCmdForVolume) || state.videoBigMode || !!blipYtPlayer;
 
             const ytDelta = volCmd === 'down' ? -15 : 10;
             const ytVolume = isSidePanelVisible() ? adjustYouTubeVolume(ytDelta) : null;
             if (ytVolume != null) {
                 msg = `YouTube volume ${ytVolume}%.`;
+            } else if (wantsVideoVolume) {
+                msg = "I couldn't change YouTube volume right now. Make sure the video is playing in Blip's panel.";
             } else {
                 if (volCmd === 'down') state.speechVolume = Math.max(0.2, state.speechVolume - 0.25);
                 else state.speechVolume = Math.min(1, state.speechVolume + 0.05);
@@ -2021,6 +2025,8 @@ function getVolumeVoiceCommand(cmd) {
     const lower = cmd.toLowerCase().trim().replace(/\s+/g, ' ');
     if (/\b(volume\s+down|vol\.?\s*down|turn\s+down\s+(the\s+)?volume|quieter|lower\s+(the\s+)?volume)\b/.test(lower)) return 'down';
     if (/\b(volume\s+up|vol\.?\s*up|turn\s+up\s+(the\s+)?volume|louder|higher\s+(the\s+)?volume)\b/.test(lower)) return 'up';
+    if (/\b(download|down\s*load|decrease|reduce)\s+(the\s+)?volume\b/.test(lower)) return 'down';
+    if (/\b(upload|up\s*load|increase|raise)\s+(the\s+)?volume\b/.test(lower)) return 'up';
     if (/^volumedown\s*$/.test(lower) || /^vol\s*down\s*$/i.test(lower)) return 'down';
     if (/^volumeup\s*$/.test(lower) || /^vol\s*up\s*$/i.test(lower)) return 'up';
     // Natural short forms users say while watching a video.
