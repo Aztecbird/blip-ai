@@ -1142,6 +1142,46 @@ async function handleCommand(text) {
         const images = state.pendingImage ? [state.pendingImage] : [];
         if (state.isLiveWatch && state.liveFrames.length > 0) images.push(...state.liveFrames);
 
+        // Voice shortcuts: camera controls (open/close/snap) should not depend on model interpretation.
+        const cameraCmd = getCameraVoiceCommand(cmd);
+        if (cameraCmd) {
+            face.classList.remove('thinking');
+            let msg = '';
+            if (cameraCmd === 'open') {
+                if (state.cameraStream) {
+                    msg = "Camera is already open.";
+                } else {
+                    await startCamera();
+                    msg = state.cameraStream ? "Camera open. I'm looking now." : "I couldn't open the camera. Check permissions.";
+                }
+            } else if (cameraCmd === 'close') {
+                if (state.cameraStream) {
+                    stopCamera();
+                    msg = "Camera closed.";
+                } else {
+                    msg = "Camera is already closed.";
+                }
+            } else if (cameraCmd === 'snap') {
+                if (!state.cameraStream) {
+                    msg = "Camera is closed. Say open camera first.";
+                } else {
+                    capturePhoto();
+                    msg = "Photo captured.";
+                }
+            }
+            if (msg) {
+                transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+                state.history.push({ user: cmd, blip: msg });
+                if (state.history.length > HISTORY_MAX) state.history.shift();
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                setBlipEmotion('happy');
+                setPersona('happy');
+                talkBtn.innerText = '🔊 SPEAKING...';
+                await speak(msg, 'happy');
+                return;
+            }
+        }
+
         // Voice shortcuts: YouTube panel controls (unmute, mute, close, pause, play, rewind, next, new video)
         const ytCmd = getYouTubeVoiceCommand(cmd);
         if (ytCmd) {
@@ -1981,6 +2021,22 @@ function nextYouTubeVideo() {
         return false;
     }
     return true;
+}
+
+/** Voice command parser for camera controls. */
+function getCameraVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = cmd.toLowerCase().trim().replace(/\s+/g, ' ');
+    if (/\b(open|start|enable|show|turn on)\s+(the\s+)?(camera|camara|vision|eyes?)\b/.test(lower) ||
+        /^camera\s+on$/.test(lower) ||
+        /\bopen\s+(my\s+)?eyes\b/.test(lower)) return 'open';
+    if (/\b(close|stop|disable|hide|turn off)\s+(the\s+)?(camera|camara|vision|eyes?)\b/.test(lower) ||
+        /^camera\s+off$/.test(lower) ||
+        /\bclose\s+(my\s+)?eyes\b/.test(lower)) return 'close';
+    if (/\b(snap|capture|take)\s+(a\s+)?(photo|picture|image|shot)\b/.test(lower) ||
+        /^snap$/.test(lower) ||
+        /\btake\s+photo\b/.test(lower)) return 'snap';
+    return null;
 }
 
 /** True if the user is giving a YouTube panel control command (mute, close, pause, etc.). */
