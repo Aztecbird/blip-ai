@@ -230,6 +230,7 @@ const state = {
     liveInterval: null,
     liveFrames: [], // Queue of last 5 frames [{data, mimeType}]
     videoBigMode: false, // When true, side panel is large with mini Blip beside video
+    videoCompanionSize: localStorage.getItem('blip_video_companion_size') === 'mini' ? 'mini' : 'big',
     // Working memory: what we just did (so "another graph", "there", "that" make sense)
     lastContext: {
         lastUserQuery: '',
@@ -1151,6 +1152,11 @@ async function handleCommand(text) {
             } else if (ytCmd === 'restart' && blipYtPlayer) {
                 restartYouTubePlayer();
                 msg = 'From the beginning.';
+            } else if ((ytCmd === 'blipBig' || ytCmd === 'blipSmall') && document.getElementById('blip-side-panel')?.style.display !== 'none') {
+                state.videoCompanionSize = ytCmd === 'blipBig' ? 'big' : 'mini';
+                try { localStorage.setItem('blip_video_companion_size', state.videoCompanionSize); } catch (e) { }
+                applyVideoCompanionSizing();
+                msg = ytCmd === 'blipBig' ? 'Big Blip mode on.' : 'Mini Blip mode on.';
             } else if ((ytCmd === 'videoBig' || ytCmd === 'videoSmall') && document.getElementById('blip-side-panel')?.style.display !== 'none') {
                 setVideoBigMode(ytCmd === 'videoBig');
                 msg = ytCmd === 'videoBig' ? 'Full view on. Blip moved to the side.' : 'Back to normal view.';
@@ -1735,13 +1741,6 @@ function setVideoBigMode(big) {
             ytLayout.style.gap = '12px';
         }
         if (ytVideo) ytVideo.style.minWidth = '0';
-        if (window.matchMedia('(max-width: 900px)').matches) {
-            miniWrap.style.width = '80px';
-            miniWrap.style.minWidth = '80px';
-        } else {
-            miniWrap.style.width = '108px';
-            miniWrap.style.minWidth = '108px';
-        }
         if (ytHint) ytHint.style.display = 'none';
         if (ytTitle) ytTitle.style.marginBottom = '6px';
         if (ytPlayer) {
@@ -1755,12 +1754,13 @@ function setVideoBigMode(big) {
             if (faceEl) {
                 faceEl.id = 'blip-face-mini';
                 faceEl.classList.add('blip-face-mini');
-                styleMiniBlipFace(faceEl);
+                styleMiniBlipFace(faceEl, state.videoCompanionSize);
             }
             miniWrap.innerHTML = '';
             miniWrap.appendChild(clone);
             syncMiniBlipEmotion();
         }
+        applyVideoCompanionSizing();
     } else {
         sidePanel.classList.remove('blip-video-big');
         sidePanel.style.width = '280px';
@@ -1788,6 +1788,26 @@ function setVideoBigMode(big) {
     }
 }
 
+/** Apply companion Blip size inside full YouTube view. Supports "big" and "mini" modes. */
+function applyVideoCompanionSizing() {
+    const sidePanel = document.getElementById('blip-side-panel');
+    if (!sidePanel || !state.videoBigMode) return;
+    const miniWrap = sidePanel.querySelector('.blip-mini-wrap');
+    if (!miniWrap) return;
+    const sizeBtn = document.getElementById('blip-video-blip-btn');
+
+    const isMobile = window.matchMedia('(max-width: 900px)').matches;
+    const isBig = state.videoCompanionSize !== 'mini';
+    const wrapWidth = isMobile ? (isBig ? 116 : 80) : (isBig ? 200 : 108);
+    if (sizeBtn) sizeBtn.textContent = isBig ? '👤 Blip−' : '👤 Blip+';
+
+    miniWrap.style.width = `${wrapWidth}px`;
+    miniWrap.style.minWidth = `${wrapWidth}px`;
+
+    const miniFace = document.getElementById('blip-face-mini');
+    if (miniFace) styleMiniBlipFace(miniFace, isBig ? 'big' : 'mini');
+}
+
 /** Copy current emotion from main face to mini face (used when big video mode is on). */
 function syncMiniBlipEmotion() {
     const mini = document.getElementById('blip-face-mini');
@@ -1799,22 +1819,37 @@ function syncMiniBlipEmotion() {
     }
 }
 
-/** Apply explicit mini-face styling so the side avatar is visible even though main face CSS is id-scoped to #blip-face. */
-function styleMiniBlipFace(faceEl) {
+/** Apply explicit companion-face styling so side Blip remains visible and can switch between mini and big. */
+function styleMiniBlipFace(faceEl, sizeMode = 'mini') {
     if (!faceEl) return;
+    const isBig = sizeMode === 'big';
+    const s = isBig
+        ? {
+            face: 176, core: 144, eyeTop: 52, eye: 22, eyeOffset: 36, pupil: 8,
+            browTop: 34, browW: 28, browH: 3, browOffset: 30,
+            noseTop: 72, nose: 9, mouthTop: 98, mouthW: 42, mouthH: 14, mouthBorder: 3
+        }
+        : {
+            face: 94, core: 78, eyeTop: 28, eye: 14, eyeOffset: 20, pupil: 5,
+            browTop: 18, browW: 16, browH: 2, browOffset: 18,
+            noseTop: 38, nose: 6, mouthTop: 52, mouthW: 20, mouthH: 8, mouthBorder: 2
+        };
+
     faceEl.style.position = 'relative';
-    faceEl.style.width = '94px';
-    faceEl.style.height = '94px';
+    faceEl.style.width = `${s.face}px`;
+    faceEl.style.height = `${s.face}px`;
     faceEl.style.display = 'flex';
     faceEl.style.alignItems = 'center';
     faceEl.style.justifyContent = 'center';
     faceEl.style.filter = 'drop-shadow(0 0 10px rgba(34, 211, 238, 0.28))';
+    faceEl.style.transform = 'none';
+    faceEl.style.transformOrigin = 'center';
 
     const core = faceEl.querySelector('.face-core');
     if (core) {
         core.style.position = 'relative';
-        core.style.width = '78px';
-        core.style.height = '78px';
+        core.style.width = `${s.core}px`;
+        core.style.height = `${s.core}px`;
         core.style.borderRadius = '50%';
         core.style.background = 'radial-gradient(circle at 50% 40%, rgba(255,255,255,0.12), rgba(255,255,255,0.04))';
         core.style.boxShadow = '0 0 12px rgba(34, 211, 238, 0.24), 0 0 24px rgba(124, 58, 237, 0.18), inset 0 0 12px rgba(255,255,255,0.05)';
@@ -1824,9 +1859,9 @@ function styleMiniBlipFace(faceEl) {
     const eyes = faceEl.querySelectorAll('.eye');
     eyes.forEach((el) => {
         el.style.position = 'absolute';
-        el.style.top = '28px';
-        el.style.width = '14px';
-        el.style.height = '14px';
+        el.style.top = `${s.eyeTop}px`;
+        el.style.width = `${s.eye}px`;
+        el.style.height = `${s.eye}px`;
         el.style.borderRadius = '50%';
         el.style.background = '#ffffff';
         el.style.boxShadow = '0 0 7px rgba(255,255,255,0.55)';
@@ -1834,14 +1869,14 @@ function styleMiniBlipFace(faceEl) {
     });
     const leftEye = faceEl.querySelector('.eye-left');
     const rightEye = faceEl.querySelector('.eye-right');
-    if (leftEye) leftEye.style.left = '20px';
-    if (rightEye) rightEye.style.right = '20px';
+    if (leftEye) leftEye.style.left = `${s.eyeOffset}px`;
+    if (rightEye) rightEye.style.right = `${s.eyeOffset}px`;
 
     const pupils = faceEl.querySelectorAll('.pupil');
     pupils.forEach((el) => {
         el.style.position = 'absolute';
-        el.style.width = '5px';
-        el.style.height = '5px';
+        el.style.width = `${s.pupil}px`;
+        el.style.height = `${s.pupil}px`;
         el.style.borderRadius = '50%';
         el.style.background = '#0a0a0a';
         el.style.top = '50%';
@@ -1852,24 +1887,24 @@ function styleMiniBlipFace(faceEl) {
     const brows = faceEl.querySelectorAll('.brow');
     brows.forEach((el) => {
         el.style.position = 'absolute';
-        el.style.top = '18px';
-        el.style.width = '16px';
-        el.style.height = '2px';
+        el.style.top = `${s.browTop}px`;
+        el.style.width = `${s.browW}px`;
+        el.style.height = `${s.browH}px`;
         el.style.borderRadius = '999px';
         el.style.background = 'rgba(255,255,255,0.9)';
     });
     const leftBrow = faceEl.querySelector('.brow-left');
     const rightBrow = faceEl.querySelector('.brow-right');
-    if (leftBrow) leftBrow.style.left = '18px';
-    if (rightBrow) rightBrow.style.right = '18px';
+    if (leftBrow) leftBrow.style.left = `${s.browOffset}px`;
+    if (rightBrow) rightBrow.style.right = `${s.browOffset}px`;
 
     const nose = faceEl.querySelector('.nose');
     if (nose) {
         nose.style.position = 'absolute';
-        nose.style.top = '38px';
+        nose.style.top = `${s.noseTop}px`;
         nose.style.left = '50%';
-        nose.style.width = '6px';
-        nose.style.height = '6px';
+        nose.style.width = `${s.nose}px`;
+        nose.style.height = `${s.nose}px`;
         nose.style.borderRadius = '50%';
         nose.style.transform = 'translateX(-50%)';
         nose.style.background = 'rgba(255,255,255,0.75)';
@@ -1879,12 +1914,12 @@ function styleMiniBlipFace(faceEl) {
     const mouth = faceEl.querySelector('.mouth');
     if (mouth) {
         mouth.style.position = 'absolute';
-        mouth.style.top = '52px';
+        mouth.style.top = `${s.mouthTop}px`;
         mouth.style.left = '50%';
-        mouth.style.width = '20px';
-        mouth.style.height = '8px';
+        mouth.style.width = `${s.mouthW}px`;
+        mouth.style.height = `${s.mouthH}px`;
         mouth.style.transform = 'translateX(-50%)';
-        mouth.style.borderBottom = '2px solid rgba(255,255,255,0.95)';
+        mouth.style.borderBottom = `${s.mouthBorder}px solid rgba(255,255,255,0.95)`;
         mouth.style.borderRadius = '0 0 18px 18px';
         mouth.style.background = 'transparent';
     }
@@ -1921,6 +1956,12 @@ function getYouTubeVoiceCommand(cmd) {
     if (/\bpause\s+(the\s+)?video\b/.test(lower) || /\bpause\b/.test(lower) && (lower.includes('video') || lower.length < 10)) return 'pause';
     if (/\bplay\s+(the\s+)?video\b/.test(lower) || /^play\s*$/.test(lower)) return 'play';
     if (/\b(start\s+over|from\s+the\s+beginning|restart)\b/.test(lower)) return 'restart';
+    if (/\b(big(ger)?|large)\s+blip\b/.test(lower) ||
+        /\bmake\s+blip\s+(bigger|larger|big)\b/.test(lower) ||
+        /\benlarge\s+blip\b/.test(lower)) return 'blipBig';
+    if (/\b(small(er)?|mini)\s+blip\b/.test(lower) ||
+        /\bmake\s+blip\s+(smaller|small|mini)\b/.test(lower) ||
+        /\bshrink\s+blip\b/.test(lower)) return 'blipSmall';
     if (/\b(make\s+)?(the\s+)?video\s+bigger\b/.test(lower) ||
         /\bbigger\s+video\b/.test(lower) ||
         /\bexpand\s+(the\s+)?video\b/.test(lower) ||
@@ -2508,6 +2549,7 @@ function renderActionInSidePanel(parsedResponse) {
                 sidePanel.innerHTML = `
                     <button type="button" aria-label="Close panel" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:#a0a0b8;cursor:pointer;font-size:1.2rem;line-height:1;">×</button>
                     <button type="button" aria-label="Full video" id="blip-video-big-btn" style="position:absolute;top:8px;right:36px;background:rgba(255,255,255,0.1);border:none;color:#a0a0b8;cursor:pointer;font-size:0.9rem;padding:4px 8px;border-radius:6px;">⛶ Full</button>
+                    <button type="button" aria-label="Blip size" id="blip-video-blip-btn" style="position:absolute;top:8px;right:110px;background:rgba(255,255,255,0.1);border:none;color:#a0a0b8;cursor:pointer;font-size:0.8rem;padding:4px 8px;border-radius:6px;">${state.videoCompanionSize === 'big' ? '👤 Blip−' : '👤 Blip+'}</button>
                     <div class="blip-yt-layout">
                         <div class="blip-yt-video">
                             <h3 style="margin:0 0 8px 0; font-size:1rem;">Playing: ${queryLabel}</h3>
@@ -2523,6 +2565,14 @@ function renderActionInSidePanel(parsedResponse) {
                 });
                 document.getElementById('blip-video-big-btn')?.addEventListener('click', () => {
                     setVideoBigMode(!state.videoBigMode);
+                });
+                document.getElementById('blip-video-blip-btn')?.addEventListener('click', () => {
+                    state.videoCompanionSize = state.videoCompanionSize === 'big' ? 'mini' : 'big';
+                    try { localStorage.setItem('blip_video_companion_size', state.videoCompanionSize); } catch (e) { }
+                    const btn = document.getElementById('blip-video-blip-btn');
+                    if (btn) btn.textContent = state.videoCompanionSize === 'big' ? '👤 Blip−' : '👤 Blip+';
+                    if (!state.videoBigMode) setVideoBigMode(true);
+                    applyVideoCompanionSizing();
                 });
                 ensureYouTubeAPI(() => {
                     try {
