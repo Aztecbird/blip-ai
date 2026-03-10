@@ -1053,17 +1053,27 @@ async function handleCommand(text) {
             }
         }
 
-        // Voice shortcut: Blip speech volume — down 25%, up 5%
+        // Voice shortcut: volume control.
+        // Priority: active YouTube player volume, then Blip speech volume.
         const volCmd = getVolumeVoiceCommand(cmd);
         if (volCmd) {
             face.classList.remove('thinking');
-            if (volCmd === 'down') state.speechVolume = Math.max(0.2, state.speechVolume - 0.25);
-            else state.speechVolume = Math.min(1, state.speechVolume + 0.05);
-            state.speechVolume = Math.round(state.speechVolume * 100) / 100;
-            if (speechVolumeInput) speechVolumeInput.value = Math.round(state.speechVolume * 100);
-            if (speechVolumeValue) speechVolumeValue.textContent = Math.round(state.speechVolume * 100) + '%';
-            try { localStorage.setItem('blip_speech_volume', String(state.speechVolume)); } catch (e) { }
-            const msg = `Volume ${Math.round(state.speechVolume * 100)}%.`;
+            let msg = '';
+
+            const ytDelta = volCmd === 'down' ? -15 : 10;
+            const ytVolume = isSidePanelVisible() ? adjustYouTubeVolume(ytDelta) : null;
+            if (ytVolume != null) {
+                msg = `YouTube volume ${ytVolume}%.`;
+            } else {
+                if (volCmd === 'down') state.speechVolume = Math.max(0.2, state.speechVolume - 0.25);
+                else state.speechVolume = Math.min(1, state.speechVolume + 0.05);
+                state.speechVolume = Math.round(state.speechVolume * 100) / 100;
+                if (speechVolumeInput) speechVolumeInput.value = Math.round(state.speechVolume * 100);
+                if (speechVolumeValue) speechVolumeValue.textContent = Math.round(state.speechVolume * 100) + '%';
+                try { localStorage.setItem('blip_speech_volume', String(state.speechVolume)); } catch (e) { }
+                msg = `Volume ${Math.round(state.speechVolume * 100)}%.`;
+            }
+
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
@@ -1553,6 +1563,28 @@ function restartYouTubePlayer() {
             if (blipYtPlayer && typeof blipYtPlayer.playVideo === 'function') blipYtPlayer.playVideo();
         }, 80);
     } catch (e) { console.warn('YouTube restart failed:', e.message); }
+}
+
+/** True when side panel is visible and can host YouTube controls. */
+function isSidePanelVisible() {
+    const sidePanel = document.getElementById('blip-side-panel');
+    return !!sidePanel && sidePanel.style.display !== 'none';
+}
+
+/** Adjust YouTube player volume by delta points (0-100). Returns updated value, or null if unavailable. */
+function adjustYouTubeVolume(delta) {
+    if (!blipYtPlayer || typeof blipYtPlayer.getVolume !== 'function' || typeof blipYtPlayer.setVolume !== 'function') return null;
+    try {
+        const current = Number(blipYtPlayer.getVolume());
+        const safeCurrent = Number.isFinite(current) ? current : 100;
+        const next = Math.max(0, Math.min(100, safeCurrent + delta));
+        blipYtPlayer.setVolume(next);
+        if (typeof blipYtPlayer.unMute === 'function') blipYtPlayer.unMute();
+        return Math.round(next);
+    } catch (e) {
+        console.warn('YouTube volume change failed:', e.message);
+        return null;
+    }
 }
 
 /** Toggle or set big-video mode: video expands and a small Blip appears beside it. */
