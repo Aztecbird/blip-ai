@@ -81,6 +81,7 @@ const BLIP_VERSION = '4.3.14';
 const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emotional Intelligence', 'Ethics & Responsibility'];
 
 let activeChart = null; // Chart.js instance
+let sidePanelChart = null; // Chart.js instance for side panel
 
 const HISTORY_STORAGE_KEY = 'blip_history';
 const HISTORY_MAX = 30;
@@ -111,6 +112,7 @@ const state = {
     lastContext: {
         lastUserQuery: '',
         lastChartTitle: '',
+        lastChartData: null, // { labels, data, title, type } for re-showing graph
         lastLocation: '',
         lastSearchTopic: '',
         lastIntentActions: []
@@ -546,7 +548,7 @@ function cancelInteraction() {
 function stopApp() {
     state.isActive = false;
     state.history = [];
-    state.lastContext = { lastUserQuery: '', lastChartTitle: '', lastLocation: '', lastSearchTopic: '', lastIntentActions: [] };
+    state.lastContext = { lastUserQuery: '', lastChartTitle: '', lastChartData: null, lastLocation: '', lastSearchTopic: '', lastIntentActions: [] };
     contextAgent.reset();
     document.body.classList.remove('reduce-motion');
     try { localStorage.removeItem(HISTORY_STORAGE_KEY); } catch (e) { }
@@ -1076,6 +1078,11 @@ RULES:
             chartData = tryBuildChartFromEvidence(evidence, cmd);
             if (chartData) console.log("📈 Fallback chart from evidence:", chartData.title);
         }
+        // Re-show last graph when user says they don't see it / show it again
+        if (!chartData && state.lastContext.lastChartData && wantsToSeeLastGraph(cmd)) {
+            chartData = state.lastContext.lastChartData;
+            console.log("📈 Re-showing last chart in side panel:", chartData.title);
+        }
         if (chartData && chartData.labels && chartData.data) {
             console.log("📈 Auto-Rendering Chart:", chartData.title);
             setPersona('despair');
@@ -1107,6 +1114,9 @@ RULES:
         // Update working memory so next turn has context (another graph, that place, etc.)
         state.lastContext.lastUserQuery = cmd;
         state.lastContext.lastChartTitle = (chartData && chartData.title) ? chartData.title : (state.lastContext.lastChartTitle || '');
+        if (chartData && chartData.labels && chartData.data) {
+            state.lastContext.lastChartData = { labels: chartData.labels, data: chartData.data, title: chartData.title || '', type: chartData.type || 'bar' };
+        }
         state.lastContext.lastLocation = mapQueryUsed || state.lastContext.lastLocation || '';
         state.lastContext.lastSearchTopic = intent.query || cmd;
         state.lastContext.lastIntentActions = intent.actions || [];
@@ -1123,6 +1133,15 @@ RULES:
 
         // Render transcript (answer + findings in main UI + link as extra)
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalReply}${findingsBlock}${extraHtml}`;
+
+        // Side panel: show chart, youtube, or calendar when relevant
+        if (chartData && chartData.labels && chartData.data) {
+            renderActionInSidePanel({ action: 'chart', tool_params: chartData, text: finalReplyPlain });
+        } else if (intent.actions && intent.actions.includes('youtube')) {
+            renderActionInSidePanel({ action: 'youtube', tool_params: { query: intent.query || cmd }, text: finalReplyPlain });
+        } else if (intent.actions && intent.actions.includes('calendar')) {
+            renderActionInSidePanel({ action: 'calendar', tool_params: { title: intent.query || 'Event', time: 'now' }, text: finalReplyPlain });
+        }
 
         // Add to history and persist for next session (plain text for history/TTS)
         state.history.push({ user: cmd, blip: finalReplyPlain });
@@ -1247,6 +1266,20 @@ function tryBuildChartFromEvidence(evidence, userQuery = '') {
         }
     }
     return null;
+}
+
+/** True when the user is asking to see the graph again (e.g. "I don't see the graph", "show it again"). */
+function wantsToSeeLastGraph(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = cmd.toLowerCase().trim();
+    return /\b(don't|do not|can't|cannot)\s+see\s+(the\s+)?graph\b/.test(lower) ||
+        /\b(show|send)\s+(me\s+)?(the\s+)?graph\s+again\b/.test(lower) ||
+        /\b(show|send)\s+it\s+again\b/.test(lower) ||
+        /\bwhere'?s?\s+(the\s+)?graph\b/.test(lower) ||
+        /\bwhere\s+is\s+(the\s+)?graph\b/.test(lower) ||
+        /\b(graph|it)\s+didn't\s+show\b/.test(lower) ||
+        /\b(graph|it)\s+did\s+not\s+show\b/.test(lower) ||
+        /\b(graph\s+is\s+)?(missing|not\s+there)\b/.test(lower);
 }
 
 /** Build a short "memory" block from lastContext + recent history for better continuity. */
@@ -1609,6 +1642,97 @@ function downloadChart() {
     link.download = `blip-chart-${Date.now()}.png`;
     link.href = activeChart.toBase64Image();
     link.click();
+}
+
+/**
+ * Render action result in the side panel (chart, youtube, calendar, etc.).
+ * Call after parsing/synthesis when we have action + tool_params + text.
+ * @param {{ action: string, tool_params?: object, text?: string }} parsedResponse
+ */
+function renderActionInSidePanel(parsedResponse) {
+    const { action, tool_params = {}, text = '' } = parsedResponse;
+    if (action === 'none' || !action) return;
+
+    let sidePanel = document.getElementById('blip-side-panel');
+    if (!sidePanel) {
+        sidePanel = document.createElement('div');
+        sidePanel.id = 'blip-side-panel';
+        sidePanel.style.position = 'fixed';
+        sidePanel.style.right = '20px';
+        sidePanel.style.top = '20px';
+        sidePanel.style.width = '300px';
+        sidePanel.style.height = '400px';
+        sidePanel.style.background = '#1a1a2e';
+        sidePanel.style.border = '1px solid rgba(99, 102, 241, 0.4)';
+        sidePanel.style.borderRadius = '12px';
+        sidePanel.style.padding = '12px';
+        sidePanel.style.overflow = 'auto';
+        sidePanel.style.zIndex = '1000';
+        sidePanel.style.color = '#e4e4e7';
+        sidePanel.style.fontFamily = 'Inter, sans-serif';
+        sidePanel.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
+        document.body.appendChild(sidePanel);
+    }
+
+    const title = (action && action.length) ? action.charAt(0).toUpperCase() + action.slice(1) : 'Panel';
+    sidePanel.innerHTML = `<button type="button" aria-label="Close panel" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:#a0a0b8;cursor:pointer;font-size:1.2rem;line-height:1;">×</button><h3 style="margin:0 0 8px 0; font-size:1rem;">${title} Panel</h3><p style="margin:0 0 10px 0; font-size:0.875rem; color:#a0a0b8;">${escapeHtml(String(text).slice(0, 200))}${String(text).length > 200 ? '…' : ''}</p>`;
+
+    sidePanel.querySelector('button')?.addEventListener('click', () => {
+        sidePanel.style.display = 'none';
+        if (sidePanelChart) {
+            sidePanelChart.destroy();
+            sidePanelChart = null;
+        }
+    });
+
+    if (sidePanelChart) {
+        sidePanelChart.destroy();
+        sidePanelChart = null;
+    }
+
+    switch (action) {
+        case 'chart':
+            if (tool_params.labels && tool_params.data) {
+                const canvas = document.createElement('canvas');
+                canvas.style.width = '100%';
+                canvas.style.height = '220px';
+                sidePanel.appendChild(canvas);
+                Chart.defaults.color = '#a0a0b8';
+                Chart.defaults.font.family = 'Inter';
+                sidePanelChart = new Chart(canvas, {
+                    type: tool_params.type || 'bar',
+                    data: {
+                        labels: tool_params.labels,
+                        datasets: [{ data: tool_params.data, label: tool_params.title || 'Data', borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.6)', borderRadius: 4 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: true } },
+                        scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } }
+                    }
+                });
+            }
+            break;
+        case 'youtube':
+            if (tool_params.query) {
+                const iframe = document.createElement('iframe');
+                iframe.src = `https://www.youtube.com/results?search_query=${encodeURIComponent(tool_params.query)}`;
+                iframe.width = '100%';
+                iframe.height = '200';
+                iframe.style.border = 'none';
+                iframe.style.borderRadius = '8px';
+                sidePanel.appendChild(iframe);
+            }
+            break;
+        case 'calendar':
+            sidePanel.innerHTML += `<p style="margin:8px 0 0 0;">Event: ${escapeHtml(tool_params.title || 'Untitled')} at ${escapeHtml(tool_params.time || 'now')}</p>`;
+            break;
+        default:
+            sidePanel.innerHTML += '<p style="margin:8px 0 0 0; color:#a0a0b8;">Handling action...</p>';
+    }
+
+    sidePanel.style.display = 'block';
 }
 
 // Start Audio Visualizer (Minimal)
