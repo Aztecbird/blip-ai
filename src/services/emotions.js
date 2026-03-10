@@ -32,6 +32,13 @@ export function setBlipEmotion(emotion = "idle") {
 
   const safeEmotion = BLIP_EMOTIONS.includes(emotion) ? emotion : "idle";
   face.classList.add(`emotion-${safeEmotion}`);
+
+  // Sync mini Blip beside big video (if present)
+  const mini = document.getElementById("blip-face-mini");
+  if (mini) {
+    BLIP_EMOTIONS.forEach((name) => mini.classList.remove(`emotion-${name}`));
+    mini.classList.add(`emotion-${safeEmotion}`);
+  }
 }
 
 /**

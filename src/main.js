@@ -68,7 +68,13 @@ const gearBtn = document.getElementById('gearBtn');
 const underTheHood = document.getElementById('under-the-hood');
 const closePanelBtn = document.getElementById('closePanelBtn');
 const geminiKeyInput = document.getElementById('geminiKeyInput');
+const youtubeKeyInput = document.getElementById('youtubeKeyInput');
 const voiceEngineSelect = document.getElementById('voiceEngineSelect');
+const browserVoiceSelect = document.getElementById('browserVoiceSelect');
+const browserVoiceGroup = document.getElementById('browser-voice-group');
+const kokoroHintGroup = document.getElementById('kokoro-hint-group');
+const speechVolumeInput = document.getElementById('speechVolumeInput');
+const speechVolumeValue = document.getElementById('speechVolumeValue');
 const modelSelect = document.getElementById('modelSelect');
 
 // ── APP STATE ────────────────────────────────────────────────────────────────
@@ -82,6 +88,8 @@ const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emot
 
 let activeChart = null; // Chart.js instance
 let sidePanelChart = null; // Chart.js instance for side panel
+/** YouTube IFrame API player instance for the side panel; used to unmute when user says "Blip, unmute". */
+let blipYtPlayer = null;
 
 const HISTORY_STORAGE_KEY = 'blip_history';
 const HISTORY_MAX = 30;
@@ -98,9 +106,11 @@ const state = {
     pendingImage: null, // Base64 string
     cameraStream: null,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
+    youtubeApiKey: localStorage.getItem('blip_youtube_key') || '', // optional: for in-panel video playback (YouTube Data API v3)
     selectedModel: 'gemini-2.5-flash', // Corrected stable model
     voiceEngine: 'gemini',             // Standardized for V3.1.0
     selectedGeminiVoice: 'Kore',       // Standardized for V3.1.0
+    speechVolume: Math.min(1, Math.max(0.2, (parseFloat(localStorage.getItem('blip_speech_volume')) || 1))), // 0.2–1 in 20% steps
     hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
     idleBehavior: null, // 'dreamer', 'observer', 'squinter'
     isProjectorMode: false,
@@ -108,11 +118,18 @@ const state = {
     isListening: false,
     liveInterval: null,
     liveFrames: [], // Queue of last 5 frames [{data, mimeType}]
+    videoBigMode: false, // When true, side panel is large with mini Blip beside video
     // Working memory: what we just did (so "another graph", "there", "that" make sense)
     lastContext: {
         lastUserQuery: '',
         lastChartTitle: '',
         lastChartData: null, // { labels, data, title, type } for re-showing graph
+        lastYoutubeUrl: null,
+        lastYoutubeEmbedUrl: null,
+        lastYoutubeVideoId: null,
+        lastYoutubeSearchResults: null, // [{videoId, title}, ...] for next/skip
+        lastYoutubeQuery: null,
+        lastYoutubeSearchIndex: 0,
         lastLocation: '',
         lastSearchTopic: '',
         lastIntentActions: []
@@ -166,18 +183,44 @@ async function init() {
             }
         } catch (e) { state.history = []; }
 
-        // Load voices
+        // Load voices and prefer a nicer-sounding browser voice when using Browser Default
         const voices = await speech.init();
         if (voiceSelect && voices.length) {
-            voiceSelect.innerHTML = voices
-                .filter(v => v.lang.startsWith('en'))
+            const enVoices = voices.filter((v) => v.lang && v.lang.startsWith('en'));
+            voiceSelect.innerHTML = enVoices
                 .map((v, i) => `<option value="${i}">${v.name}</option>`)
                 .join('');
-
-            state.selectedVoice = voices[0];
+            state.selectedVoice = speech.getPreferredVoice?.() || enVoices[0] || voices[0];
+            const idx = enVoices.indexOf(state.selectedVoice);
+            if (idx >= 0 && voiceSelect.options[idx]) voiceSelect.selectedIndex = idx;
             voiceSelect.onchange = (e) => {
-                state.selectedVoice = voices[parseInt(e.target.value)];
+                state.selectedVoice = enVoices[parseInt(e.target.value, 10)];
             };
+        }
+        // Browser voice dropdown in Settings (when Voice = Browser Default)
+        if (browserVoiceSelect && speech.voices.length) {
+            const enVoicesList = speech.voices.filter((v) => v.lang && v.lang.startsWith('en'));
+            browserVoiceSelect.innerHTML = enVoicesList
+                .map((v, i) => `<option value="${i}">${v.name}</option>`)
+                .join('');
+            const preferredIdx = enVoicesList.indexOf(state.selectedVoice || speech.getPreferredVoice?.());
+            if (preferredIdx >= 0) browserVoiceSelect.selectedIndex = preferredIdx;
+            browserVoiceSelect.onchange = () => {
+                state.selectedVoice = enVoicesList[parseInt(browserVoiceSelect.value, 10)];
+            };
+        }
+        if (browserVoiceGroup && voiceEngineSelect) {
+            if (voiceEngineSelect.value) state.voiceEngine = voiceEngineSelect.value;
+            const updateBrowserVoiceVisibility = () => {
+                const engine = voiceEngineSelect.value;
+                browserVoiceGroup.style.display = engine === 'web' ? 'block' : 'none';
+                if (kokoroHintGroup) kokoroHintGroup.style.display = engine === 'kokoro' ? 'block' : 'none';
+            };
+            updateBrowserVoiceVisibility();
+            voiceEngineSelect.addEventListener('change', () => {
+                state.voiceEngine = voiceEngineSelect.value;
+                updateBrowserVoiceVisibility();
+            });
         }
 
         // Kokoro voice selector
@@ -189,17 +232,46 @@ async function init() {
 
         // Initialize UI
         geminiKeyInput.value = state.geminiKey;
+        if (youtubeKeyInput) youtubeKeyInput.value = state.youtubeApiKey;
 
         const saveKey = (e) => {
             state.geminiKey = e.target.value.trim();
             localStorage.setItem('blip_gemini_key', state.geminiKey);
             console.log('🔐 Access Key updated');
         };
+        const saveYoutubeKey = (e) => {
+            if (!youtubeKeyInput) return;
+            state.youtubeApiKey = e.target.value.trim();
+            localStorage.setItem('blip_youtube_key', state.youtubeApiKey);
+            console.log('🔐 YouTube API key updated');
+        };
 
         // Persistence Fix: Listen to multiple events to ensure it saves on mobile
         geminiKeyInput.oninput = saveKey;
         geminiKeyInput.onchange = saveKey;
         geminiKeyInput.onblur = saveKey;
+        if (youtubeKeyInput) {
+            youtubeKeyInput.oninput = saveYoutubeKey;
+            youtubeKeyInput.onchange = saveYoutubeKey;
+            youtubeKeyInput.onblur = saveYoutubeKey;
+        }
+
+        // Blip volume (20% steps)
+        if (speechVolumeInput && speechVolumeValue) {
+            const pct = Math.round(state.speechVolume * 100);
+            const step = Math.min(100, Math.max(20, Math.round(pct / 20) * 20));
+            state.speechVolume = step / 100;
+            speechVolumeInput.value = step;
+            speechVolumeValue.textContent = step + '%';
+            const saveVolume = () => {
+                const val = parseInt(speechVolumeInput.value, 10);
+                state.speechVolume = val / 100;
+                localStorage.setItem('blip_speech_volume', state.speechVolume);
+                speechVolumeValue.textContent = val + '%';
+            };
+            speechVolumeInput.oninput = saveVolume;
+            speechVolumeInput.onchange = saveVolume;
+        }
 
         // Standardized Voice Engine Toggles (simplified)
         updateVoiceToggles();
@@ -548,7 +620,7 @@ function cancelInteraction() {
 function stopApp() {
     state.isActive = false;
     state.history = [];
-    state.lastContext = { lastUserQuery: '', lastChartTitle: '', lastChartData: null, lastLocation: '', lastSearchTopic: '', lastIntentActions: [] };
+    state.lastContext = { lastUserQuery: '', lastChartTitle: '', lastChartData: null, lastYoutubeUrl: null, lastYoutubeEmbedUrl: null, lastYoutubeVideoId: null, lastYoutubeSearchResults: null, lastYoutubeQuery: null, lastYoutubeSearchIndex: 0, lastLocation: '', lastSearchTopic: '', lastIntentActions: [] };
     contextAgent.reset();
     document.body.classList.remove('reduce-motion');
     try { localStorage.removeItem(HISTORY_STORAGE_KEY); } catch (e) { }
@@ -709,8 +781,14 @@ const actionHandlers = {
 
     youtube: async (res) => {
         if (!res.tool_params?.query) return { text: res.text };
-        const result = await web.searchYouTube(res.tool_params.query);
-        addToHub('link', `🎬 YouTube: ${res.tool_params.query}`, { url: result.url });
+        const result = await web.searchYouTube(res.tool_params.query, state.youtubeApiKey);
+        state.lastContext.lastYoutubeUrl = result.watchUrl || result.url;
+        state.lastContext.lastYoutubeEmbedUrl = result.embedUrl || null;
+        state.lastContext.lastYoutubeVideoId = result.videoId || null;
+        state.lastContext.lastYoutubeSearchResults = result.searchResults || null;
+        state.lastContext.lastYoutubeQuery = res.tool_params.query;
+        state.lastContext.lastYoutubeSearchIndex = 0;
+        addToHub('link', `🎬 YouTube: ${res.tool_params.query}`, { url: result.watchUrl || result.url });
         document.body.classList.add('projecting-visual');
         return { text: `${res.text} ${result.text}`, extraHtml: `<br>${result.html}` };
     },
@@ -883,6 +961,8 @@ async function handleCommand(text) {
 
     if (!cmd) return;
 
+    if (isPraise(cmd)) triggerBlipParty();
+
     state.isThinking = true;
     speech.stopListening();
 
@@ -902,6 +982,95 @@ async function handleCommand(text) {
     try {
         const images = state.pendingImage ? [state.pendingImage] : [];
         if (state.isLiveWatch && state.liveFrames.length > 0) images.push(...state.liveFrames);
+
+        // Voice shortcuts: YouTube panel controls (unmute, mute, close, pause, play, rewind, next, new video)
+        const ytCmd = getYouTubeVoiceCommand(cmd);
+        if (ytCmd) {
+            face.classList.remove('thinking');
+            let msg = '';
+            if (ytCmd === 'unmute' && blipYtPlayer) {
+                unmuteYouTubePlayer();
+                msg = 'Sound on!';
+            } else if (ytCmd === 'mute' && blipYtPlayer) {
+                muteYouTubePlayer();
+                msg = 'Muted.';
+            } else if (ytCmd === 'close' || ytCmd === 'new') {
+                closeYouTubePanel();
+                if (ytCmd === 'new') {
+                    state.lastContext.lastYoutubeQuery = null;
+                    state.lastContext.lastYoutubeSearchResults = null;
+                    state.lastContext.lastYoutubeSearchIndex = 0;
+                }
+                msg = ytCmd === 'close' ? 'Video closed.' : "Closed. Ask me for a new video whenever you're ready.";
+            } else if (ytCmd === 'pause' && blipYtPlayer) {
+                pauseYouTubePlayer();
+                msg = 'Paused.';
+            } else if (ytCmd === 'play' && blipYtPlayer) {
+                playYouTubePlayer();
+                msg = 'Playing.';
+            } else if (ytCmd === 'rewind' && blipYtPlayer) {
+                rewindYouTubePlayer();
+                msg = 'Rewound 30 seconds.';
+            } else if (ytCmd === 'restart' && blipYtPlayer) {
+                restartYouTubePlayer();
+                msg = 'From the beginning.';
+            } else if ((ytCmd === 'videoBig' || ytCmd === 'videoSmall') && document.getElementById('blip-side-panel')?.style.display !== 'none') {
+                setVideoBigMode(ytCmd === 'videoBig');
+                msg = ytCmd === 'videoBig' ? 'Video bigger.' : 'Video smaller.';
+            } else if (ytCmd === 'next' && blipYtPlayer) {
+                const ok = nextYouTubeVideo();
+                msg = ok ? 'Next video.' : "No other videos in this search. Ask for a new topic.";
+            }
+            if (msg) {
+                transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+                state.history.push({ user: cmd, blip: msg });
+                if (state.history.length > HISTORY_MAX) state.history.shift();
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                setBlipEmotion('happy');
+                setPersona('happy');
+                talkBtn.innerText = '🔊 SPEAKING...';
+                await speak(msg, 'happy');
+                return;
+            }
+        }
+
+        // Voice shortcut: Blip speech volume — down 25%, up 5%
+        const volCmd = getVolumeVoiceCommand(cmd);
+        if (volCmd) {
+            face.classList.remove('thinking');
+            if (volCmd === 'down') state.speechVolume = Math.max(0.2, state.speechVolume - 0.25);
+            else state.speechVolume = Math.min(1, state.speechVolume + 0.05);
+            state.speechVolume = Math.round(state.speechVolume * 100) / 100;
+            if (speechVolumeInput) speechVolumeInput.value = Math.round(state.speechVolume * 100);
+            if (speechVolumeValue) speechVolumeValue.textContent = Math.round(state.speechVolume * 100) + '%';
+            try { localStorage.setItem('blip_speech_volume', String(state.speechVolume)); } catch (e) { }
+            const msg = `Volume ${Math.round(state.speechVolume * 100)}%.`;
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+            state.history.push({ user: cmd, blip: msg });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            setBlipEmotion('happy');
+            setPersona('happy');
+            talkBtn.innerText = '🔊 SPEAKING...';
+            await speak(msg, 'happy');
+            return;
+        }
+
+        // Voice shortcut: "show me the video" / "play the video" → open last YouTube without clicking
+        if (wantsToSeeLastVideo(cmd) && state.lastContext.lastYoutubeUrl) {
+            face.classList.remove('thinking');
+            window.open(state.lastContext.lastYoutubeUrl, '_blank');
+            const msg = "Opening the video for you again!";
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+            state.history.push({ user: cmd, blip: msg });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            setBlipEmotion('happy');
+            setPersona('happy');
+            talkBtn.innerText = '🔊 SPEAKING...';
+            await speak(msg, 'happy');
+            return;
+        }
 
         // Optional: keyword-based reasoning loop for audience/demographic/behavior/market questions
         const lowerInput = (cmd || "").toLowerCase();
@@ -1138,7 +1307,12 @@ RULES:
         if (chartData && chartData.labels && chartData.data) {
             renderActionInSidePanel({ action: 'chart', tool_params: chartData, text: finalReplyPlain });
         } else if (intent.actions && intent.actions.includes('youtube')) {
-            renderActionInSidePanel({ action: 'youtube', tool_params: { query: intent.query || cmd }, text: finalReplyPlain });
+            const ytUrl = state.lastContext.lastYoutubeUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(intent.query || cmd)}`;
+            const embedUrl = state.lastContext.lastYoutubeEmbedUrl || null;
+            const videoId = state.lastContext.lastYoutubeVideoId || null;
+            const searchResults = state.lastContext.lastYoutubeSearchResults || null;
+            try { window.open(ytUrl, '_blank'); } catch (e) { /* popup blocked */ }
+            renderActionInSidePanel({ action: 'youtube', tool_params: { query: intent.query || cmd, url: ytUrl, embedUrl, videoId, searchResults }, text: finalReplyPlain });
         } else if (intent.actions && intent.actions.includes('calendar')) {
             renderActionInSidePanel({ action: 'calendar', tool_params: { title: intent.query || 'Event', time: 'now' }, text: finalReplyPlain });
         }
@@ -1268,6 +1442,196 @@ function tryBuildChartFromEvidence(evidence, userQuery = '') {
     return null;
 }
 
+/** True when the user wants to unmute the YouTube panel video (e.g. "unmute", "Blip unmute", "turn on sound"). */
+function wantsUnmuteVideo(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = cmd.toLowerCase().trim();
+    return /\bunmute\b/.test(lower) ||
+        /\bturn\s+on\s+(the\s+)?sound\b/.test(lower) ||
+        /\b(enable|turn\s+on)\s+audio\b/.test(lower) ||
+        /\b(with\s+)?sound\s+on\b/.test(lower) ||
+        /^(ok|yes|play)\s*$/.test(lower);
+}
+
+/** Unmute the current YouTube panel player via IFrame API. */
+function unmuteYouTubePlayer() {
+    if (!blipYtPlayer || typeof blipYtPlayer.unMute !== 'function') return;
+    try {
+        blipYtPlayer.unMute();
+        blipYtPlayer.setVolume(100);
+    } catch (e) {
+        console.warn('YouTube unmute failed:', e.message);
+    }
+}
+
+/** Mute the current YouTube panel player. */
+function muteYouTubePlayer() {
+    if (!blipYtPlayer || typeof blipYtPlayer.mute !== 'function') return;
+    try { blipYtPlayer.mute(); } catch (e) { console.warn('YouTube mute failed:', e.message); }
+}
+
+/** Close the YouTube side panel and destroy the player. */
+function closeYouTubePanel() {
+    const sidePanel = document.getElementById('blip-side-panel');
+    if (sidePanel) sidePanel.style.display = 'none';
+    if (blipYtPlayer && typeof blipYtPlayer.destroy === 'function') {
+        try { blipYtPlayer.destroy(); } catch (e) {}
+        blipYtPlayer = null;
+    }
+}
+
+/** YT.PlayerState: unstarted=-1, ended=0, playing=1, paused=2, buffering=3, cued=5 */
+function getYouTubePlayerState() {
+    if (!blipYtPlayer || typeof blipYtPlayer.getPlayerState !== 'function') return -1;
+    try { return blipYtPlayer.getPlayerState(); } catch (e) { return -1; }
+}
+
+/** Pause the current YouTube panel player (only when actually playing to avoid glitches). */
+function pauseYouTubePlayer() {
+    if (!blipYtPlayer || typeof blipYtPlayer.pauseVideo !== 'function') return;
+    if (getYouTubePlayerState() !== 1) return; // 1 = playing
+    try { blipYtPlayer.pauseVideo(); } catch (e) { console.warn('YouTube pause failed:', e.message); }
+}
+
+/** Play the current YouTube panel player (after pause). */
+function playYouTubePlayer() {
+    if (!blipYtPlayer || typeof blipYtPlayer.playVideo !== 'function') return;
+    try { blipYtPlayer.playVideo(); } catch (e) { console.warn('YouTube play failed:', e.message); }
+}
+
+/** Rewind the current video (back 30 seconds). */
+function rewindYouTubePlayer() {
+    if (!blipYtPlayer || typeof blipYtPlayer.getCurrentTime !== 'function') return;
+    try {
+        const t = blipYtPlayer.getCurrentTime();
+        blipYtPlayer.seekTo(Math.max(0, t - 30), true);
+    } catch (e) { console.warn('YouTube rewind failed:', e.message); }
+}
+
+/** Restart the current video from the beginning (seek to 0 then play to avoid stuck-pause glitch). */
+function restartYouTubePlayer() {
+    if (!blipYtPlayer || typeof blipYtPlayer.seekTo !== 'function') return;
+    try {
+        blipYtPlayer.seekTo(0, true);
+        setTimeout(() => {
+            if (blipYtPlayer && typeof blipYtPlayer.playVideo === 'function') blipYtPlayer.playVideo();
+        }, 80);
+    } catch (e) { console.warn('YouTube restart failed:', e.message); }
+}
+
+/** Toggle or set big-video mode: video expands and a small Blip appears beside it. */
+function setVideoBigMode(big) {
+    const sidePanel = document.getElementById('blip-side-panel');
+    const miniWrap = sidePanel?.querySelector('.blip-mini-wrap');
+    if (!sidePanel || !miniWrap) return;
+
+    state.videoBigMode = !!big;
+    const btn = document.getElementById('blip-video-big-btn');
+    if (btn) btn.textContent = state.videoBigMode ? '◱ Small' : '⛶ Big';
+
+    if (state.videoBigMode) {
+        sidePanel.classList.add('blip-video-big');
+        if (!miniWrap.querySelector('#blip-face-mini') && faceContainer) {
+            const clone = faceContainer.cloneNode(true);
+            clone.classList.remove('blip-party');
+            const faceEl = clone.querySelector('#blip-face');
+            if (faceEl) {
+                faceEl.id = 'blip-face-mini';
+                faceEl.classList.add('blip-face-mini');
+            }
+            miniWrap.innerHTML = '';
+            miniWrap.appendChild(clone);
+            syncMiniBlipEmotion();
+        }
+    } else {
+        sidePanel.classList.remove('blip-video-big');
+        miniWrap.innerHTML = '';
+    }
+}
+
+/** Copy current emotion from main face to mini face (used when big video mode is on). */
+function syncMiniBlipEmotion() {
+    const mini = document.getElementById('blip-face-mini');
+    if (!face || !mini) return;
+    const emotionClass = Array.from(face.classList).find(c => c.startsWith('emotion-'));
+    if (emotionClass) {
+        mini.classList.remove(...Array.from(mini.classList).filter(c => c.startsWith('emotion-')));
+        mini.classList.add(emotionClass);
+    }
+}
+
+/** Skip to next video from last search results (cycles through up to 5). */
+function nextYouTubeVideo() {
+    const results = state.lastContext.lastYoutubeSearchResults;
+    if (!results || results.length === 0 || !blipYtPlayer || typeof blipYtPlayer.loadVideoById !== 'function') return false;
+    const idx = (state.lastContext.lastYoutubeSearchIndex + 1) % results.length;
+    state.lastContext.lastYoutubeSearchIndex = idx;
+    const next = results[idx];
+    if (!next || !next.videoId) return false;
+    try {
+        blipYtPlayer.loadVideoById(next.videoId);
+        state.lastContext.lastYoutubeVideoId = next.videoId;
+        state.lastContext.lastYoutubeUrl = `https://www.youtube.com/watch?v=${next.videoId}`;
+    } catch (e) {
+        console.warn('YouTube next failed:', e.message);
+        return false;
+    }
+    return true;
+}
+
+/** True if the user is giving a YouTube panel control command (mute, close, pause, etc.). */
+function getYouTubeVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = cmd.toLowerCase().trim();
+    if (/\bunmute\b/.test(lower) || /\bturn\s+on\s+(the\s+)?sound\b/.test(lower) || /\b(with\s+)?sound\s+on\b/.test(lower) || /^(ok|yes|play)\s*$/.test(lower)) return 'unmute';
+    if (/\bmute\b/.test(lower) || /\bturn\s+off\s+(the\s+)?sound\b/.test(lower) || /\bsound\s+off\b/.test(lower)) return 'mute';
+    if (/\bclose\s+(the\s+)?(video|panel)\b/.test(lower) || /\bstop\s+(the\s+)?video\b/.test(lower) || /\b(exit|done)\s+(with\s+)?(the\s+)?video\b/.test(lower)) return 'close';
+    if (/\bskip\b/.test(lower) || /\bnext\s+(video|one)\b/.test(lower) || /\b(another|different)\s+video\b/.test(lower)) return 'next';
+    if (/\bnew\s+video\b/.test(lower) || /\bchange\s+(subject|video|topic)\b/.test(lower)) return 'new';
+    if (/\bpause\s+(the\s+)?video\b/.test(lower) || /\bpause\b/.test(lower) && (lower.includes('video') || lower.length < 10)) return 'pause';
+    if (/\bplay\s+(the\s+)?video\b/.test(lower) || /^play\s*$/.test(lower)) return 'play';
+    if (/\b(start\s+over|from\s+the\s+beginning|restart)\b/.test(lower)) return 'restart';
+    if (/\b(make\s+)?(the\s+)?video\s+bigger\b/.test(lower) || /\bbigger\s+video\b/.test(lower) || /\bexpand\s+(the\s+)?video\b/.test(lower) || /\blarge\s+video\b/.test(lower)) return 'videoBig';
+    if (/\b(make\s+)?(the\s+)?video\s+smaller\b/.test(lower) || /\bsmall(er)?\s+video\b/.test(lower)) return 'videoSmall';
+    if (/\brewind\b/.test(lower) || /\bgo\s+back\b/.test(lower) || /\breplay\b/.test(lower)) return 'rewind';
+    return null;
+}
+
+/** Blip speech volume voice command: 'volume down' (25% down) or 'volume up' (5% up). */
+function getVolumeVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = cmd.toLowerCase().trim();
+    if (/\b(volume\s+down|turn\s+down\s+(the\s+)?volume|quieter|lower\s+(the\s+)?volume)\b/.test(lower)) return 'down';
+    if (/\b(volume\s+up|turn\s+up\s+(the\s+)?volume|louder|higher\s+(the\s+)?volume)\b/.test(lower)) return 'up';
+    return null;
+}
+
+/** Call callback when YouTube IFrame API is ready. Uses script already loaded from index.html. */
+function ensureYouTubeAPI(callback) {
+    if (typeof window.YT !== 'undefined' && window.YT.Player) {
+        callback();
+        return;
+    }
+    window.blipYtReadyCallbacks = window.blipYtReadyCallbacks || [];
+    window.blipYtReadyCallbacks.push(callback);
+    if (window.blipYtReadyCallbacks.length > 1) return;
+    window.onYouTubeIframeAPIReady = function () {
+        (window.blipYtReadyCallbacks || []).forEach(cb => cb());
+        window.blipYtReadyCallbacks = [];
+    };
+}
+
+/** True when the user is asking to see the last video again (e.g. "show me the video", "play the video"). */
+function wantsToSeeLastVideo(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = cmd.toLowerCase().trim();
+    return /\b(show|play|open)\s+(me\s+)?(the\s+)?video\b/.test(lower) ||
+        /\b(show|play)\s+it\s+again\b/.test(lower) ||
+        /\b(show|play)\s+(the\s+)?video\s+again\b/.test(lower) ||
+        /\bwhere'?s?\s+(the\s+)?video\b/.test(lower) ||
+        /\bopen\s+(the\s+)?video\b/.test(lower);
+}
+
 /** True when the user is asking to see the graph again (e.g. "I don't see the graph", "show it again"). */
 function wantsToSeeLastGraph(cmd) {
     if (!cmd || typeof cmd !== 'string') return false;
@@ -1333,26 +1697,47 @@ async function speak(text, emotion = 'serious') {
     }[emotion] || { pitch: 1, rate: 1 };
 
     if (state.voiceEngine === 'gemini') {
-        if (!state.geminiKey && !isGitHub) {
-            console.warn('Gemini key missing for cloud voice, falling back to browser');
-            transcriptText.innerHTML += `<br><small style="color:#f59e0b">⚠️ Enter 1234/API Key for Cloud Voice</small>`;
-            return speech.speak(text, { ...cfg, onBoundary: animateMouth });
+        if (!state.geminiKey || !state.geminiKey.trim()) {
+            if (!isGitHub) {
+                console.warn('Gemini key missing for cloud voice, falling back to browser');
+                transcriptText.innerHTML += `<br><small style="color:#f59e0b">⚠️ Use the <strong>Gemini API Key</strong> (first field in Settings) for voice — not the YouTube key.</small>`;
+            }
+            return speech.speak(text, { ...cfg, onBoundary: animateMouth, volume: state.speechVolume });
         }
         try {
             console.log('☁️ Using Gemini Cloud Voice (Kore)');
             const voiceName = 'Kore';
             const audioData = await generateSpeech(text, state.geminiKey, voiceName);
-            return speech.playBase64Audio(audioData, { onBoundary: animateMouth });
+            return speech.playBase64Audio(audioData, { onBoundary: animateMouth, volume: state.speechVolume });
         } catch (e) {
             console.warn('Gemini voice failed, falling back:', e.message);
-            return speech.speak(text, { ...cfg, onBoundary: animateMouth });
+            if (!isGitHub && transcriptText && !transcriptText.innerHTML.includes('Voice failed') && !transcriptText.innerHTML.includes('voice limit')) {
+                const isQuota = /quota|exceeded|rate.limit|retry in|generate_requests_per_model/.test(String(e.message || '').toLowerCase());
+                let retryHint = '';
+                const retryMatch = String(e.message || '').match(/[Pp]lease retry in (\d+h)?(\d+m)?[\d.]*s?/);
+                if (retryMatch) {
+                    const h = retryMatch[1] ? parseInt(retryMatch[1], 10) : 0;
+                    const m = retryMatch[2] ? parseInt(retryMatch[2], 10) : 0;
+                    if (h >= 1) retryHint = ` Try again in about ${h} ${h === 1 ? 'hour' : 'hours'}.`;
+                    else if (m >= 1) retryHint = ` Try again in ${m} ${m === 1 ? 'minute' : 'minutes'}.`;
+                    else retryHint = ' Try again in a little while.';
+                }
+                const msg = isQuota
+                    ? `Gemini voice limit reached for today (about 100/day). Using browser voice.${retryHint} Or use <strong>Settings → Voice → Browser Default</strong> to skip Gemini voice.`
+                    : `Voice failed: ${escapeHtml(e.message)}. Check that the <strong>Gemini API Key</strong> (first field) is correct — not the YouTube key.`;
+                transcriptText.innerHTML += `<br><small style="color:#f59e0b">⚠️ ${msg}</small>`;
+            }
+            const fallbackVoice = state.selectedVoice || speech.getPreferredVoice?.();
+            return speech.speak(text, { ...cfg, voice: fallbackVoice, onBoundary: animateMouth, volume: state.speechVolume });
         }
     }
 
+    const voice = state.selectedVoice || speech.getPreferredVoice?.();
     return speech.speak(text, {
-        voice: state.selectedVoice,
+        voice,
         ...cfg,
-        onBoundary: (level) => animateMouth(level)
+        onBoundary: (level) => animateMouth(level),
+        volume: state.speechVolume
     });
 }
 
@@ -1547,6 +1932,37 @@ function spawnSymbol(typeOrEmoji) {
     setTimeout(() => symbol.remove(), 2000);
 }
 
+/** True if the user message is praise (e.g. "good job", "well done", "thanks"). */
+function isPraise(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = cmd.toLowerCase().trim();
+    return /\b(good\s+job|great\s+job|nice\s+job|well\s+done|good\s+work|nice\s+work)\b/.test(lower) ||
+        /\b(thanks|thank\s+you|thx)\b/.test(lower) ||
+        /\b(awesome|amazing|excellent|fantastic|brilliant)\b/.test(lower) ||
+        /\b(you('re|\s+are)\s+the\s+best|love\s+you\s+blip)\b/.test(lower) ||
+        /^(good|great|nice|yes!?|perfect)\s*!?\s*$/.test(lower);
+}
+
+/** Short party animation when user praises Blip: face wiggle + confetti dots. */
+function triggerBlipParty() {
+    if (!faceContainer) return;
+    faceContainer.classList.add('blip-party');
+    setTimeout(() => faceContainer.classList.remove('blip-party'), 1000);
+
+    const container = document.getElementById('floating-symbols');
+    if (!container) return;
+    const colors = ['#f43f5e', '#8b5cf6', '#10b981', '#f59e0b', '#6366f1', '#ec4899'];
+    for (let i = 0; i < 12; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'blip-confetti';
+        dot.style.left = Math.random() * 100 + '%';
+        dot.style.top = (10 + Math.random() * 30) + '%';
+        dot.style.background = colors[i % colors.length];
+        container.appendChild(dot);
+        setTimeout(() => dot.remove(), 1200);
+    }
+}
+
 function animateMouth(level) {
     if (state.currentEmotion === 'surprised') return;
     mouth.style.height = `${6 + (level * 35)}px`;
@@ -1658,11 +2074,11 @@ function renderActionInSidePanel(parsedResponse) {
         sidePanel = document.createElement('div');
         sidePanel.id = 'blip-side-panel';
         sidePanel.style.position = 'fixed';
-        sidePanel.style.right = '20px';
-        sidePanel.style.top = '20px';
-        sidePanel.style.width = '300px';
-        sidePanel.style.height = '400px';
-        sidePanel.style.background = '#1a1a2e';
+        sidePanel.style.right = '32px';
+        sidePanel.style.top = '120px'; // keep clear of Blip's face/header
+        sidePanel.style.width = '280px';
+        sidePanel.style.height = '340px';
+        sidePanel.style.background = 'rgba(10, 10, 30, 0.96)';
         sidePanel.style.border = '1px solid rgba(99, 102, 241, 0.4)';
         sidePanel.style.borderRadius = '12px';
         sidePanel.style.padding = '12px';
@@ -1714,17 +2130,73 @@ function renderActionInSidePanel(parsedResponse) {
                 });
             }
             break;
-        case 'youtube':
-            if (tool_params.query) {
-                const iframe = document.createElement('iframe');
-                iframe.src = `https://www.youtube.com/results?search_query=${encodeURIComponent(tool_params.query)}`;
-                iframe.width = '100%';
-                iframe.height = '200';
-                iframe.style.border = 'none';
-                iframe.style.borderRadius = '8px';
-                sidePanel.appendChild(iframe);
+        // YouTube: Muted autoplay is the only zero-click option (browser policy). Sound via "Blip, unmute" (one verbal confirmation → JS unmute). Full sound autoplay without gesture is blocked.
+        case 'youtube': {
+            let videoId = tool_params.videoId || null;
+            if (!videoId && tool_params.embedUrl) {
+                const m = tool_params.embedUrl.match(/\/embed\/([^?&]+)/);
+                if (m) videoId = m[1];
+            }
+            const queryLabel = escapeHtml(String(tool_params.query || 'video'));
+            const searchUrl = tool_params.url || `https://www.youtube.com/results?search_query=${encodeURIComponent(tool_params.query || '')}`;
+            if (blipYtPlayer && blipYtPlayer.destroy) {
+                try { blipYtPlayer.destroy(); } catch (e) {}
+                blipYtPlayer = null;
+            }
+            if (videoId) {
+                state.videoBigMode = false;
+                sidePanel.classList.remove('blip-video-big');
+                sidePanel.innerHTML = `
+                    <button type="button" aria-label="Close panel" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:#a0a0b8;cursor:pointer;font-size:1.2rem;line-height:1;">×</button>
+                    <button type="button" aria-label="Big video" id="blip-video-big-btn" style="position:absolute;top:8px;right:36px;background:rgba(255,255,255,0.1);border:none;color:#a0a0b8;cursor:pointer;font-size:0.9rem;padding:4px 8px;border-radius:6px;">⛶ Big</button>
+                    <div class="blip-yt-layout">
+                        <div class="blip-yt-video">
+                            <h3 style="margin:0 0 8px 0; font-size:1rem;">Playing: ${queryLabel}</h3>
+                            <p style="margin:0 0 10px 0; font-size:0.875rem; color:#a0a0b8;">Video starts muted. Say "unmute" or tap for sound.</p>
+                            <div id="blip-yt-player" style="width:100%;height:200px;margin-top:8px;"></div>
+                        </div>
+                        <div class="blip-mini-wrap" aria-hidden="true"></div>
+                    </div>
+                `;
+                sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
+                    sidePanel.style.display = 'none';
+                    setVideoBigMode(false);
+                });
+                document.getElementById('blip-video-big-btn')?.addEventListener('click', () => {
+                    setVideoBigMode(!state.videoBigMode);
+                });
+                ensureYouTubeAPI(() => {
+                    try {
+                        blipYtPlayer = new window.YT.Player('blip-yt-player', {
+                            videoId: videoId,
+                            playerVars: { autoplay: 1, mute: 1, enablejsapi: 1, rel: 0, modestbranding: 1 },
+                            events: { onReady: (e) => e.target.playVideo() }
+                        });
+                    } catch (e) {
+                        console.warn('YT.Player failed, using fallback iframe:', e.message);
+                        const fallback = document.getElementById('blip-yt-player');
+                        if (fallback) {
+                            fallback.innerHTML = '<iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&mute=1" width="100%" height="200" allow="autoplay; encrypted-media" style="border:none;"></iframe>';
+                        }
+                    }
+                });
+                try { window.open('https://www.youtube.com/watch?v=' + videoId, '_blank'); } catch (e) {}
+            } else {
+                sidePanel.innerHTML = `
+                    <button type="button" aria-label="Close panel" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:#a0a0b8;cursor:pointer;font-size:1.2rem;line-height:1;">×</button>
+                    <h3 style="margin:0 0 8px 0; font-size:1rem;">YouTube: ${queryLabel}</h3>
+                    <p style="margin:0 0 10px 0; font-size:0.875rem; color:#a0a0b8;">I've opened the search in a new tab. Add a <strong>YouTube API key</strong> in Settings to play the right video here.</p>
+                    <a href="${searchUrl}" target="_blank" rel="noopener" id="blip-yt-link" style="display:inline-block;margin-top:8px;padding:8px 12px;background:rgba(239,68,68,0.2);color:#f87171;border-radius:8px;text-decoration:none;font-size:0.875rem;">🎬 Open YouTube search</a>
+                `;
+                sidePanel.querySelector('button')?.addEventListener('click', () => {
+                    sidePanel.style.display = 'none';
+                });
+                try { window.open(searchUrl, '_blank'); } catch (e) {}
+                const linkEl = sidePanel.querySelector('#blip-yt-link');
+                if (linkEl) setTimeout(() => { try { linkEl.click(); } catch (e) {} }, 150);
             }
             break;
+        }
         case 'calendar':
             sidePanel.innerHTML += `<p style="margin:8px 0 0 0;">Event: ${escapeHtml(tool_params.title || 'Untitled')} at ${escapeHtml(tool_params.time || 'now')}</p>`;
             break;

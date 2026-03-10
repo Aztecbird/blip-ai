@@ -75,7 +75,7 @@ Symbols:
 Include a symbol if it matches the vibe or intent of your reply.
 
 Actions & tool_params:
-- youtube: {"query":""}
+- youtube: {"query":"", "videoId": "optional - use when you know a specific video ID (e.g. famous songs, viral clips)"}
 - search: {"query":""}
 - weather: {"location":""}
 - currency: {"from":"", "to":""}
@@ -184,7 +184,7 @@ You must always respond in valid JSON format:
 }
 
 Actions & tool_params:
-- youtube: {"query":""}
+- youtube: {"query":"", "videoId": "optional - use when you know a specific video ID (e.g. famous songs, viral clips)"}
 - search: {"query":""}
 - weather: {"location":""}
 - currency: {"from":"", "to":""}
@@ -246,7 +246,7 @@ Prioritize practicality:
 - For graphs/comparisons: Use 'chart' action with data.
 - For help/explanations: Use 'search' if info needed, or direct text.
 - For calendars/reminders: Use 'calendar' or 'timer'.
-- For videos: Use 'youtube' and mention "Check the side panel for the video."
+- For videos: Use 'youtube'; include "videoId" in tool_params when you know a specific video (e.g. famous songs, viral clips) so the app can play it directly; otherwise provide "query". Say the app opens YouTube for them. They can say: "unmute" / "mute", "pause" / "play", "rewind", "next video", "close video", "new video", or "from the beginning".
 - For writing (letters, emails): Generate draft in 'text', or search for templates.
 `;
 }

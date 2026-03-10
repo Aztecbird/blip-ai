@@ -56,6 +56,18 @@ class SpeechService {
         return browserVoices;
     }
 
+    /** Pick a nicer-sounding browser voice when available (Google, Samantha, Daniel, etc.). */
+    getPreferredVoice() {
+        const en = this.voices.filter((v) => v.lang && v.lang.startsWith('en'));
+        if (!en.length) return null;
+        const prefer = ['Google', 'Samantha', 'Daniel', 'Karen', 'Microsoft', 'Fiona', 'Alex', 'Moira', 'Victoria', 'Kate', 'Google US', 'Microsoft Zira'];
+        for (const p of prefer) {
+            const v = en.find((x) => x.name && x.name.includes(p));
+            if (v) return v;
+        }
+        return en.find((v) => v.lang.startsWith('en-US')) || en[0];
+    }
+
     async checkKokoroStatus() {
         try {
             const res = await fetch(`${KOKORO_URL}/health`, { signal: AbortSignal.timeout(3000) });
@@ -110,10 +122,15 @@ class SpeechService {
         if (!this._audioCtx) this._audioCtx = new AudioContext();
         const audioBuffer = await this._audioCtx.decodeAudioData(arrayBuffer);
 
+        const volume = Math.min(1, Math.max(0, options.volume ?? 1));
+        const gainNode = this._audioCtx.createGain();
+        gainNode.gain.value = volume;
+        gainNode.connect(this._audioCtx.destination);
+
         return new Promise((resolve) => {
             const source = this._audioCtx.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(this._audioCtx.destination);
+            source.connect(gainNode);
 
             // Animate mouth while speaking
             const interval = setInterval(() => {
@@ -140,6 +157,7 @@ class SpeechService {
             if (options.voice) utter.voice = options.voice;
             utter.pitch = options.pitch || 1;
             utter.rate = options.rate || 1;
+            utter.volume = Math.min(1, Math.max(0, options.volume ?? 1));
 
             const interval = setInterval(() => {
                 if (options.onBoundary) options.onBoundary(0.3 + Math.random() * 0.6);
@@ -206,10 +224,15 @@ class SpeechService {
         const audioBuffer = this._audioCtx.createBuffer(1, float32Array.length, sampleRate);
         audioBuffer.getChannelData(0).set(float32Array);
 
+        const volume = Math.min(1, Math.max(0, options.volume ?? 1));
+        const gainNode = this._audioCtx.createGain();
+        gainNode.gain.value = volume;
+        gainNode.connect(this._audioCtx.destination);
+
         return new Promise((resolve) => {
             const source = this._audioCtx.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(this._audioCtx.destination);
+            source.connect(gainNode);
 
             const interval = setInterval(() => {
                 if (options.onBoundary) options.onBoundary(0.3 + Math.random() * 0.6);

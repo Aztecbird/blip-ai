@@ -11,6 +11,14 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      window.blipYtReadyCallbacks = [];
+      window.onYouTubeIframeAPIReady = function () {
+        (window.blipYtReadyCallbacks || []).forEach(function (cb) { cb(); });
+        window.blipYtReadyCallbacks = [];
+      };
+    </script>
+    <script src="https://www.youtube.com/iframe_api" async defer></script>
 </head>
 
 <body>
@@ -114,19 +122,40 @@
                     <button id="closePanelBtn">✕</button>
                 </div>
                 <div class="panel-content">
+                    <p class="settings-section-label">API keys</p>
                     <div class="setting-group">
-                        <label>Access Key / Password</label>
-                        <input type="password" id="geminiKeyInput" placeholder="Enter blip108 or Gemini Key">
+                        <label for="geminiKeyInput">Gemini API Key <small>(for chat and voice)</small></label>
+                        <input type="password" id="geminiKeyInput" placeholder="Enter your Gemini key">
+                        <span class="setting-hint">Main Blip key — not the YouTube key.</span>
                     </div>
                     <div class="setting-group">
-                        <label>Voice Model</label>
+                        <label for="youtubeKeyInput">YouTube API Key <small>(for video search in panel only)</small></label>
+                        <input type="password" id="youtubeKeyInput" placeholder="Add key for correct video in panel">
+                        <span class="setting-hint">Different key — only for videos in the panel.</span>
+                    </div>
+                    <p class="settings-section-label">Models</p>
+                    <div class="setting-group">
+                        <label for="voiceEngineSelect">Voice (text-to-speech)</label>
                         <select id="voiceEngineSelect">
                             <option value="gemini">Gemini Neural (Premium)</option>
+                            <option value="kokoro">Kokoro (local, free)</option>
                             <option value="web">Browser Default</option>
                         </select>
+                        <span class="setting-hint">Gemini: ~100 free/day then paid. Kokoro &amp; browser: free.</span>
+                    </div>
+                    <div class="setting-group" id="kokoro-hint-group" style="display: none;">
+                        <span class="setting-hint">Run Kokoro on this device (e.g. <code>pip run kokoro</code>). Falls back to browser if offline.</span>
+                    </div>
+                    <div class="setting-group" id="browser-voice-group" style="display: none;">
+                        <label for="browserVoiceSelect">Browser voice</label>
+                        <select id="browserVoiceSelect"></select>
                     </div>
                     <div class="setting-group">
-                        <label>Core Model</label>
+                        <label for="speechVolumeInput">Blip volume <span id="speechVolumeValue">100%</span></label>
+                        <input type="range" id="speechVolumeInput" min="20" max="100" step="20" value="100" title="20% steps">
+                    </div>
+                    <div class="setting-group">
+                        <label for="modelSelect">Chat model</label>
                         <select id="modelSelect">
                             <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
                             <option value="gemini-2.5-pro">Gemini 2.5 Pro (Brainy)</option>

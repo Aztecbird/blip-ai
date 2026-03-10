@@ -346,17 +346,40 @@ export const web = {
     },
 
     /**
-     * Search YouTube and return an embed URL
+     * Search YouTube. If youtubeApiKey is set, uses YouTube Data API v3 to get first video and returns embedUrl for in-panel playback.
      * @param {string} query - e.g. "how to cut tomatoes"
+     * @param {string} [youtubeApiKey] - optional; enable YouTube Data API v3 in Google Cloud and pass key for embed + autoplay
      */
-    async searchYouTube(query) {
+    async searchYouTube(query, youtubeApiKey = null) {
         console.log(`🎬 YouTube search: ${query}`);
         const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-        return {
+        const result = {
             text: `I've found some videos on ${query} for you to watch.`,
             url: searchUrl,
             html: `<a href="${searchUrl}" target="_blank" class="action-link red">🎬 WATCH ON YOUTUBE: ${query}</a>`
         };
+        if (youtubeApiKey && youtubeApiKey.trim()) {
+            try {
+                const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${youtubeApiKey.trim()}`;
+                const res = await fetch(apiUrl);
+                if (!res.ok) throw new Error(`YouTube API ${res.status}`);
+                const data = await res.json();
+                const items = data.items || [];
+                result.searchResults = items.map((item) => ({
+                    videoId: item.id?.videoId,
+                    title: item.snippet?.title || ''
+                })).filter((r) => r.videoId);
+                const videoId = result.searchResults[0]?.videoId;
+                if (videoId) {
+                    result.videoId = videoId;
+                    result.embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+                    result.watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                }
+            } catch (e) {
+                console.warn('YouTube Data API failed, using search link only:', e.message);
+            }
+        }
+        return result;
     },
 
     /**

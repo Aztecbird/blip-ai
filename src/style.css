@@ -303,6 +303,28 @@ body::before {
     cursor: pointer;
 }
 
+.panel-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+.panel-content .settings-section-label {
+    margin-top: 1rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+}
+
+.panel-content .settings-section-label:first-child {
+    margin-top: 0;
+}
+
 .setting-group {
     display: flex;
     flex-direction: column;
@@ -315,6 +337,13 @@ body::before {
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--text-secondary);
+}
+
+.setting-group .setting-hint {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    opacity: 0.85;
+    margin-top: 0.2rem;
 }
 
 .setting-group input,
@@ -1703,6 +1732,34 @@ body.projector-mode.projecting-visual .hub-panel {
     }
 }
 
+/* ── BLIP CELEBRATION (praise party) ───────────────────────────────────────── */
+.blip-party {
+    animation: blipParty 1s ease-in-out;
+}
+
+@keyframes blipParty {
+    0%   { transform: scale(1) rotate(0deg); }
+    20%  { transform: scale(1.08) rotate(-3deg); }
+    40%  { transform: scale(1.1) rotate(3deg); }
+    60%  { transform: scale(1.08) rotate(-2deg); }
+    80%  { transform: scale(1.05) rotate(2deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+
+.blip-confetti {
+    position: absolute;
+    pointer-events: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    animation: confettiFall 1.2s linear forwards;
+}
+
+@keyframes confettiFall {
+    0%   { transform: translateY(-20px); opacity: 1; }
+    100% { transform: translateY(80px); opacity: 0; }
+}
+
 /* ── CONTROLS ────────────────────────────────────────────────────────────── */
 .primary-btn {
     width: 100%;
@@ -2504,6 +2561,63 @@ input[type="range"] {
 .secondary-btn:hover {
     background: rgba(255, 255, 255, 0.14);
     transform: translateY(-1px);
+}
+
+/* ── SIDE PANEL: BIG VIDEO MODE (video large + small Blip beside it) ───────── */
+#blip-side-panel.blip-video-big {
+    width: min(88vw, 820px) !important;
+    height: 78vh !important;
+    max-height: 600px;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translate(-50%, -50%);
+    display: flex !important;
+    flex-direction: column;
+}
+#blip-side-panel .blip-yt-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: 8px;
+}
+#blip-side-panel .blip-yt-video {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+#blip-side-panel .blip-yt-video #blip-yt-player {
+    flex: 1;
+    min-height: 120px;
+    height: auto !important;
+}
+#blip-side-panel .blip-mini-wrap {
+    width: 0;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 0 8px 8px 0;
+    transition: width 0.25s ease, min-width 0.25s ease;
+}
+#blip-side-panel.blip-video-big .blip-yt-layout {
+    flex-direction: row;
+}
+#blip-side-panel.blip-video-big .blip-yt-video {
+    min-width: 0;
+}
+#blip-side-panel.blip-video-big .blip-mini-wrap {
+    width: 88px;
+    min-width: 88px;
+}
+.blip-face-mini {
+    transform: scale(0.26);
+    transform-origin: center;
+    pointer-events: none;
 }
 
 /* BlipContextAgent: focus mode — reduce motion for study/focus */
