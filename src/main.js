@@ -1035,7 +1035,7 @@ async function handleCommand(text) {
                 msg = 'From the beginning.';
             } else if ((ytCmd === 'videoBig' || ytCmd === 'videoSmall') && document.getElementById('blip-side-panel')?.style.display !== 'none') {
                 setVideoBigMode(ytCmd === 'videoBig');
-                msg = ytCmd === 'videoBig' ? 'Video bigger.' : 'Video smaller.';
+                msg = ytCmd === 'videoBig' ? 'Full view on. Blip moved to the side.' : 'Back to normal view.';
             } else if (ytCmd === 'next' && blipYtPlayer) {
                 const ok = nextYouTubeVideo();
                 msg = ok ? 'Next video.' : "No other videos in this search. Ask for a new topic.";
@@ -1591,14 +1591,45 @@ function adjustYouTubeVolume(delta) {
 function setVideoBigMode(big) {
     const sidePanel = document.getElementById('blip-side-panel');
     const miniWrap = sidePanel?.querySelector('.blip-mini-wrap');
+    const ytLayout = sidePanel?.querySelector('.blip-yt-layout');
+    const ytVideo = sidePanel?.querySelector('.blip-yt-video');
+    const ytHint = sidePanel?.querySelector('.blip-yt-video p');
+    const ytTitle = sidePanel?.querySelector('.blip-yt-video h3');
+    const ytPlayer = sidePanel?.querySelector('#blip-yt-player');
     if (!sidePanel || !miniWrap) return;
 
     state.videoBigMode = !!big;
     const btn = document.getElementById('blip-video-big-btn');
-    if (btn) btn.textContent = state.videoBigMode ? '◱ Small' : '⛶ Big';
+    if (btn) btn.textContent = state.videoBigMode ? '◱ Normal' : '⛶ Full';
 
     if (state.videoBigMode) {
         sidePanel.classList.add('blip-video-big');
+        sidePanel.style.width = 'min(96vw, 1280px)';
+        sidePanel.style.height = 'min(90vh, 820px)';
+        sidePanel.style.maxHeight = 'none';
+        sidePanel.style.top = '50%';
+        sidePanel.style.left = '50%';
+        sidePanel.style.right = 'auto';
+        sidePanel.style.transform = 'translate(-50%, -50%)';
+        sidePanel.style.padding = '14px 14px 10px';
+        if (ytLayout) {
+            ytLayout.style.flexDirection = 'row';
+            ytLayout.style.gap = '12px';
+        }
+        if (ytVideo) ytVideo.style.minWidth = '0';
+        if (window.matchMedia('(max-width: 900px)').matches) {
+            miniWrap.style.width = '80px';
+            miniWrap.style.minWidth = '80px';
+        } else {
+            miniWrap.style.width = '108px';
+            miniWrap.style.minWidth = '108px';
+        }
+        if (ytHint) ytHint.style.display = 'none';
+        if (ytTitle) ytTitle.style.marginBottom = '6px';
+        if (ytPlayer) {
+            ytPlayer.style.height = '100%';
+            ytPlayer.style.minHeight = '0';
+        }
         if (!miniWrap.querySelector('#blip-face-mini') && faceContainer) {
             const clone = faceContainer.cloneNode(true);
             clone.classList.remove('blip-party');
@@ -1613,6 +1644,27 @@ function setVideoBigMode(big) {
         }
     } else {
         sidePanel.classList.remove('blip-video-big');
+        sidePanel.style.width = '280px';
+        sidePanel.style.height = '340px';
+        sidePanel.style.maxHeight = '';
+        sidePanel.style.top = '120px';
+        sidePanel.style.left = '';
+        sidePanel.style.right = '32px';
+        sidePanel.style.transform = '';
+        sidePanel.style.padding = '12px';
+        if (ytLayout) {
+            ytLayout.style.flexDirection = '';
+            ytLayout.style.gap = '';
+        }
+        if (ytVideo) ytVideo.style.minWidth = '';
+        miniWrap.style.width = '';
+        miniWrap.style.minWidth = '';
+        if (ytHint) ytHint.style.display = '';
+        if (ytTitle) ytTitle.style.marginBottom = '';
+        if (ytPlayer) {
+            ytPlayer.style.height = '200px';
+            ytPlayer.style.minHeight = '';
+        }
         miniWrap.innerHTML = '';
     }
 }
@@ -1659,8 +1711,20 @@ function getYouTubeVoiceCommand(cmd) {
     if (/\bpause\s+(the\s+)?video\b/.test(lower) || /\bpause\b/.test(lower) && (lower.includes('video') || lower.length < 10)) return 'pause';
     if (/\bplay\s+(the\s+)?video\b/.test(lower) || /^play\s*$/.test(lower)) return 'play';
     if (/\b(start\s+over|from\s+the\s+beginning|restart)\b/.test(lower)) return 'restart';
-    if (/\b(make\s+)?(the\s+)?video\s+bigger\b/.test(lower) || /\bbigger\s+video\b/.test(lower) || /\bexpand\s+(the\s+)?video\b/.test(lower) || /\blarge\s+video\b/.test(lower)) return 'videoBig';
-    if (/\b(make\s+)?(the\s+)?video\s+smaller\b/.test(lower) || /\bsmall(er)?\s+video\b/.test(lower)) return 'videoSmall';
+    if (/\b(make\s+)?(the\s+)?video\s+bigger\b/.test(lower) ||
+        /\bbigger\s+video\b/.test(lower) ||
+        /\bexpand\s+(the\s+)?video\b/.test(lower) ||
+        /\blarge\s+video\b/.test(lower) ||
+        /\bfull\s*screen\b/.test(lower) ||
+        /\bfullscreen\b/.test(lower) ||
+        /\bfull\s+view\b/.test(lower) ||
+        /\bmaximize\s+(the\s+)?video\b/.test(lower) ||
+        /\bcinema\s+mode\b/.test(lower)) return 'videoBig';
+    if (/\b(make\s+)?(the\s+)?video\s+smaller\b/.test(lower) ||
+        /\bsmall(er)?\s+video\b/.test(lower) ||
+        /\bexit\s+(full\s*screen|fullscreen|full\s+view)\b/.test(lower) ||
+        /\bnormal\s+view\b/.test(lower) ||
+        /\bdefault\s+view\b/.test(lower)) return 'videoSmall';
     if (/\brewind\b/.test(lower) || /\bgo\s+back\b/.test(lower) || /\breplay\b/.test(lower)) return 'rewind';
     return null;
 }
@@ -2209,7 +2273,7 @@ function renderActionInSidePanel(parsedResponse) {
                 sidePanel.classList.remove('blip-video-big');
                 sidePanel.innerHTML = `
                     <button type="button" aria-label="Close panel" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:#a0a0b8;cursor:pointer;font-size:1.2rem;line-height:1;">×</button>
-                    <button type="button" aria-label="Big video" id="blip-video-big-btn" style="position:absolute;top:8px;right:36px;background:rgba(255,255,255,0.1);border:none;color:#a0a0b8;cursor:pointer;font-size:0.9rem;padding:4px 8px;border-radius:6px;">⛶ Big</button>
+                    <button type="button" aria-label="Full video" id="blip-video-big-btn" style="position:absolute;top:8px;right:36px;background:rgba(255,255,255,0.1);border:none;color:#a0a0b8;cursor:pointer;font-size:0.9rem;padding:4px 8px;border-radius:6px;">⛶ Full</button>
                     <div class="blip-yt-layout">
                         <div class="blip-yt-video">
                             <h3 style="margin:0 0 8px 0; font-size:1rem;">Playing: ${queryLabel}</h3>
