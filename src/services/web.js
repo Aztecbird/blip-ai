@@ -315,45 +315,25 @@ export const web = {
             }
         };
 
+        // Check Data Bank first; if no match, don't hit Wikipedia — just fall back to generic text + Google link.
         let extractedData = "";
-        try {
-            // Check Data Bank First
-            const searchTargets = (entities && entities.length > 1) ? entities : [query];
-            let combinedExtract = "";
+        const searchTargets = (entities && entities.length > 1) ? entities : [query];
+        let combinedExtract = "";
 
-            for (const target of searchTargets) {
-                const lowerTarget = target.toLowerCase();
-                // Robust matching: find if target contains country name OR if country name is in target
-                const matchedEntity = Object.keys(demographicDataBank).find(key =>
-                    lowerTarget.includes(key) || key.includes(lowerTarget)
-                );
+        for (const target of searchTargets) {
+            const lowerTarget = target.toLowerCase();
+            const matchedEntity = Object.keys(demographicDataBank).find(key =>
+                lowerTarget.includes(key) || key.includes(lowerTarget)
+            );
 
-                if (matchedEntity) {
-                    const data = demographicDataBank[matchedEntity];
-                    combinedExtract += `\n--- VERIFIED SOURCE: BLIP DEMO-BANK (${matchedEntity.toUpperCase()}) ---\n`;
-                    combinedExtract += `Total Population of ${matchedEntity}: ${data.total}\nWomen: ${data.women}\nMen: ${data.men}\nMedian Age: ${data.age}\nDynamic: ${data.growth}\n`;
-                } else {
-                    // Fallback to Wikipedia
-                    const dataKeywords = ['population', 'demographics', 'men', 'women', 'males', 'females', 'stats', 'data', 'breakdown'];
-                    const searchTerms = encodeURIComponent(target + (dataKeywords.some(k => target.toLowerCase().includes(k)) ? "" : " demographics"));
-                    const searchRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`);
-                    const searchData = await searchRes.json();
-
-                    if (searchData.query.search.length > 0) {
-                        const title = searchData.query.search[0].title;
-                        const summaryRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json&origin=*`);
-                        const summaryData = await summaryRes.json();
-                        const pages = summaryData.query.pages;
-                        const pageId = Object.keys(pages)[0];
-                        if (pageId !== "-1") {
-                            combinedExtract += `\n--- SOURCE: ${title} ---\n${pages[pageId].extract.substring(0, 1500)}\n`;
-                        }
-                    }
-                }
+            if (matchedEntity) {
+                const data = demographicDataBank[matchedEntity];
+                combinedExtract += `\n--- VERIFIED SOURCE: BLIP DEMO-BANK (${matchedEntity.toUpperCase()}) ---\n`;
+                combinedExtract += `Total Population of ${matchedEntity}: ${data.total}\nWomen: ${data.women}\nMen: ${data.men}\nMedian Age: ${data.age}\nDynamic: ${data.growth}\n`;
             }
-            extractedData = combinedExtract || "No specific detailed sources found.";
+        }
 
-        } catch (e) { console.error('Wikipedia Fetch Error:', e); }
+        extractedData = combinedExtract || "No special data was pulled for this search. You can open the Google link below for full results.";
 
         let extraHtml = `
             <a href="${googleUrl}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>

@@ -986,8 +986,10 @@ Return a simple JSON object: {
         const isPureChat = !isLookForIt && intent.actions.every(a => a === 'chat' || a === 'none' || a === 'time');
         const wantsChart = intent.actions.includes('chart') || lowerCmd.includes('graph') || lowerCmd.includes('chart');
         const wantsPopulation = lowerCmd.includes('population') || lowerCmd.includes('demographic') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('male') || lowerCmd.includes('female');
+        const hasNumbers = /\d/.test(cmd);
+        const isLocalNumericChart = wantsChart && hasNumbers && !wantsPopulation;
 
-        if (!isPureChat && cmd.length > 2) {
+        if (!isPureChat && cmd.length > 2 && !isLocalNumericChart) {
             for (const action of intent.actions) {
                 console.log(`🔍 Executing Action: ${action}`);
 
@@ -1024,7 +1026,12 @@ Return a simple JSON object: {
             }
         }
 
-        if (!evidence && !isPureChat) evidence = "No special data found.";
+        // For local numeric charts (e.g. "10 apples and 30 pears"), let the evidence just be the user's request.
+        if (!evidence && isLocalNumericChart) {
+            evidence = cmd;
+        } else if (!evidence && !isPureChat) {
+            evidence = "No special data found.";
+        }
 
         // --- STEP 3: SYNTHESIZE ANSWER ---
         console.log("✍️ Step 3: Synthesizing Final Answer");
