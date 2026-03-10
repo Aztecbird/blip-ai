@@ -96,6 +96,76 @@ const EXTRA_SCENERY_OBJECTS = [
     { id: 'spark-star', emoji: '✨', size: '1.1rem', duration: 6, direction: 'normal' }
 ];
 
+const FULL_BROWSER_LAYOUT_CSS = `
+body {
+  align-items: stretch !important;
+  min-height: 100dvh !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+#app {
+  min-height: 100dvh !important;
+  padding: 0 !important;
+}
+.container {
+  width: 100vw !important;
+  max-width: none !important;
+  min-height: 100dvh !important;
+  height: 100dvh !important;
+  border-radius: 0 !important;
+  padding: clamp(1rem, 2.4vw, 2.5rem) !important;
+  justify-content: space-between !important;
+  gap: clamp(0.8rem, 1.5vh, 1.5rem) !important;
+  box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.7), inset 0 0 40px rgba(255, 255, 255, 0.02) !important;
+}
+#face-area {
+  width: min(92vw, 1120px) !important;
+  flex: 1 !important;
+  justify-content: center !important;
+  gap: clamp(0.8rem, 2vh, 1.6rem) !important;
+}
+#interaction-area {
+  width: min(92vw, 680px) !important;
+  gap: 1rem !important;
+  margin-bottom: 0.5rem !important;
+}
+.face-frame {
+  width: min(88vw, 860px) !important;
+  height: min(54vh, 520px) !important;
+}
+#blip-stage {
+  min-height: min(56vh, 700px) !important;
+}
+#blip-face.blip-face {
+  width: clamp(260px, 26vw, 380px) !important;
+  height: clamp(260px, 26vw, 380px) !important;
+}
+@media (max-width: 900px) {
+  .container {
+    padding: 1rem 0.8rem 1.2rem !important;
+  }
+  #face-area {
+    width: 100% !important;
+  }
+  .face-frame {
+    width: 96vw !important;
+    height: min(44vh, 340px) !important;
+    border-radius: 1.4rem !important;
+  }
+  #blip-stage {
+    min-height: min(46vh, 440px) !important;
+  }
+  #blip-face.blip-face {
+    width: clamp(210px, 46vw, 300px) !important;
+    height: clamp(210px, 46vw, 300px) !important;
+  }
+  #interaction-area {
+    width: 96vw !important;
+    gap: 0.8rem !important;
+  }
+}
+`;
+
 let activeChart = null; // Chart.js instance
 let sidePanelChart = null; // Chart.js instance for side panel
 /** YouTube IFrame API player instance for the side panel; used to unmute when user says "Blip, unmute". */
@@ -174,6 +244,9 @@ const PERSONAS = {
 async function init() {
     try {
         console.log(`🚀 Blip V${BLIP_VERSION} initializing...`);
+
+        // Fill the browser real estate by default.
+        enableFullBrowserLayout();
 
         // Version only in upper-right corner; label above face stays "BLIP" (no version)
         const versionTagEl = document.getElementById('version-tag');
@@ -2527,4 +2600,12 @@ function startSceneryDirector() {
 
     // Initial start after a few seconds
     setTimeout(spawnNext, 3000);
+}
+
+function enableFullBrowserLayout() {
+    if (document.getElementById('blip-full-browser-layout')) return;
+    const style = document.createElement('style');
+    style.id = 'blip-full-browser-layout';
+    style.textContent = FULL_BROWSER_LAYOUT_CSS;
+    document.head.appendChild(style);
 }
