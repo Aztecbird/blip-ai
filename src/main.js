@@ -771,9 +771,23 @@ const actionHandlers = {
 
     calendar: async (res) => {
         if (!res.event_details) return { text: res.text };
-        const url = createGoogleCalendarUrl(res.event_details);
-        addToHub('link', `📅 Calendar Event: ${res.event_details.summary}`, { url });
-        return { text: res.text, extraHtml: `<br><a href="${url}" target="_blank" class="action-link blue">📅 ADD TO GOOGLE CALENDAR</a>` };
+        const details = res.event_details || {};
+        if (!details.start || !details.end) {
+            return {
+                text: (typeof res.text === 'string' && res.text.trim())
+                    ? res.text
+                    : "I need a start and end time before I can create a calendar event."
+            };
+        }
+        const url = createGoogleCalendarUrl(details);
+        const eventTitle = details.title || details.summary || 'Event';
+        addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url });
+        return {
+            text: (typeof res.text === 'string' && res.text.trim())
+                ? res.text
+                : `I created a calendar event link for ${eventTitle}.`,
+            extraHtml: `<br><a href="${url}" target="_blank" class="action-link blue">📅 ADD TO GOOGLE CALENDAR</a>`
+        };
     },
 
     youtube: async (res) => {
@@ -835,7 +849,13 @@ const actionHandlers = {
         const item = res.tool_params?.item;
 
         const key = `blip_list_${type}`;
-        let list = JSON.parse(localStorage.getItem(key)) || [];
+        let list = [];
+        try {
+            const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+            list = Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+            list = [];
+        }
 
         if (action === 'add' && item) {
             list.push(item);
@@ -1148,9 +1168,13 @@ Return a simple JSON object: {
         intent.actions = intent.actions
             .map((a) => String(a || '').toLowerCase().trim())
             .filter(Boolean);
+        intent.actions = [...new Set(intent.actions)];
         if (intent.actions.length === 0) intent.actions = ['chat'];
         if (typeof intent.query !== 'string' || !intent.query.trim()) intent.query = cmd;
         if (!Array.isArray(intent.entities)) intent.entities = [];
+        intent.entities = intent.entities
+            .map((e) => String(e || '').trim())
+            .filter(Boolean);
 
         const lowerCmd = cmd.toLowerCase();
         const isLookForIt = /\b(look for it|search for it|find it|get it|look it up|go find|go look|just search|then search)\b/i.test(cmd);
@@ -2000,10 +2024,17 @@ function setBlipTimer(text, ms) {
 }
 
 function createGoogleCalendarUrl(details) {
-    // Google TEMPLATE expects YYYYMMDDTHHMMSS (no dashes or colons)
-    const start = details.start.replace(/[-:]/g, '');
-    const end = details.end.replace(/[-:]/g, '');
-    const title = encodeURIComponent(details.title);
+    // Google TEMPLATE expects YYYYMMDDTHHMMSSZ; normalize robustly from ISO-like inputs.
+    const toGoogleDateTime = (value) => {
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) {
+            return String(value || '').replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+        }
+        return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+    };
+    const start = toGoogleDateTime(details.start);
+    const end = toGoogleDateTime(details.end);
+    const title = encodeURIComponent(details.title || details.summary || 'Event');
     return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}`;
 }
 
