@@ -8,7 +8,7 @@
 const RECENT_MAX = 20;
 const MODES = ['idle', 'study', 'cooking', 'advice', 'media'];
 const TONES = ['calm', 'curious', 'focused', 'cheerful', 'concerned'];
-const TONE_TO_PERSONA = {
+export const TONE_TO_PERSONA = {
     calm: 'idle',
     curious: 'idle',
     focused: 'study',
