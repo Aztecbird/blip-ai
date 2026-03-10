@@ -86,6 +86,16 @@ const BLIP_VERSION = '4.3.15';
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
 const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emotional Intelligence', 'Ethics & Responsibility'];
 
+const EXTRA_SCENERY_OBJECTS = [
+    { id: 'flying-ufo', emoji: '🛸', size: '1.4rem', duration: 13, direction: 'reverse' },
+    { id: 'little-rocket', emoji: '🚀', size: '1.4rem', duration: 9, direction: 'normal' },
+    { id: 'butterfly', emoji: '🦋', size: '1.2rem', duration: 11, direction: 'normal' },
+    { id: 'robot-pal', emoji: '🤖', size: '1.2rem', duration: 17, direction: 'reverse' },
+    { id: 'satellite', emoji: '🛰️', size: '1.2rem', duration: 24, direction: 'normal' },
+    { id: 'comet', emoji: '☄️', size: '1.5rem', duration: 7, direction: 'normal' },
+    { id: 'spark-star', emoji: '✨', size: '1.1rem', duration: 6, direction: 'normal' }
+];
+
 let activeChart = null; // Chart.js instance
 let sidePanelChart = null; // Chart.js instance for side panel
 /** YouTube IFrame API player instance for the side panel; used to unmute when user says "Blip, unmute". */
@@ -311,6 +321,10 @@ async function init() {
                 eyes.forEach(e => e.style.height = '14px');
             }, 150);
         }, 4000);
+
+        // Add extra orbiting artifacts dynamically so we can expand scenery without touching static markup.
+        registerExtraSceneryObjects();
+
         // Start Living Scenery Systems
         startSceneryTracking();
         startSceneryDirector();
@@ -2044,6 +2058,27 @@ function triggerRandomIdle() {
  * 🚲 Living Scenery: Multi-Object Eye Tracking Logic
  * Makes Blip's pupils follow the closest 'scenery-object' across the frame.
  */
+function registerExtraSceneryObjects() {
+    const layer = document.querySelector('.scenery-layer');
+    if (!layer) return;
+
+    EXTRA_SCENERY_OBJECTS.forEach((item) => {
+        if (document.getElementById(item.id)) return;
+
+        const obj = document.createElement('div');
+        obj.id = item.id;
+        obj.className = 'scenery-object';
+        obj.textContent = item.emoji;
+        obj.style.bottom = '5px';
+        obj.style.left = '245px';
+        obj.style.transformOrigin = 'center';
+        obj.dataset.orbitDuration = String(item.duration);
+        obj.dataset.orbitDirection = item.direction;
+        obj.dataset.orbitSize = item.size;
+        layer.appendChild(obj);
+    });
+}
+
 function startSceneryTracking() {
     const faceFrame = document.querySelector('.face-frame');
     if (!faceFrame) return;
@@ -2466,6 +2501,13 @@ function startSceneryDirector() {
         const obj = objects[currentIndex];
 
         // Show and animate
+        const customDuration = Number(obj.dataset.orbitDuration || '');
+        if (Number.isFinite(customDuration) && customDuration > 0) {
+            const direction = obj.dataset.orbitDirection === 'reverse' ? 'reverse' : 'normal';
+            const customSize = obj.dataset.orbitSize;
+            if (customSize) obj.style.fontSize = customSize;
+            obj.style.animation = `walk-around-edge ${customDuration}s linear infinite ${direction}`;
+        }
         obj.classList.add('active');
 
         // Find animation duration (+ small buffer)
@@ -2473,6 +2515,7 @@ function startSceneryDirector() {
 
         setTimeout(() => {
             obj.classList.remove('active');
+            if (obj.dataset.orbitDuration) obj.style.animation = '';
 
             // Wait for next character (5-10s random gap)
             const waitTime = 5000 + Math.random() * 5000;
