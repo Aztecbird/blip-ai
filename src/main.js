@@ -96,6 +96,9 @@ const EXTRA_SCENERY_OBJECTS = [
     { id: 'spark-star', emoji: '✨', size: '1.1rem', duration: 6, direction: 'normal' }
 ];
 
+const SCENERY_BASE_DURATION_MS = 14000;
+const SCENERY_EXTRA_PROBABILITY = 0.28;
+
 const FULL_BROWSER_LAYOUT_CSS = `
 body {
   align-items: stretch !important;
@@ -2244,6 +2247,7 @@ function registerExtraSceneryObjects() {
         obj.dataset.orbitDuration = String(item.duration);
         obj.dataset.orbitDirection = item.direction;
         obj.dataset.orbitSize = item.size;
+        obj.dataset.isExtra = '1';
         layer.appendChild(obj);
     });
 }
@@ -2680,17 +2684,22 @@ window.addEventListener('DOMContentLoaded', init);
 function startSceneryDirector() {
     const objects = Array.from(document.querySelectorAll('.scenery-object'));
     if (objects.length === 0) return;
-
-    let currentIndex = Math.floor(Math.random() * objects.length);
+    const extraObjects = objects.filter((o) => o.dataset.isExtra === '1');
+    const baseObjects = objects.filter((o) => o.dataset.isExtra !== '1');
 
     function spawnNext() {
         if (document.body.classList.contains('scenery-suppressed')) {
-            currentIndex = (currentIndex + 1) % objects.length;
             setTimeout(spawnNext, 1500);
             return;
         }
 
-        const obj = objects[currentIndex];
+        const useExtra = extraObjects.length > 0 && Math.random() < SCENERY_EXTRA_PROBABILITY;
+        const pool = useExtra ? extraObjects : (baseObjects.length ? baseObjects : objects);
+        const obj = pool[Math.floor(Math.random() * pool.length)];
+        if (!obj) {
+            setTimeout(spawnNext, 2000);
+            return;
+        }
 
         // Show and animate
         const customDuration = Number(obj.dataset.orbitDuration || '');
@@ -2700,19 +2709,25 @@ function startSceneryDirector() {
             if (customSize) obj.style.fontSize = customSize;
             obj.style.animation = `walk-around-edge ${customDuration}s linear infinite ${direction}`;
         }
+        if (obj.dataset.isExtra === '1') {
+            obj.style.opacity = '0.42';
+        } else {
+            obj.style.opacity = '';
+        }
         obj.classList.add('active');
 
-        // Find animation duration (+ small buffer)
-        const duration = 25000; // Average duration for our characters
+        // Keep each object on screen for one controlled cycle to avoid visual noise.
+        const duration = (Number.isFinite(customDuration) && customDuration > 0)
+            ? Math.round(customDuration * 1000)
+            : SCENERY_BASE_DURATION_MS;
 
         setTimeout(() => {
             obj.classList.remove('active');
             if (obj.dataset.orbitDuration) obj.style.animation = '';
+            obj.style.opacity = '';
 
-            // Wait for next character (5-10s random gap)
-            const waitTime = 5000 + Math.random() * 5000;
-
-            currentIndex = (currentIndex + 1) % objects.length;
+            // Wait for next character (slightly calmer cadence for wall projection).
+            const waitTime = 6500 + Math.random() * 5500;
             setTimeout(spawnNext, waitTime);
         }, duration);
     }
