@@ -110,7 +110,7 @@ const state = {
     selectedModel: 'gemini-2.5-flash', // Corrected stable model
     voiceEngine: 'gemini',             // Standardized for V3.1.0
     selectedGeminiVoice: 'Kore',       // Standardized for V3.1.0
-    speechVolume: Math.min(1, Math.max(0.2, (parseFloat(localStorage.getItem('blip_speech_volume')) || 1))), // 0.2–1 in 20% steps
+    speechVolume: Math.min(1, Math.max(0.2, (parseFloat(localStorage.getItem('blip_speech_volume')) || 1))),
     hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
     idleBehavior: null, // 'dreamer', 'observer', 'squinter'
     isProjectorMode: false,
@@ -259,7 +259,7 @@ async function init() {
         // Blip volume (20% steps)
         if (speechVolumeInput && speechVolumeValue) {
             const pct = Math.round(state.speechVolume * 100);
-            const step = Math.min(100, Math.max(20, Math.round(pct / 20) * 20));
+            const step = Math.min(100, Math.max(20, Math.round(pct / 5) * 5));
             state.speechVolume = step / 100;
             speechVolumeInput.value = step;
             speechVolumeValue.textContent = step + '%';
@@ -1600,9 +1600,11 @@ function getYouTubeVoiceCommand(cmd) {
 /** Blip speech volume voice command: 'volume down' (25% down) or 'volume up' (5% up). */
 function getVolumeVoiceCommand(cmd) {
     if (!cmd || typeof cmd !== 'string') return null;
-    const lower = cmd.toLowerCase().trim();
-    if (/\b(volume\s+down|turn\s+down\s+(the\s+)?volume|quieter|lower\s+(the\s+)?volume)\b/.test(lower)) return 'down';
-    if (/\b(volume\s+up|turn\s+up\s+(the\s+)?volume|louder|higher\s+(the\s+)?volume)\b/.test(lower)) return 'up';
+    const lower = cmd.toLowerCase().trim().replace(/\s+/g, ' ');
+    if (/\b(volume\s+down|vol\.?\s*down|turn\s+down\s+(the\s+)?volume|quieter|lower\s+(the\s+)?volume)\b/.test(lower)) return 'down';
+    if (/\b(volume\s+up|vol\.?\s*up|turn\s+up\s+(the\s+)?volume|louder|higher\s+(the\s+)?volume)\b/.test(lower)) return 'up';
+    if (/^volumedown\s*$/.test(lower) || /^vol\s*down\s*$/i.test(lower)) return 'down';
+    if (/^volumeup\s*$/.test(lower) || /^vol\s*up\s*$/i.test(lower)) return 'up';
     return null;
 }
 
@@ -1711,22 +1713,6 @@ async function speak(text, emotion = 'serious') {
             return speech.playBase64Audio(audioData, { onBoundary: animateMouth, volume: state.speechVolume });
         } catch (e) {
             console.warn('Gemini voice failed, falling back:', e.message);
-            if (!isGitHub && transcriptText && !transcriptText.innerHTML.includes('Voice failed') && !transcriptText.innerHTML.includes('voice limit')) {
-                const isQuota = /quota|exceeded|rate.limit|retry in|generate_requests_per_model/.test(String(e.message || '').toLowerCase());
-                let retryHint = '';
-                const retryMatch = String(e.message || '').match(/[Pp]lease retry in (\d+h)?(\d+m)?[\d.]*s?/);
-                if (retryMatch) {
-                    const h = retryMatch[1] ? parseInt(retryMatch[1], 10) : 0;
-                    const m = retryMatch[2] ? parseInt(retryMatch[2], 10) : 0;
-                    if (h >= 1) retryHint = ` Try again in about ${h} ${h === 1 ? 'hour' : 'hours'}.`;
-                    else if (m >= 1) retryHint = ` Try again in ${m} ${m === 1 ? 'minute' : 'minutes'}.`;
-                    else retryHint = ' Try again in a little while.';
-                }
-                const msg = isQuota
-                    ? `Gemini voice limit reached for today (about 100/day). Using browser voice.${retryHint} Or use <strong>Settings → Voice → Browser Default</strong> to skip Gemini voice.`
-                    : `Voice failed: ${escapeHtml(e.message)}. Check that the <strong>Gemini API Key</strong> (first field) is correct — not the YouTube key.`;
-                transcriptText.innerHTML += `<br><small style="color:#f59e0b">⚠️ ${msg}</small>`;
-            }
             const fallbackVoice = state.selectedVoice || speech.getPreferredVoice?.();
             return speech.speak(text, { ...cfg, voice: fallbackVoice, onBoundary: animateMouth, volume: state.speechVolume });
         }
