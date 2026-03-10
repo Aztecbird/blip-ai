@@ -197,6 +197,14 @@ body {
 }
 `;
 
+const SCENERY_SUPPRESSION_CSS = `
+body.scenery-suppressed .scenery-object,
+body.scenery-suppressed .cloud {
+  opacity: 0 !important;
+  animation: none !important;
+}
+`;
+
 let activeChart = null; // Chart.js instance
 let sidePanelChart = null; // Chart.js instance for side panel
 /** YouTube IFrame API player instance for the side panel; used to unmute when user says "Blip, unmute". */
@@ -279,6 +287,8 @@ async function init() {
 
         // Fill the browser real estate by default.
         enableFullBrowserLayout();
+        enableScenerySuppressionStyles();
+        syncScenerySuppression();
 
         // Version only in upper-right corner; label above face stays "BLIP" (no version)
         const versionTagEl = document.getElementById('version-tag');
@@ -1155,6 +1165,7 @@ async function handleCommand(text) {
             } else if ((ytCmd === 'blipBig' || ytCmd === 'blipSmall') && document.getElementById('blip-side-panel')?.style.display !== 'none') {
                 state.videoCompanionSize = ytCmd === 'blipBig' ? 'big' : 'mini';
                 try { localStorage.setItem('blip_video_companion_size', state.videoCompanionSize); } catch (e) { }
+                if (ytCmd === 'blipBig' && !state.videoBigMode) setVideoBigMode(true);
                 applyVideoCompanionSizing();
                 msg = ytCmd === 'blipBig' ? 'Big Blip mode on.' : 'Mini Blip mode on.';
             } else if ((ytCmd === 'videoBig' || ytCmd === 'videoSmall') && document.getElementById('blip-side-panel')?.style.display !== 'none') {
@@ -1648,6 +1659,8 @@ function closeYouTubePanel() {
         try { blipYtPlayer.destroy(); } catch (e) {}
         blipYtPlayer = null;
     }
+    state.videoBigMode = false;
+    syncScenerySuppression();
 }
 
 /** YT.PlayerState: unstarted=-1, ended=0, playing=1, paused=2, buffering=3, cued=5 */
@@ -1723,6 +1736,7 @@ function setVideoBigMode(big) {
     if (!sidePanel || !miniWrap) return;
 
     state.videoBigMode = !!big;
+    syncScenerySuppression();
     const btn = document.getElementById('blip-video-big-btn');
     if (btn) btn.textContent = state.videoBigMode ? '◱ Normal' : '⛶ Full';
 
@@ -1798,6 +1812,7 @@ function applyVideoCompanionSizing() {
 
     const isMobile = window.matchMedia('(max-width: 900px)').matches;
     const isBig = state.videoCompanionSize !== 'mini';
+    syncScenerySuppression();
     const wrapWidth = isMobile ? (isBig ? 116 : 80) : (isBig ? 200 : 108);
     if (sizeBtn) sizeBtn.textContent = isBig ? '👤 Blip−' : '👤 Blip+';
 
@@ -1806,6 +1821,15 @@ function applyVideoCompanionSizing() {
 
     const miniFace = document.getElementById('blip-face-mini');
     if (miniFace) styleMiniBlipFace(miniFace, isBig ? 'big' : 'mini');
+}
+
+/** Suppress orbiting scenery when big Blip companion is active in full video mode. */
+function syncScenerySuppression() {
+    const shouldSuppress = !!(state.videoBigMode && state.videoCompanionSize === 'big');
+    document.body.classList.toggle('scenery-suppressed', shouldSuppress);
+    if (shouldSuppress) {
+        document.querySelectorAll('.scenery-object.active').forEach((obj) => obj.classList.remove('active'));
+    }
 }
 
 /** Copy current emotion from main face to mini face (used when big video mode is on). */
@@ -2229,6 +2253,13 @@ function startSceneryTracking() {
     if (!faceFrame) return;
 
     function update() {
+        if (document.body.classList.contains('scenery-suppressed')) {
+            document.documentElement.style.setProperty('--pupil-x', '0px');
+            document.documentElement.style.setProperty('--pupil-y', '0px');
+            requestAnimationFrame(update);
+            return;
+        }
+
         // Only track if Blip is not busy talking or thinking
         if (state.isThinking || speech.isSpeaking || state.currentEmotion !== 'serious') {
             document.documentElement.style.setProperty('--pupil-x', '0px');
@@ -2546,6 +2577,7 @@ function renderActionInSidePanel(parsedResponse) {
             if (videoId) {
                 state.videoBigMode = false;
                 sidePanel.classList.remove('blip-video-big');
+                syncScenerySuppression();
                 sidePanel.innerHTML = `
                     <button type="button" aria-label="Close panel" style="position:absolute;top:8px;right:8px;background:transparent;border:none;color:#a0a0b8;cursor:pointer;font-size:1.2rem;line-height:1;">×</button>
                     <button type="button" aria-label="Full video" id="blip-video-big-btn" style="position:absolute;top:8px;right:36px;background:rgba(255,255,255,0.1);border:none;color:#a0a0b8;cursor:pointer;font-size:0.9rem;padding:4px 8px;border-radius:6px;">⛶ Full</button>
@@ -2652,6 +2684,12 @@ function startSceneryDirector() {
     let currentIndex = Math.floor(Math.random() * objects.length);
 
     function spawnNext() {
+        if (document.body.classList.contains('scenery-suppressed')) {
+            currentIndex = (currentIndex + 1) % objects.length;
+            setTimeout(spawnNext, 1500);
+            return;
+        }
+
         const obj = objects[currentIndex];
 
         // Show and animate
@@ -2688,5 +2726,13 @@ function enableFullBrowserLayout() {
     const style = document.createElement('style');
     style.id = 'blip-full-browser-layout';
     style.textContent = FULL_BROWSER_LAYOUT_CSS;
+    document.head.appendChild(style);
+}
+
+function enableScenerySuppressionStyles() {
+    if (document.getElementById('blip-scenery-suppression')) return;
+    const style = document.createElement('style');
+    style.id = 'blip-scenery-suppression';
+    style.textContent = SCENERY_SUPPRESSION_CSS;
     document.head.appendChild(style);
 }
