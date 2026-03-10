@@ -1737,6 +1737,9 @@ function getVolumeVoiceCommand(cmd) {
     if (/\b(volume\s+up|vol\.?\s*up|turn\s+up\s+(the\s+)?volume|louder|higher\s+(the\s+)?volume)\b/.test(lower)) return 'up';
     if (/^volumedown\s*$/.test(lower) || /^vol\s*down\s*$/i.test(lower)) return 'down';
     if (/^volumeup\s*$/.test(lower) || /^vol\s*up\s*$/i.test(lower)) return 'up';
+    // Natural short forms users say while watching a video.
+    if (/^(please\s+)?(lower|lower it|turn it down|quieter|softer)(\s+please)?$/.test(lower)) return 'down';
+    if (/^(please\s+)?(louder|higher|raise it|turn it up)(\s+please)?$/.test(lower)) return 'up';
     return null;
 }
 
