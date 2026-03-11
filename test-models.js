@@ -1,4 +1,8 @@
-const apiKey = "AIzaSyDS5jjsmo9v4YYgO4x1w7-VGZ1FG_GTzk8";
+const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+if (!apiKey) {
+    console.error("Missing GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable.");
+    process.exit(1);
+}
 const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
 
 fetch(url, {
