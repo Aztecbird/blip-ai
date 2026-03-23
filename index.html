@@ -18,10 +18,27 @@
         window.blipYtReadyCallbacks = [];
       };
     </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://www.youtube.com/iframe_api" async defer></script>
 </head>
 
 <body>
+    <div id="space-overlay" aria-hidden="true">
+        <div class="starfield starfield-near"></div>
+        <div class="starfield starfield-far"></div>
+        <div class="comet comet-a"></div>
+        <div class="comet comet-b"></div>
+        <div class="ufo-drift">
+            <span class="ufo-core"></span>
+        </div>
+        <div class="ufo-drift ufo-rise">
+            <span class="ufo-core"></span>
+        </div>
+    </div>
+    <div id="timer-corner" class="timer-corner hidden" aria-live="polite">
+        <span class="timer-corner-dot" aria-hidden="true"></span>
+        <span id="timer-corner-time">00:00</span>
+    </div>
     <div id="app">
         <!-- SVG Filter for Liquid/Gooey Face Effect -->
         <svg xmlns="http://www.w3.org/2000/svg" version="1.1" style="display:none;">
@@ -36,7 +53,7 @@
         </svg>
 
         <main class="container">
-            <div id="version-tag">V—</div>
+            <div id="version-tag">V5.1</div>
 
             <!-- Hidden Compatibility Elements for Legacy JS -->
             <div style="display:none;">
@@ -57,19 +74,13 @@
                         <div class="cloud layer-1">☁️</div>
                         <div class="cloud layer-2">☁️</div>
                         <div class="cloud layer-3">☁️</div>
-                        <div id="bicycle-rider" class="scenery-object">🚲</div>
-                        <div id="walking-cat" class="scenery-object">🐈</div>
-                        <div id="traveler-person" class="scenery-object">🚶‍♂️</div>
-                        <div id="walking-dog" class="scenery-object">🐕</div>
-                        <div id="walking-woman" class="scenery-object">👩‍🦯</div>
-                        <div id="bouncing-ball" class="scenery-object">🎾</div>
-                        <div id="rolling-dice" class="scenery-object">🎲</div>
-                        <div id="music-notes" class="scenery-object">🎶</div>
-                        <div id="walking-piano" class="scenery-object">🎹</div>
                     </div>
                     <div id="blip-stage">
                         <div id="blip-aura"></div>
                         <div id="blip-radar"></div>
+                        <div id="weather-layer" aria-hidden="true"></div>
+                        <div id="dream-thoughts" aria-hidden="true"></div>
+                        <div id="floating-symbols" aria-hidden="true"></div>
                         <div id="face-container">
                             <div id="blip-face" class="blip-face emotion-serious">
                                 <div class="face-core">
@@ -87,14 +98,31 @@
                             </div>
                         </div>
                     </div>
+                    <video id="webcam-video" autoplay playsinline style="display: none;"></video>
+                    <div id="camera-controls" style="display: none;">
+                        <button id="snapBtn" class="primary-btn">📸 SNAP PHOTO</button>
+                        <button id="recordBtn" class="secondary-btn">🎬 RECORD VIDEO</button>
+                        <button id="stopCameraBtn" class="secondary-btn">⏹ STOP</button>
+                    </div>
                 </div>
 
                 <div class="controls-main">
                     <button id="talkBtn" class="main-pulse-btn">
                         <span class="btn-text">Ask Blip</span>
                     </button>
+                    <button id="sleepBtn" class="secondary-orb-btn" type="button">Sleep</button>
                     <div id="live-indicator">LIVE OBSERVER</div>
                 </div>
+                <div class="mic-meter" id="wake-meter" aria-live="polite" aria-label="Wake listening status">
+                    <span class="mic-meter-dot" aria-hidden="true"></span>
+                    <span id="meter-label">Say Hey Blip / Wake Up Blip / Blip</span>
+                    <div class="mic-meter-bar" aria-hidden="true">
+                        <div id="meter-level"></div>
+                    </div>
+                </div>
+
+                <div id="weather-display" class="weather-display hidden" aria-live="polite" aria-label="Weather display"></div>
+                <div id="countdown-display" class="weather-display countdown-display hidden" aria-live="polite" aria-label="Countdown display"></div>
 
                 <div id="transcript-area">
                     <div id="transcript">Ready to help.</div>
@@ -109,9 +137,60 @@
 
                 <div class="mini-actions">
                     <button id="chatBtn" title="Chat">⌨️</button>
-                    <button id="cameraBtn" title="Look">👁️</button>
+                    <button id="notesBtn" title="Take Notes">📝</button>
+                    <button id="telegramBtn" title="Telegram">📨</button>
+                    <button id="cameraBtn" title="Camera">📷</button>
+                    <button id="calendarBtn" title="Calendar">📅</button>
+                    <button id="mediaBtn" title="Media">🖼️</button>
+                    <button id="gamesBtn" title="Learning Games">🎲</button>
+                    <button id="cartBtn" title="Cart">🛒</button>
                     <button id="hubBtn" title="Hub">📱</button>
                     <button id="gearBtn" title="Settings">⚙️</button>
+                </div>
+
+                <div id="media-strip" class="media-strip hidden" aria-label="Media strip">
+                    <div class="media-strip-head">
+                        <span id="media-strip-title">Photos</span>
+                        <div class="media-strip-head-actions">
+                            <span id="media-strip-count">0</span>
+                            <button id="closeMediaStripBtn" type="button" class="media-strip-close" aria-label="Close gallery">✕</button>
+                        </div>
+                    </div>
+                    <div id="media-strip-tabs" class="media-strip-tabs" aria-label="Media categories">
+                        <button type="button" class="media-strip-tab is-active" data-media-lane="all">All</button>
+                        <button type="button" class="media-strip-tab" data-media-lane="shots">Photos</button>
+                        <button type="button" class="media-strip-tab" data-media-lane="music">Music</button>
+                        <button type="button" class="media-strip-tab" data-media-lane="videos">Videos</button>
+                    </div>
+                    <div id="media-strip-hint" class="media-strip-hint">Say "open 3", "delete 3", or "scroll down".</div>
+                    <div id="media-strip-commands" class="media-strip-commands" aria-label="Media voice shortcuts"></div>
+                    <div id="media-strip-shots-group" class="media-strip-group">
+                        <div class="media-strip-subhead">
+                            <span>Photos</span>
+                            <span id="media-strip-shots-count">0</span>
+                        </div>
+                        <div id="media-strip-list" class="media-strip-list">
+                            <button type="button" class="media-strip-empty">No snapshots yet.</button>
+                        </div>
+                    </div>
+                    <div id="media-strip-music-group" class="media-strip-group">
+                        <div class="media-strip-subhead">
+                            <span>Music</span>
+                            <span id="media-strip-music-count">0</span>
+                        </div>
+                        <div id="media-strip-music-list" class="media-strip-list">
+                            <button type="button" class="media-strip-empty">No saved music yet.</button>
+                        </div>
+                    </div>
+                    <div id="media-strip-videos-group" class="media-strip-group">
+                        <div class="media-strip-subhead">
+                            <span>Videos</span>
+                            <span id="media-strip-videos-count">0</span>
+                        </div>
+                        <div id="media-strip-videos-list" class="media-strip-list">
+                            <button type="button" class="media-strip-empty">No saved videos yet.</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -133,7 +212,54 @@
                         <input type="password" id="youtubeKeyInput" placeholder="Add key for correct video in panel">
                         <span class="setting-hint">Different key — only for videos in the panel.</span>
                     </div>
+                    <div class="setting-group">
+                        <label for="weatherKeyInput">Weather API Key <small>(optional, for future weather provider)</small></label>
+                        <input type="password" id="weatherKeyInput" placeholder="Store your weather key">
+                        <span class="setting-hint">Saved now so Blip can switch to your weather provider later.</span>
+                    </div>
+                    <p class="settings-section-label">Google Calendar</p>
+                    <div class="setting-group">
+                        <label for="googleCalendarClientIdInput">Google Calendar Client ID <small>(optional legacy browser mode)</small></label>
+                        <input type="text" id="googleCalendarClientIdInput" placeholder="Paste your Google OAuth Client ID">
+                        <span class="setting-hint">If the backend is configured, Blip uses that instead. This field is only for the browser-only fallback mode.</span>
+                    </div>
+                    <div class="setting-group">
+                        <div class="calendar-auth-actions">
+                            <button id="connectCalendarBtn" type="button" class="secondary-btn">Connect Calendar</button>
+                            <button id="disconnectCalendarBtn" type="button" class="secondary-btn">Disconnect</button>
+                        </div>
+                        <div id="calendarAuthStatus" class="calendar-auth-status" aria-live="polite">Calendar not connected.</div>
+                        <span class="setting-hint">Best mode: run the backend OAuth server, then Connect Calendar once here.</span>
+                    </div>
+                    <p class="settings-section-label">Gmail</p>
+                    <div class="setting-group">
+                        <div class="calendar-auth-actions">
+                            <button id="connectGmailBtn" type="button" class="secondary-btn">Connect Gmail</button>
+                            <button id="openGmailInboxBtn" type="button" class="secondary-btn">Open Inbox</button>
+                            <button id="disconnectGmailBtn" type="button" class="secondary-btn">Disconnect</button>
+                        </div>
+                        <div id="gmailAuthStatus" class="calendar-auth-status" aria-live="polite">Gmail not connected.</div>
+                        <span class="setting-hint">Run the Gmail backend, then connect once here. Voice works with "check my email" and "send email".</span>
+                    </div>
+                    <p class="settings-section-label">Telegram</p>
+                    <div class="setting-group">
+                        <div class="calendar-auth-actions">
+                            <button id="openTelegramBtn" type="button" class="secondary-btn">Open Telegram</button>
+                            <button id="sendTelegramTestBtn" type="button" class="secondary-btn">Send Test</button>
+                        </div>
+                        <div id="telegramAuthStatus" class="calendar-auth-status" aria-live="polite">Telegram not ready.</div>
+                        <span class="setting-hint">Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, then Blip can send quick text and photo messages.</span>
+                    </div>
                     <p class="settings-section-label">Models</p>
+                    <div class="setting-group">
+                        <label for="usageTierSelect">Usage tier</label>
+                        <select id="usageTierSelect">
+                            <option value="cheap">Cheap Saver</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="premium">Premium Brain</option>
+                        </select>
+                        <span class="setting-hint">Cheap is the default: Flash chat + free/local voice. Premium spends more for better model quality.</span>
+                    </div>
                     <div class="setting-group">
                         <label for="voiceEngineSelect">Voice (text-to-speech)</label>
                         <select id="voiceEngineSelect">
@@ -142,9 +268,12 @@
                             <option value="web">Browser Default</option>
                         </select>
                         <span class="setting-hint">Gemini: ~100 free/day then paid. Kokoro &amp; browser: free.</span>
+                        <span class="setting-hint" id="voiceEngineStatus" aria-live="polite"></span>
                     </div>
                     <div class="setting-group" id="kokoro-hint-group" style="display: none;">
-                        <span class="setting-hint">Run Kokoro on this device (e.g. <code>pip run kokoro</code>). Falls back to browser if offline.</span>
+                        <span class="setting-hint">Start Kokoro in the <strong>same terminal</strong> (it runs in background and frees the terminal):</span>
+                        <pre class="kokoro-bash" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.3); border-radius:6px; font-size:0.7rem; overflow-x:auto;">./start-kokoro.sh</pre>
+                        <span class="setting-hint">Then run <code>npm run dev</code> in the same terminal. No second terminal needed. First time? Run <code>./setup-blip.sh</code> once to create <code>kokoro_env</code>.</span>
                     </div>
                     <div class="setting-group" id="browser-voice-group" style="display: none;">
                         <label for="browserVoiceSelect">Browser voice</label>
@@ -152,7 +281,7 @@
                     </div>
                     <div class="setting-group">
                         <label for="speechVolumeInput">Blip volume <span id="speechVolumeValue">100%</span></label>
-                        <input type="range" id="speechVolumeInput" min="20" max="100" step="20" value="100" title="20% steps">
+                        <input type="range" id="speechVolumeInput" min="20" max="100" step="5" value="100" title="Blip speech volume">
                     </div>
                     <div class="setting-group">
                         <label for="modelSelect">Chat model</label>
@@ -161,10 +290,81 @@
                             <option value="gemini-2.5-pro">Gemini 2.5 Pro (Brainy)</option>
                         </select>
                     </div>
+                    <div class="setting-group">
+                        <label for="imageModelSelect">Image model</label>
+                        <select id="imageModelSelect">
+                            <option value="gemini-3.1-flash-image-preview">Nano Banana 2 (Gemini 3.1 Flash Image)</option>
+                            <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                        </select>
+                        <span class="setting-hint">Nano Banana 2 (Gemini 3.1 Flash Image) renders text in images more clearly — try it for labels like planet names.</span>
+                    </div>
+                    <div class="setting-group">
+                        <label for="imageEngineSelect">Image engine</label>
+                        <select id="imageEngineSelect">
+                            <option value="gemini">Gemini (cloud)</option>
+                            <option value="dalle">DALL·E (OpenAI, local backend)</option>
+                            <option value="comfyui">ComfyUI (local)</option>
+                        </select>
+                        <span class="setting-hint">Gemini uses your Google key in settings. DALL·E uses a local backend with `OPENAI_API_KEY` set in your terminal. ComfyUI runs on your machine.</span>
+                    </div>
+                    <div class="setting-group" id="comfyuiUrlGroup">
+                        <label for="comfyuiBaseUrlInput">ComfyUI URL</label>
+                        <input type="text" id="comfyuiBaseUrlInput" placeholder="http://127.0.0.1:8188">
+                        <span class="setting-hint">Local ComfyUI server (default port 8188). Leave default if you run ComfyUI on this machine.</span>
+                        <div class="setting-group" style="margin-top:0.65rem;">
+                            <label for="comfyuiCheckpointInput">ComfyUI checkpoint name</label>
+                            <input type="text" id="comfyuiCheckpointInput" placeholder="e.g. sd_xl_base_1.0.safetensors">
+                            <span class="setting-hint">Must match exactly what ComfyUI shows in the CheckpointLoaderSimple node. If you have none installed, download a checkpoint and place it in ComfyUI’s checkpoints folder.</span>
+                        </div>
+                        <span class="setting-hint">How to start ComfyUI (no extra terminal needed):</span>
+                        <pre class="kokoro-bash" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.3); border-radius:6px; font-size:0.7rem; overflow-x:auto; white-space:pre-wrap;">You don’t need a 4th terminal.
+In Finder, open Applications and double‑click ComfyUI.app (or open it from Spotlight: ⌘+Space → type ComfyUI → Enter).
+The app will start the server and open the UI. The API Blip uses is usually:
+http://127.0.0.1:8188</pre>
+                    </div>
+                    <p class="settings-section-label">Display</p>
+                    <div class="setting-group">
+                        <label for="displayLumaSelect">Projection profile</label>
+                        <select id="displayLumaSelect">
+                            <option value="low">Low Luma</option>
+                            <option value="medium">Medium Luma (200 lm)</option>
+                            <option value="high">High Luma</option>
+                        </select>
+                        <span class="setting-hint">Tunes contrast, glow, panel readability, and projection sizing for dim or bright projectors.</span>
+                    </div>
+                    <div class="setting-group">
+                        <label for="idleWeatherLocationInput">Idle weather location</label>
+                        <input type="text" id="idleWeatherLocationInput" placeholder="Valencia, Spain">
+                        <span class="setting-hint">Blip lives in Valencia by default, and can quietly reflect the weather there while idle. Refreshes about every 8 hours.</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Idle ambience</label>
+                        <div class="setting-inline-row">
+                            <label class="toggle-pill" for="idleMusicToggle">
+                                <input type="checkbox" id="idleMusicToggle">
+                                <span>Passive music</span>
+                            </label>
+                            <label class="toggle-pill" for="idleFxToggle">
+                                <input type="checkbox" id="idleFxToggle">
+                                <span>Sparkle FX</span>
+                            </label>
+                        </div>
+                        <div class="slider-group">
+                            <input type="range" id="idleSoundVolumeInput" min="10" max="100" step="5" value="35" title="Idle ambience volume">
+                            <span id="idleSoundVolumeValue">35%</span>
+                        </div>
+                        <span class="setting-hint">Only plays while Blip is awake, passive, and not speaking or thinking.</span>
+                    </div>
                     <div class="setting-group secondary-btns">
                         <button id="watchBtn">🎥 Watch Mode</button>
                         <button id="uploadBtn">📁 Upload</button>
                         <input type="file" id="fileInput" hidden accept="image/*">
+                    </div>
+                    <p class="settings-section-label">UI Debug</p>
+                    <div class="setting-group">
+                        <button type="button" id="ui-debug-refresh-btn" class="secondary-btn">Refresh UI state</button>
+                        <span class="setting-hint">Dump current UI state below. Use when debugging panels, mode, or side panel.</span>
+                        <pre id="ui-debug-dump" class="ui-debug-dump" aria-live="polite" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.4); border-radius:6px; font-size:0.7rem; max-height:240px; overflow:auto; white-space:pre-wrap; word-break:break-all;"></pre>
                     </div>
                 </div>
             </div>
@@ -184,11 +384,62 @@
                     <button id="sendHubBtn" aria-label="Post to Hub">Post</button>
                 </div>
             </div>
+            <div id="cart-container" class="widget-panel cart-panel">
+                <div class="panel-header">
+                    <span>🛒 Blip Cart</span>
+                    <button id="closeCartBtn" class="panel-close-btn" aria-label="Close cart">✕</button>
+                </div>
+                <div id="cart-items">
+                    <div class="cart-empty">Cart is empty. Save products here.</div>
+                </div>
+            </div>
+            <div id="games-container" class="widget-panel games-panel">
+                <div class="panel-header">
+                    <span>🎲 Learning Games</span>
+                    <button id="closeGamesBtn" class="panel-close-btn" aria-label="Close learning games">✕</button>
+                </div>
+                <div id="games-panel-body" class="games-panel-body">
+                    <div id="blip-math-game" class="blip-game-card">
+                        <div class="blip-game-kicker">Game 1</div>
+                        <h2>Blip Math Game</h2>
+                        <div id="math-intro" class="blip-game-intro">Let's play with numbers!</div>
+                        <div id="math-question" class="math-question">Press Start</div>
+                        <div id="math-options" class="math-options"></div>
+                        <div id="math-feedback" class="math-feedback"></div>
+                        <div class="math-controls">
+                            <button id="math-start-btn" type="button">Start Game</button>
+                            <button id="math-next-btn" type="button" style="display:none;">Next</button>
+                        </div>
+                        <div id="math-score" class="math-score">Score: 0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="media-container" class="widget-panel media-panel">
+                <div class="panel-header">
+                    <span>🖼️ Media Gallery</span>
+                    <button id="closeMediaBtn" class="panel-close-btn" aria-label="Close media gallery">✕</button>
+                </div>
+                <div id="media-grid">
+                    <div class="media-empty">No snapshots yet. Say "snap photo" to create one.</div>
+                </div>
+            </div>
+            <div id="media-lightbox" class="media-lightbox" aria-hidden="true">
+                <button id="closeMediaLightboxBtn" class="panel-close-btn media-lightbox-close" aria-label="Close image">✕</button>
+                <div class="media-lightbox-actions">
+                    <button id="shareMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Share</button>
+                    <button id="downloadMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Download</button>
+                    <button id="wallpaperMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Wallpaper</button>
+                </div>
+                <img id="media-lightbox-image" alt="Expanded snapshot">
+                <video id="media-lightbox-video" controls playsinline preload="metadata"></video>
+            </div>
 
             <div id="chart-container" class="widget-panel chart-panel">
                 <button id="closeChartBtn" class="panel-close-btn" aria-label="Close chart">✕</button>
                 <canvas id="currencyChart" style="width: 100%; height: 200px;"></canvas>
                 <button id="downloadChartBtn" class="action-link outline">⬇️ Download Graph</button>
+                <button id="saveChartBtn" class="action-link outline">💾 Save To Media</button>
             </div>
 
             <div id="map-container" class="widget-panel map-panel">
@@ -197,11 +448,12 @@
                     loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
             </div>
 
-            <video id="webcam-video" autoplay playsinline style="display: none;"></video>
-            <div id="camera-controls" style="display: none; gap: 10px; margin-top: 10px; justify-content: center;">
-                <button id="snapBtn" class="primary-btn" style="flex: 1;">📸 SNAP PHOTO</button>
-                <button id="stopCameraBtn" class="secondary-btn" style="padding: 10px 20px;">⏹ STOP</button>
+            <div id="vision-preview-container" style="display:none;">
+                <img id="vision-preview" alt="Vision preview">
+                <button id="clear-image-btn" title="Clear image" aria-label="Clear image">✕</button>
+                <button id="save-to-hub-btn" class="mini-save-btn" aria-label="Save image to hub">Save</button>
             </div>
+
             <canvas id="capture-canvas" style="display: none;"></canvas>
         </main>
     </div>
