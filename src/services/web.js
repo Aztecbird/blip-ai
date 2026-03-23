@@ -3,30 +3,124 @@
  * Weather (wttr.in) and Currency (ExchangeRate-API)
  */
 
-import { generateWithPrompt } from './gemini.js';
+import { generateWithPrompt } from './geminiText.js';
+
+const WEB_CACHE = new Map();
+
+function getCacheKey(scope, ...parts) {
+    return [scope, ...parts.map((part) => String(part || '').trim().toLowerCase())].join('::');
+}
+
+function getCached(key, ttlMs) {
+    const hit = WEB_CACHE.get(key);
+    if (!hit) return null;
+    if ((Date.now() - hit.time) > ttlMs) {
+        WEB_CACHE.delete(key);
+        return null;
+    }
+    return hit.value;
+}
+
+function setCached(key, value) {
+    WEB_CACHE.set(key, { value, time: Date.now() });
+    return value;
+}
+
+function formatOffsetTime(offsetSeconds) {
+    if (!Number.isFinite(Number(offsetSeconds))) return '';
+    const now = new Date(Date.now() + (Number(offsetSeconds) * 1000));
+    return new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'UTC'
+    }).format(now);
+}
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
+function normalizeProductOptionList(raw) {
+    return String(raw || '')
+        .split('\n')
+        .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
+        .filter(Boolean)
+        .filter((line, index, arr) => arr.findIndex((item) => item.toLowerCase() === line.toLowerCase()) === index)
+        .slice(0, 3);
+}
 
 export const web = {
     /**
      * Get weather for a specific location
-     * uses wttr.in format=j1 (JSON)
+     * prefers OpenWeatherMap when an API key is provided, falls back to wttr.in
      */
-    async getWeather(location) {
-        console.log(`🌦 Fetching weather for: ${location}`);
+    async getWeather(location, apiKey = '') {
+        const safeLocation = String(location || '').trim();
+        const safeApiKey = String(apiKey || '').trim();
+        if (!safeLocation) {
+            return { text: "Tell me the city for the weather.", error: true };
+        }
+        const cacheKey = getCacheKey('weather', safeApiKey ? 'openweather' : 'wttr', safeLocation);
+        const cached = getCached(cacheKey, 5 * 60 * 1000);
+        if (cached) return cached;
+        console.log(`🌦 Fetching weather for: ${safeLocation}`);
         try {
-            const res = await fetch(`https://wttr.in/${encodeURIComponent(location)}?format=j1`);
-            if (!res.ok) throw new Error('Weather service unavailable');
-            const data = await res.json();
+            if (safeApiKey) {
+                const data = await fetchJsonWithTimeout(
+                    `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(safeLocation)}&appid=${encodeURIComponent(safeApiKey)}&units=metric`,
+                    {},
+                    8000
+                );
 
-            const current = data.current_condition[0];
-            const city = data.nearest_area[0].areaName[0].value;
-            const desc = current.weatherDesc[0].value;
-            const temp = current.temp_C;
-            const humidity = current.humidity;
+                const city = data?.name || safeLocation;
+                const desc = data?.weather?.[0]?.description || data?.weather?.[0]?.main;
+                const temp = data?.main?.temp;
+                const humidity = data?.main?.humidity;
+                const windSpeed = data?.wind?.speed;
+                const icon = String(data?.weather?.[0]?.icon || '');
+                const isDay = icon ? icon.endsWith('d') : true;
+                const timezoneOffset = Number(data?.timezone);
+                const localTime = formatOffsetTime(timezoneOffset);
+                if (temp == null || !desc) throw new Error('OpenWeather payload incomplete');
 
-            return {
+                return setCached(cacheKey, {
+                    text: `In ${city}, it's currently ${Math.round(Number(temp))}°C and ${desc}. The humidity is ${humidity}%.`,
+                    data: { temp: Math.round(Number(temp)), desc, city, humidity, windSpeed, isDay, localTime, timezoneOffset, provider: 'openweather' }
+                });
+            }
+        } catch (err) {
+            if (safeApiKey) {
+                console.warn('OpenWeather fallback:', err?.message || err);
+            } else {
+                console.error('Weather error:', err);
+            }
+        }
+
+        try {
+            const data = await fetchJsonWithTimeout(`https://wttr.in/${encodeURIComponent(safeLocation)}?format=j1`, {}, 8000);
+
+            const current = data?.current_condition?.[0];
+            const city = data?.nearest_area?.[0]?.areaName?.[0]?.value || safeLocation;
+            const desc = current?.weatherDesc?.[0]?.value;
+            const temp = current?.temp_C;
+            const humidity = current?.humidity;
+            const isDay = String(current?.isday || 'yes').toLowerCase() === 'yes';
+            const localTime = String(current?.localObsDateTime || current?.observation_time || '').trim();
+            if (temp == null || !desc) throw new Error('Weather payload incomplete');
+
+            return setCached(cacheKey, {
                 text: `In ${city}, it's currently ${temp}°C and ${desc}. The humidity is ${humidity}%.`,
-                data: { temp, desc, city, humidity }
-            };
+                data: { temp, desc, city, humidity, isDay, localTime, provider: 'wttr' }
+            });
         } catch (err) {
             console.error('Weather error:', err);
             return { text: "I couldn't get the weather for that location right now.", error: true };
@@ -97,30 +191,37 @@ export const web = {
      * Falls back to Wikipedia if no OSM results found.
      */
     async getPlaceInfo(query, location) {
+        const safeQuery = String(query || '').trim();
+        const safeLocation = String(location || '').trim();
+        if (!safeQuery) return { text: "Tell me what place you want to find.", html: '' };
+        if (!safeLocation) return { text: "Tell me where to search for that place.", html: '' };
+        const cacheKey = getCacheKey('place', safeQuery, safeLocation);
+        const cached = getCached(cacheKey, 10 * 60 * 1000);
+        if (cached) return cached;
         try {
-            console.log(`🗺️ OSM lookup: "${query}" in "${location}"`);
+            console.log(`🗺️ OSM lookup: "${safeQuery}" in "${safeLocation}"`);
 
             // Step 1: Geocode the location → lat/lon via Nominatim
-            const nominatimRes = await fetch(
-                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`,
-                { headers: { 'Accept-Language': 'en', 'User-Agent': 'BlipAI/1.0' } }
+            const nominatimData = await fetchJsonWithTimeout(
+                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(safeLocation)}&format=json&limit=1`,
+                { headers: { 'Accept-Language': 'en', 'User-Agent': 'BlipAI/1.0' } },
+                9000
             );
-            const nominatimData = await nominatimRes.json();
             if (!nominatimData.length) throw new Error('Location not found via Nominatim');
 
             const { lat, lon } = nominatimData[0];
-            console.log(`📍 Geocoded "${location}" → ${lat}, ${lon}`);
+            console.log(`📍 Geocoded "${safeLocation}" → ${lat}, ${lon}`);
 
             // Step 2: Extract a cuisine/type keyword from the query
             const cuisineKeywords = ['sushi', 'pizza', 'burger', 'ramen', 'thai', 'chinese', 'indian',
                 'mexican', 'italian', 'korean', 'vegan', 'vegetarian', 'seafood', 'steak', 'tapas'];
-            const lowerQuery = query.toLowerCase();
+            const lowerQuery = safeQuery.toLowerCase();
             const detectedCuisine = cuisineKeywords.find(k => lowerQuery.includes(k));
 
             // Step 3: Query Overpass API for restaurants near location
             let amenityFilter = '"amenity"="restaurant"';
             let cuisineFilter = detectedCuisine ? `["cuisine"~"${detectedCuisine}",i]` : '';
-            const nameFilter = !detectedCuisine ? `["name"~"${query.split(' ')[0]}",i]` : '';
+            const nameFilter = !detectedCuisine ? `["name"~"${safeQuery.split(' ')[0]}",i]` : '';
 
             const overpassQuery =
                 `[out:json][timeout:20];` +
@@ -128,14 +229,12 @@ export const web = {
                 ` way[${amenityFilter}]${cuisineFilter}${nameFilter}(around:3000,${lat},${lon}););` +
                 `out body 6;`;
 
-            const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
+            const overpassData = await fetchJsonWithTimeout('https://overpass-api.de/api/interpreter', {
                 method: 'POST',
                 body: overpassQuery
-            });
-            if (!overpassRes.ok) throw new Error('Overpass API failed');
-            const overpassData = await overpassRes.json();
+            }, 12000);
 
-            const elements = overpassData.elements;
+            const elements = Array.isArray(overpassData?.elements) ? overpassData.elements : [];
             console.log(`✅ Overpass returned ${elements.length} places`);
 
             if (!elements.length) {
@@ -144,25 +243,27 @@ export const web = {
                     `[out:json][timeout:20];` +
                     `node["amenity"="restaurant"](around:2000,${lat},${lon});` +
                     `out body 5;`;
-                const wideRes = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: wideQuery });
-                const wideData = await wideRes.json();
+                const wideData = await fetchJsonWithTimeout('https://overpass-api.de/api/interpreter', { method: 'POST', body: wideQuery }, 12000);
                 if (!wideData.elements.length) {
                     // Wikipedia Fallback with Disambiguation Check
-                    console.log(`📖 Wikipedia fallback for: ${query}`);
-                    const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query.replace(/ /g, '_'))}`);
-                    if (wikiRes.ok) {
-                        const wikiData = await wikiRes.json();
+                    console.log(`📖 Wikipedia fallback for: ${safeQuery}`);
+                    try {
+                        const wikiData = await fetchJsonWithTimeout(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(safeQuery.replace(/ /g, '_'))}`, {}, 8000);
                         let summary = wikiData.extract || "";
 
                         // DISAMBIGUATION: If the query is an adjective but the result is about the city of Nice, discard or flag.
-                        if (query.toLowerCase().trim() === 'nice' || (query.toLowerCase().includes('nice') && summary.includes('Nice is the seventh-most populous city in France'))) {
-                            return `I found results for "Nice" (the city), but I suspect you meant "nice" as in pleasant. Could you be more specific about what you are looking for?`;
+                        if (safeQuery.toLowerCase().trim() === 'nice' || (safeQuery.toLowerCase().includes('nice') && summary.includes('Nice is the seventh-most populous city in France'))) {
+                            return setCached(cacheKey, {
+                                text: `I found results for "Nice" (the city), but I suspect you meant "nice" as in pleasant. Could you be more specific about what you are looking for?`,
+                                html: ''
+                            });
                         }
 
-                        return summary;
-                    }
+                        return setCached(cacheKey, { text: summary, html: '' });
+                    } catch (_) {}
                     // Final fallback: Wikipedia
-                    return this._wikiPlaceInfo(query, location);
+                    const wikiFallback = await this._wikiPlaceInfo(safeQuery, safeLocation);
+                    return setCached(cacheKey, { text: wikiFallback, html: '' });
                 }
                 elements.push(...wideData.elements);
             }
@@ -177,22 +278,22 @@ export const web = {
                 const phone = t['phone'] || t['contact:phone'] ? `<br>📞 ${t['phone'] || t['contact:phone']}` : '';
                 const cuisine = t['cuisine'] ? ` (${t['cuisine'].replace(/_/g, ' ')})` : '';
 
-                const q = encodeURIComponent(`${name} ${location}`);
+                const q = encodeURIComponent(`${name} ${safeLocation}`);
                 return `<a href="https://www.google.com/maps/search/${q}" target="_blank" class="action-link blue" style="display:block;margin-top:6px;text-align:left;line-height:1.4;">
                     <b>📍 ${name}</b>${cuisine}${street}${housenumber}${hours}${phone}
                 </a>`;
             }).join('');
 
             const intro = detectedCuisine
-                ? `I found ${elements.length} ${detectedCuisine} options in ${location}. I've marked the best ones on the map for you!`
-                : `I found ${elements.length} places matching that description in ${location}. I've marked them on the map.`;
+                ? `I found ${elements.length} ${detectedCuisine} options in ${safeLocation}. I've marked the best ones on the map for you!`
+                : `I found ${elements.length} places matching that description in ${safeLocation}. I've marked them on the map.`;
 
-            return { text: intro, html: htmlPlaces };
+            return setCached(cacheKey, { text: intro, html: htmlPlaces });
 
         } catch (e) {
             console.error('OSM lookup error, falling back to Wikipedia:', e);
-            const wikiText = await this._wikiPlaceInfo(query, location);
-            return { text: wikiText, html: '' };
+            const wikiText = await this._wikiPlaceInfo(safeQuery, safeLocation);
+            return setCached(cacheKey, { text: wikiText, html: '' });
         }
     },
 
@@ -243,12 +344,27 @@ export const web = {
      * @param {string} query - e.g. "piano keyboard"
      * @param {string[]} recommendations - e.g. ["Yamaha P-125", "Roland FP-30X"]
      */
-    async getProducts(query, recommendations = []) {
+    async getProducts(query, recommendations = [], options = {}) {
         console.log(`🛒 Building retailer links for: ${query}`, recommendations);
 
-        const items = (recommendations && recommendations.length > 0)
+        let items = (recommendations && recommendations.length > 0)
             ? recommendations.slice(0, 3)
-            : [query];
+            : [];
+
+        if (!items.length && options?.apiKey) {
+            try {
+                const optionText = await generateWithPrompt(
+                    'You recommend products. Reply with exactly 3 short product options, one per line. No intro, no bullets beyond the product names.',
+                    `User wants: ${query}\nGive 3 concrete shopping options or product types that would make sense to compare.`,
+                    options.apiKey
+                );
+                items = normalizeProductOptionList(optionText);
+            } catch (error) {
+                console.warn('Product recommendations fallback:', error?.message || error);
+            }
+        }
+
+        if (!items.length) items = [query, `Best ${query}`, `Budget ${query}`].slice(0, 3);
 
         const retailers = [
             { name: 'Amazon', base: 'https://www.amazon.es/s?k=' },
@@ -259,24 +375,26 @@ export const web = {
 
         // If the query mentions a specific retailer, prioritize it
         const lowerQuery = query.toLowerCase();
-        const preferredRetailer = retailers.find(r => lowerQuery.includes(r.name.toLowerCase()));
+        const requestedRetailer = String(options?.retailer || '').trim().toLowerCase();
+        const preferredRetailer = requestedRetailer
+            ? retailers.find(r => r.name.toLowerCase() === requestedRetailer)
+            : retailers.find(r => lowerQuery.includes(r.name.toLowerCase()));
 
         const products = [];
         items.forEach(itemName => {
             if (preferredRetailer) {
                 products.push({
-                    name: `${itemName} @ ${preferredRetailer.name}`,
+                    name: itemName,
                     url: `${preferredRetailer.base}${encodeURIComponent(itemName)}`,
-                    color: 'blue'
+                    color: preferredRetailer.name === 'Amazon' ? 'orange' : 'blue',
+                    retailer: preferredRetailer.name
                 });
             } else {
-                // Default to top 2 results for variety
-                retailers.slice(0, 2).forEach(r => {
-                    products.push({
-                        name: `${itemName} (${r.name})`,
-                        url: `${r.base}${encodeURIComponent(itemName)}`,
-                        color: r.name === 'Amazon' ? 'orange' : 'blue'
-                    });
+                products.push({
+                    name: itemName,
+                    url: `${retailers[0].base}${encodeURIComponent(itemName)}`,
+                    color: 'orange',
+                    retailer: retailers[0].name
                 });
             }
         });
@@ -289,7 +407,7 @@ export const web = {
             `<a href="${p.url}" target="_blank" class="action-link ${p.color}" style="display:block;margin-top:6px;text-align:left;">🛒 ${p.name}</a>`
         ).join('');
 
-        return { text: spokenText, html };
+        return { text: spokenText, html, links: products };
     },
 
     async search(query, entities = []) {
@@ -319,6 +437,14 @@ export const web = {
         let extractedData = "";
         const searchTargets = (entities && entities.length > 1) ? entities : [query];
         let combinedExtract = "";
+        const lowerQuery = (typeof query === 'string' ? query : '').toLowerCase();
+
+        // Trivia: "who sang the solar system with planet names" — well-known educational songs
+        const solarSystemSongMatch = /solar\s*system|planet\s*names?|names?\s*of\s*(?:the\s+)?planets?/.test(lowerQuery) &&
+            /\b(sang|singer|song|who\s+sang|artist|video|youtube)\b/.test(lowerQuery);
+        if (solarSystemSongMatch) {
+            combinedExtract = "Famous educational songs that show the solar system with the names of each planet include: \"The Planet Song\" by Have Fun Teaching, \"The Solar System Song\" by Kids Learning Tube, and \"Planet Song\" from Super Simple Songs. If you're thinking of a specific version (e.g. from a show or a decade), the Google link below can help narrow it down.";
+        }
 
         for (const target of searchTargets) {
             const lowerTarget = target.toLowerCase();
@@ -345,29 +471,115 @@ export const web = {
         };
     },
 
+    async getImageLookup(query) {
+        const safeQuery = String(query || '').trim();
+        if (!safeQuery) {
+            return { text: 'Tell me what picture you want to see.', error: true };
+        }
+        const cacheKey = getCacheKey('image-lookup', safeQuery);
+        const cached = getCached(cacheKey, 30 * 60 * 1000);
+        if (cached) return cached;
+
+        const wikiTitle = safeQuery.replace(/\s+/g, '_');
+        const googleImageUrl = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(safeQuery)}`;
+
+        try {
+            const wikiData = await fetchJsonWithTimeout(
+                `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiTitle)}`,
+                {},
+                9000
+            );
+
+            const originalImageUrl = wikiData?.originalimage?.source || '';
+            const thumbnailImageUrl = wikiData?.thumbnail?.source || '';
+            const imageUrl = thumbnailImageUrl || originalImageUrl || '';
+            const pageUrl = wikiData?.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(wikiTitle)}`;
+            const title = wikiData?.title || safeQuery;
+            const extract = String(wikiData?.extract || '').trim();
+
+            if (imageUrl) {
+                const fallbackImageUrls = [thumbnailImageUrl, originalImageUrl].filter(Boolean);
+                return setCached(cacheKey, {
+                    text: extract || `Here is ${title}.`,
+                    imageUrl,
+                    fallbackImageUrls,
+                    title,
+                    sourceUrl: pageUrl,
+                    html: `<a href="${pageUrl}" target="_blank" class="action-link blue">📘 OPEN WIKIPEDIA</a>`
+                });
+            }
+        } catch (error) {
+            console.warn('Wikipedia image lookup fallback:', error?.message || error);
+        }
+
+        try {
+            const commonsUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(safeQuery)}&gsrnamespace=6&prop=imageinfo&iiprop=url&iiurlwidth=900&format=json&origin=*`;
+            const commonsData = await fetchJsonWithTimeout(commonsUrl, {}, 9000);
+            const pages = Object.values(commonsData?.query?.pages || {});
+            const first = pages.find((page) => Array.isArray(page?.imageinfo) && page.imageinfo[0]?.url);
+            const imageInfo = first?.imageinfo?.[0];
+            const imageUrl = imageInfo?.thumburl || imageInfo?.url || '';
+            const title = String(first?.title || safeQuery).replace(/^File:/i, '').replace(/_/g, ' ');
+            const sourceUrl = imageInfo?.descriptionurl || googleImageUrl;
+
+            if (imageUrl) {
+                const fallbackImageUrls = [imageInfo?.thumburl, imageInfo?.url].filter(Boolean);
+                return setCached(cacheKey, {
+                    text: `Here is an image for ${safeQuery}.`,
+                    imageUrl,
+                    fallbackImageUrls,
+                    title,
+                    sourceUrl,
+                    html: `<a href="${sourceUrl}" target="_blank" class="action-link blue">🖼 OPEN IMAGE SOURCE</a>`
+                });
+            }
+        } catch (error) {
+            console.warn('Wikimedia Commons image lookup failed:', error?.message || error);
+        }
+
+        return {
+            text: `I couldn't pull a direct image for ${safeQuery}, but I can open image results for you.`,
+            imageUrl: '',
+            fallbackImageUrls: [],
+            title: safeQuery,
+            sourceUrl: googleImageUrl,
+            html: `<a href="${googleImageUrl}" target="_blank" class="action-link blue">🖼 SEARCH IMAGES ON GOOGLE</a>`
+        };
+    },
+
     /**
      * Search YouTube. If youtubeApiKey is set, uses YouTube Data API v3 to get first video and returns embedUrl for in-panel playback.
      * @param {string} query - e.g. "how to cut tomatoes"
      * @param {string} [youtubeApiKey] - optional; enable YouTube Data API v3 in Google Cloud and pass key for embed + autoplay
      */
     async searchYouTube(query, youtubeApiKey = null) {
-        console.log(`🎬 YouTube search: ${query}`);
-        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+        const safeQuery = String(query || '').trim();
+        if (!safeQuery) {
+            return {
+                text: 'Tell me what video to search for.',
+                url: 'https://www.youtube.com',
+                html: `<a href="https://www.youtube.com" target="_blank" class="action-link red">🎬 OPEN YOUTUBE</a>`
+            };
+        }
+        const cacheKey = getCacheKey('youtube', safeQuery, youtubeApiKey ? 'keyed' : 'search');
+        const cached = getCached(cacheKey, 10 * 60 * 1000);
+        if (cached) return cached;
+        console.log(`🎬 YouTube search: ${safeQuery}`);
+        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(safeQuery)}`;
         const result = {
-            text: `I've found some videos on ${query} for you to watch.`,
+            text: `I've found some videos on ${safeQuery} for you to watch.`,
             url: searchUrl,
-            html: `<a href="${searchUrl}" target="_blank" class="action-link red">🎬 WATCH ON YOUTUBE: ${query}</a>`
+            html: `<a href="${searchUrl}" target="_blank" class="action-link red">🎬 WATCH ON YOUTUBE: ${safeQuery}</a>`
         };
         if (youtubeApiKey && youtubeApiKey.trim()) {
             try {
-                const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${youtubeApiKey.trim()}`;
-                const res = await fetch(apiUrl);
-                if (!res.ok) throw new Error(`YouTube API ${res.status}`);
-                const data = await res.json();
+                const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(safeQuery)}&key=${youtubeApiKey.trim()}`;
+                const data = await fetchJsonWithTimeout(apiUrl, {}, 9000);
                 const items = data.items || [];
                 result.searchResults = items.map((item) => ({
                     videoId: item.id?.videoId,
-                    title: item.snippet?.title || ''
+                    title: item.snippet?.title || '',
+                    channelTitle: item.snippet?.channelTitle || ''
                 })).filter((r) => r.videoId);
                 const videoId = result.searchResults[0]?.videoId;
                 if (videoId) {
@@ -375,11 +587,32 @@ export const web = {
                     result.embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
                     result.watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
                 }
+
+                // Optional enrichment: fetch category + duration for better classification (music vs video).
+                if (result.searchResults?.length) {
+                    const ids = result.searchResults.map((r) => r.videoId).slice(0, 5).join(',');
+                    const videosUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${encodeURIComponent(ids)}&key=${youtubeApiKey.trim()}`;
+                    const videosData = await fetchJsonWithTimeout(videosUrl, {}, 9000).catch(() => null);
+                    const byId = new Map();
+                    (videosData?.items || []).forEach((item) => {
+                        const id = item?.id;
+                        if (!id) return;
+                        byId.set(id, {
+                            categoryId: String(item?.snippet?.categoryId || ''),
+                            duration: String(item?.contentDetails?.duration || '')
+                        });
+                    });
+                    result.searchResults = result.searchResults.map((entry) => ({
+                        ...entry,
+                        categoryId: byId.get(entry.videoId)?.categoryId || '',
+                        duration: byId.get(entry.videoId)?.duration || ''
+                    }));
+                }
             } catch (e) {
                 console.warn('YouTube Data API failed, using search link only:', e.message);
             }
         }
-        return result;
+        return setCached(cacheKey, result);
     },
 
     /**
@@ -464,3 +697,14 @@ Return:
 
     return await response.json();
 }
+
+export const webTestUtils = {
+    clearCache() {
+        WEB_CACHE.clear();
+    },
+    formatOffsetTime,
+    getCached,
+    getCacheKey,
+    normalizeProductOptionList,
+    setCached
+};
