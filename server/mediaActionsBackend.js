@@ -134,6 +134,6 @@ const server = http.createServer(async (request, response) => {
     }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Media actions backend listening on http://127.0.0.1:${PORT}`);
 });

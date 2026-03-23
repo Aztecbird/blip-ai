@@ -17,7 +17,11 @@ export function requireApiKey(inputKey) {
 }
 
 export function buildGeminiUrl(model, inputKey) {
-  const apiKey = requireApiKey(inputKey);
+  const apiKey = resolveApiKey(inputKey);
+  if (!apiKey) {
+    // If no key is provided, use the local backend proxy
+    return `/api/gemini/models/${model}:generateContent`;
+  }
   return `${GEMINI_API_BASE}/${model}:generateContent?key=${apiKey}`;
 }
 

@@ -31,6 +31,9 @@
         <div class="ufo-drift">
             <span class="ufo-core"></span>
         </div>
+        <div class="ufo-drift ufo-rise">
+            <span class="ufo-core"></span>
+        </div>
     </div>
     <div id="timer-corner" class="timer-corner hidden" aria-live="polite">
         <span class="timer-corner-dot" aria-hidden="true"></span>
@@ -50,7 +53,7 @@
         </svg>
 
         <main class="container">
-            <div id="version-tag">V—</div>
+            <div id="version-tag">V5.1</div>
 
             <!-- Hidden Compatibility Elements for Legacy JS -->
             <div style="display:none;">
@@ -135,7 +138,7 @@
                 <div class="mini-actions">
                     <button id="chatBtn" title="Chat">⌨️</button>
                     <button id="notesBtn" title="Take Notes">📝</button>
-                    <button id="emailBtn" title="Email">✉️</button>
+                    <button id="telegramBtn" title="Telegram">📨</button>
                     <button id="cameraBtn" title="Camera">📷</button>
                     <button id="calendarBtn" title="Calendar">📅</button>
                     <button id="mediaBtn" title="Media">🖼️</button>
@@ -237,6 +240,15 @@
                         </div>
                         <div id="gmailAuthStatus" class="calendar-auth-status" aria-live="polite">Gmail not connected.</div>
                         <span class="setting-hint">Run the Gmail backend, then connect once here. Voice works with "check my email" and "send email".</span>
+                    </div>
+                    <p class="settings-section-label">Telegram</p>
+                    <div class="setting-group">
+                        <div class="calendar-auth-actions">
+                            <button id="openTelegramBtn" type="button" class="secondary-btn">Open Telegram</button>
+                            <button id="sendTelegramTestBtn" type="button" class="secondary-btn">Send Test</button>
+                        </div>
+                        <div id="telegramAuthStatus" class="calendar-auth-status" aria-live="polite">Telegram not ready.</div>
+                        <span class="setting-hint">Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, then Blip can send quick text and photo messages.</span>
                     </div>
                     <p class="settings-section-label">Models</p>
                     <div class="setting-group">

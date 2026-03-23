@@ -37,6 +37,23 @@ class SpeechService {
         return this._audioCtx;
     }
 
+    /**
+     * Must be awaited before playing decoded audio (Gemini TTS, Kokoro) after any async gap.
+     * Otherwise the context often stays suspended and playback is silent.
+     */
+    async ensureAudioReady() {
+        if (!this.AudioContextClass) return null;
+        if (!this._audioCtx) this._audioCtx = new this.AudioContextClass();
+        try {
+            if (this._audioCtx.state === 'suspended') {
+                await this._audioCtx.resume();
+            }
+        } catch (e) {
+            console.warn('AudioContext resume failed:', e);
+        }
+        return this._audioCtx;
+    }
+
     async init() {
         console.log('🎤 Initializing Speech Service...');
         if (!this.synth || typeof this.synth.getVoices !== 'function') {
@@ -167,8 +184,8 @@ class SpeechService {
 
         const arrayBuffer = await res.arrayBuffer();
 
-        // Play via AudioContext
-        const audioCtx = this.initAudio();
+        // Play via AudioContext (resume after async fetch — required or output is silent)
+        const audioCtx = await this.ensureAudioReady();
         if (!audioCtx) throw new Error('Audio playback is unavailable in this browser.');
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
@@ -290,7 +307,7 @@ class SpeechService {
     async playBase64Audio(base64Data, options = {}) {
         this.isSpeaking = true;
         try {
-            const audioCtx = this.initAudio();
+            const audioCtx = await this.ensureAudioReady();
             if (!audioCtx) throw new Error('Audio playback is unavailable in this browser.');
 
             const binaryString = atob(base64Data);

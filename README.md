@@ -1,6 +1,6 @@
 # Blip AI
 
-Blip is a local-first voice assistant with a Vite frontend and a small set of local backends for anything that should not run in the browser, like Gmail OAuth, Google Calendar refresh tokens, OpenAI image generation, and desktop media actions.
+Blip is a local-first voice assistant with a Vite frontend and a small set of local backends for anything that should not run in the browser, like Gmail OAuth, Google Calendar refresh tokens, Telegram bot messaging, OpenAI image generation, and desktop media actions.
 
 ## Architecture
 
@@ -15,6 +15,8 @@ Blip is a local-first voice assistant with a Vite frontend and a small set of lo
   Handles Google Calendar OAuth and token refresh
 - `server/googleGmailBackend.js`
   Handles Gmail OAuth, inbox reads, and send mail
+- `server/telegramBackend.js`
+  Handles Telegram bot sends for text and photos
 - `server/openaiImageBackend.js`
   Handles OpenAI image requests with server-side API key
 - `server/mediaActionsBackend.js`
@@ -82,12 +84,15 @@ Important values:
 - `GOOGLE_CALENDAR_CLIENT_SECRET=...`
 - `GOOGLE_GMAIL_CLIENT_ID=...`
 - `GOOGLE_GMAIL_CLIENT_SECRET=...`
+- `TELEGRAM_BOT_TOKEN=...`
+- `TELEGRAM_CHAT_ID=...`
 - `OPENAI_API_KEY=...`
 
 Service toggles:
 - `BLIP_ENABLE_KOKORO=1`
 - `BLIP_ENABLE_CALENDAR_BACKEND=1`
 - `BLIP_ENABLE_GMAIL_BACKEND=1`
+- `BLIP_ENABLE_TELEGRAM_BACKEND=0`
 - `BLIP_ENABLE_MEDIA_BACKEND=1`
 - `BLIP_ENABLE_OPENAI_IMAGE_BACKEND=0`
 
@@ -122,6 +127,43 @@ Gmail backend only:
 
 ```bash
 npm run dev:gmail-backend
+```
+
+Telegram backend only:
+
+```bash
+npm run dev:telegram-backend
+```
+
+## Telegram quick start
+
+1. In Telegram, chat with `@BotFather`
+2. Run `/newbot` and copy the bot token
+3. Send one message to your new bot from the Telegram account you want Blip to message
+4. Find your chat id by opening:
+
+```text
+https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
+```
+
+5. Put these in `.env.local`:
+
+```bash
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+BLIP_ENABLE_TELEGRAM_BACKEND=1
+```
+
+6. Start the backend:
+
+```bash
+npm run dev:telegram-backend
+```
+
+7. Test a send:
+
+```bash
+curl -X POST http://127.0.0.1:8789/api/telegram/send-test
 ```
 
 ## Notes

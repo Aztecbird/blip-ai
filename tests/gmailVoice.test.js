@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 
 import {
     extractSpokenEmailAddress,
+    extractGmailCheckContactRequest,
+    extractGmailClearContactsRequest,
     extractGmailListContactsRequest,
     extractGmailSaveContactRequest,
     extractGmailDirectSendRequest,
     extractGmailNoteSubjectRequest,
     extractGmailShareRecipientRequest,
+    extractGmailSubjectLineOnly,
     getGmailVoiceCommand
 } from '../src/services/gmailVoice.js';
 
@@ -33,13 +36,43 @@ test('getGmailVoiceCommand understands Gmail auth and inbox commands', () => {
     assert.deepEqual(getGmailVoiceCommand('fill email with draft'), { action: 'openDraft' });
     assert.deepEqual(getGmailVoiceCommand('fill the email tool with the draft'), { action: 'openDraft' });
     assert.deepEqual(getGmailVoiceCommand('close inbox'), { action: 'close' });
+    assert.deepEqual(getGmailVoiceCommand('can you send an email'), { action: 'compose' });
+    assert.deepEqual(getGmailVoiceCommand('i want to send an email'), { action: 'compose' });
+    assert.deepEqual(getGmailVoiceCommand('i want to send email please'), { action: 'compose' });
+    assert.deepEqual(getGmailVoiceCommand('i would like to send email'), { action: 'compose' });
+    assert.deepEqual(getGmailVoiceCommand('i wanna send email'), { action: 'compose' });
+    assert.deepEqual(getGmailVoiceCommand('i want send and email'), { action: 'compose' });
+    assert.deepEqual(getGmailVoiceCommand('i want send email'), { action: 'compose' });
+    assert.deepEqual(getGmailVoiceCommand('can i send an email'), { action: 'compose' });
     assert.deepEqual(getGmailVoiceCommand('who do you know in email'), { action: 'listContacts' });
+    assert.deepEqual(getGmailVoiceCommand('do you have pablo sanchez email'), {
+        action: 'checkContact',
+        alias: 'pablo sanchez'
+    });
     assert.deepEqual(getGmailVoiceCommand('save aztec bird at mac.com as my daughter'), {
         action: 'saveContact',
         recipient: 'aztecbird@mac.com',
         recipientQuery: 'aztec bird at mac.com',
         alias: 'my daughter'
     });
+    assert.deepEqual(getGmailVoiceCommand('clear my email contacts'), { action: 'clearContacts' });
+    assert.deepEqual(getGmailVoiceCommand('forget all saved email contacts'), { action: 'clearContacts' });
+    assert.deepEqual(getGmailVoiceCommand('reset my saved mail contacts'), { action: 'clearContacts' });
+    assert.deepEqual(getGmailVoiceCommand('save this recipient as mom'), {
+        action: 'saveContact',
+        recipient: '',
+        recipientQuery: '',
+        alias: 'mom'
+    });
+});
+
+test('extractGmailSaveContactRequest treats To-field shorthand as draft reference', () => {
+    assert.deepEqual(extractGmailSaveContactRequest('remember this address as my boss'), {
+        recipient: '',
+        recipientQuery: '',
+        alias: 'my boss'
+    });
+    assert.deepEqual(extractGmailClearContactsRequest('clear email contacts')?.action, 'clearContacts');
 });
 
 test('getGmailVoiceCommand parses read email indexes', () => {
@@ -82,6 +115,21 @@ test('extractGmailDirectSendRequest pulls out send details', () => {
             subject: '',
             text: 'do not forget your training tomorrow'
         }
+    );
+});
+
+test('extractGmailCheckContactRequest parses named contact lookups', () => {
+    assert.deepEqual(
+        extractGmailCheckContactRequest('do you have pablo sanchez email'),
+        { action: 'checkContact', alias: 'pablo sanchez' }
+    );
+    assert.deepEqual(
+        extractGmailCheckContactRequest('what is my daughter email'),
+        { action: 'checkContact', alias: 'my daughter' }
+    );
+    assert.deepEqual(
+        extractGmailCheckContactRequest('do you know the email for pablo sanchez'),
+        { action: 'checkContact', alias: 'pablo sanchez' }
     );
 });
 
@@ -170,7 +218,8 @@ test('extractGmailShareRecipientRequest pulls out context-share requests', () =>
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'auto',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -179,7 +228,8 @@ test('extractGmailShareRecipientRequest pulls out context-share requests', () =>
             recipient: '',
             recipientQuery: '',
             shareType: 'note',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -188,7 +238,8 @@ test('extractGmailShareRecipientRequest pulls out context-share requests', () =>
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'note',
-            subject: 'shopping'
+            subject: 'shopping',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -197,7 +248,8 @@ test('extractGmailShareRecipientRequest pulls out context-share requests', () =>
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'auto',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -206,7 +258,8 @@ test('extractGmailShareRecipientRequest pulls out context-share requests', () =>
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'auto',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -215,7 +268,8 @@ test('extractGmailShareRecipientRequest pulls out context-share requests', () =>
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'auto',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -224,9 +278,11 @@ test('extractGmailShareRecipientRequest pulls out context-share requests', () =>
             recipient: '',
             recipientQuery: 'my daughter',
             shareType: 'note',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
+    assert.equal(extractGmailShareRecipientRequest('send this photo in telegram to joy'), null);
 });
 
 test('getGmailVoiceCommand maps context-share phrases', () => {
@@ -237,7 +293,8 @@ test('getGmailVoiceCommand maps context-share phrases', () => {
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'auto',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -247,7 +304,8 @@ test('getGmailVoiceCommand maps context-share phrases', () => {
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'auto',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -257,7 +315,8 @@ test('getGmailVoiceCommand maps context-share phrases', () => {
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'auto',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -267,7 +326,8 @@ test('getGmailVoiceCommand maps context-share phrases', () => {
             recipient: 'aztecbird@mac.com',
             recipientQuery: '',
             shareType: 'auto',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -277,7 +337,8 @@ test('getGmailVoiceCommand maps context-share phrases', () => {
             recipient: '',
             recipientQuery: 'my daughter',
             shareType: 'note',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
     assert.deepEqual(
@@ -287,7 +348,8 @@ test('getGmailVoiceCommand maps context-share phrases', () => {
             recipient: '',
             recipientQuery: '',
             shareType: 'note',
-            subject: ''
+            subject: '',
+            quickSend: true
         }
     );
 });
@@ -305,7 +367,7 @@ test('extractGmailSaveContactRequest pulls out save-contact phrases', () => {
         extractGmailSaveContactRequest('save this email as my daughter'),
         {
             recipient: '',
-            recipientQuery: 'this email',
+            recipientQuery: '',
             alias: 'my daughter'
         }
     );
@@ -324,17 +386,40 @@ test('extractGmailListContactsRequest detects saved-contact list phrases', () =>
 
 test('extractGmailNoteSubjectRequest pulls out note subject phrases', () => {
     assert.deepEqual(
-        extractGmailNoteSubjectRequest('subject shopping list'),
+        extractGmailNoteSubjectRequest('note subject shopping list'),
         { subject: 'shopping list' }
     );
+    assert.equal(extractGmailNoteSubjectRequest('subject shopping list'), null);
+    assert.equal(extractGmailNoteSubjectRequest('note subject is shopping'), null);
+});
+
+test('extractGmailSubjectLineOnly maps subject is and misheard note subject is', () => {
+    assert.deepEqual(extractGmailSubjectLineOnly("subject is i'm late for dinner tomorrow"), {
+        subject: 'i m late for dinner tomorrow'
+    });
+    assert.deepEqual(extractGmailSubjectLineOnly('note subject is i am late'), {
+        subject: 'i am late'
+    });
 });
 
 test('getGmailVoiceCommand maps note subject phrases to compose from latest note', () => {
     assert.deepEqual(
-        getGmailVoiceCommand('subject shopping list'),
+        getGmailVoiceCommand('note subject shopping list'),
         {
             action: 'composeLatestNote',
             subject: 'shopping list'
         }
     );
+    assert.equal(getGmailVoiceCommand('subject shopping list'), null);
+});
+
+test('getGmailVoiceCommand maps subject is to setSubject not compose from note', () => {
+    assert.deepEqual(getGmailVoiceCommand("subject is i'm late for dinner tomorrow"), {
+        action: 'setSubject',
+        subject: 'i m late for dinner tomorrow'
+    });
+    assert.deepEqual(getGmailVoiceCommand('note subject is dinner with mom'), {
+        action: 'setSubject',
+        subject: 'dinner with mom'
+    });
 });

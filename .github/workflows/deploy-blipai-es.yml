@@ -1,0 +1,57 @@
+# Deploy static build + app tree to the blipai.es VPS (same steps as ./deploy-all.sh).
+#
+# Required GitHub repo secrets (Settings → Secrets and variables → Actions):
+#   BLIP_SSH_PRIVATE_KEY — full private key (PEM) for a user that can SSH in and run sudo
+#                          for nginx, docker-compose, and tar into /var/www/blipai-es
+#   BLIP_SSH_HOST        — server hostname or IP (e.g. 34.72.74.160)
+#   BLIP_SSH_USER        — SSH login (e.g. joyandart_gmail_com)
+#
+# Optional: remove the `push:` block below and use only workflow_dispatch for manual deploys.
+
+name: Deploy to blipai.es (VPS)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-blipai-es
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.BLIP_SSH_PRIVATE_KEY }}
+
+      - name: Add server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.BLIP_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy (rsync, nginx, docker-compose)
+        env:
+          DEPLOY_SKIP_BUILD: "1"
+          REMOTE_USER: ${{ secrets.BLIP_SSH_USER }}
+          REMOTE_HOST: ${{ secrets.BLIP_SSH_HOST }}
+        run: bash deploy-all.sh

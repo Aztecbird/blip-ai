@@ -29,12 +29,9 @@ function setCached(key, value) {
 function formatOffsetTime(offsetSeconds) {
     if (!Number.isFinite(Number(offsetSeconds))) return '';
     const now = new Date(Date.now() + (Number(offsetSeconds) * 1000));
-    return new Intl.DateTimeFormat('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-        timeZone: 'UTC'
-    }).format(now);
+    const h = String(now.getUTCHours()).padStart(2, '0');
+    const m = String(now.getUTCMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
 }
 
 async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 10000) {
@@ -69,10 +66,48 @@ export const web = {
         if (!safeLocation) {
             return { text: "Tell me the city for the weather.", error: true };
         }
-        const cacheKey = getCacheKey('weather', safeApiKey ? 'openweather' : 'wttr', safeLocation);
+        const cacheKey = getCacheKey('weather', safeApiKey ? 'openweather' : 'auto', safeLocation);
         const cached = getCached(cacheKey, 5 * 60 * 1000);
         if (cached) return cached;
         console.log(`🌦 Fetching weather for: ${safeLocation}`);
+        if (!safeApiKey) {
+            try {
+                const data = await fetchJsonWithTimeout(
+                    `/api/weather/current?city=${encodeURIComponent(safeLocation)}`,
+                    {},
+                    6000
+                );
+
+                const city = data?.city || safeLocation;
+                const desc = data?.description || data?.desc || data?.condition;
+                const temp = data?.temp;
+                const humidity = data?.humidity;
+                const windSpeed = data?.windSpeed;
+                const timezoneOffset = Number(data?.timezoneOffset);
+                const localTime = String(data?.localTime || formatOffsetTime(timezoneOffset) || '').trim();
+                const isDay = typeof data?.isDay === 'boolean' ? data.isDay : true;
+                if (temp == null || !desc) throw new Error('Weather backend payload incomplete');
+
+                return setCached(cacheKey, {
+                    text: `In ${city}, it's currently ${Math.round(Number(temp))}°C and ${desc}. The humidity is ${humidity}%.`,
+                    data: {
+                        temp: Math.round(Number(temp)),
+                        desc,
+                        city,
+                        humidity,
+                        windSpeed,
+                        isDay,
+                        localTime,
+                        timezoneOffset,
+                        provider: String(data?.provider || 'weather-backend'),
+                        fetchTime: Number(data?.fetchTime) || Date.now()
+                    }
+                });
+            } catch (err) {
+                console.warn('Weather backend fallback:', err?.message || err);
+            }
+        }
+
         try {
             if (safeApiKey) {
                 const data = await fetchJsonWithTimeout(
@@ -94,7 +129,7 @@ export const web = {
 
                 return setCached(cacheKey, {
                     text: `In ${city}, it's currently ${Math.round(Number(temp))}°C and ${desc}. The humidity is ${humidity}%.`,
-                    data: { temp: Math.round(Number(temp)), desc, city, humidity, windSpeed, isDay, localTime, timezoneOffset, provider: 'openweather' }
+                    data: { temp: Math.round(Number(temp)), desc, city, humidity, windSpeed, isDay, localTime, timezoneOffset, provider: 'openweather', fetchTime: Date.now() }
                 });
             }
         } catch (err) {
@@ -119,7 +154,7 @@ export const web = {
 
             return setCached(cacheKey, {
                 text: `In ${city}, it's currently ${temp}°C and ${desc}. The humidity is ${humidity}%.`,
-                data: { temp, desc, city, humidity, isDay, localTime, provider: 'wttr' }
+                data: { temp, desc, city, humidity, isDay, localTime, provider: 'wttr', fetchTime: Date.now() }
             });
         } catch (err) {
             console.error('Weather error:', err);

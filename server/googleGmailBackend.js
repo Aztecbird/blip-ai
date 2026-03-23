@@ -213,6 +213,13 @@ async function refreshAccessToken(refreshToken) {
     return response.json();
 }
 
+function isRevokedOAuthTokenError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return message.includes('invalid_grant')
+        || message.includes('expired or revoked')
+        || message.includes('token expired or unauthorized');
+}
+
 async function getValidTokenStore() {
     const store = await readTokenStore();
     if (!store?.refresh_token && !store?.access_token) return null;
@@ -222,7 +229,16 @@ async function getValidTokenStore() {
     }
     if (!store.refresh_token) return null;
 
-    const refreshed = await refreshAccessToken(store.refresh_token);
+    let refreshed;
+    try {
+        refreshed = await refreshAccessToken(store.refresh_token);
+    } catch (error) {
+        if (isRevokedOAuthTokenError(error)) {
+            await clearTokenStore();
+            return null;
+        }
+        throw error;
+    }
     const nextStore = {
         ...store,
         access_token: refreshed.access_token,
@@ -231,6 +247,27 @@ async function getValidTokenStore() {
     };
     await writeTokenStore(nextStore);
     return nextStore;
+}
+
+async function getGmailConnectionStatus() {
+    if (!isConfigured()) {
+        return { connected: false, email: '' };
+    }
+    try {
+        const store = await getValidTokenStore();
+        const connected = Boolean(store?.access_token);
+        if (!connected) {
+            return { connected: false, email: '' };
+        }
+        const email = await resolveStoredGmailEmail();
+        return {
+            connected: true,
+            email: email || ''
+        };
+    } catch (error) {
+        console.error('Google Gmail status check failed:', error);
+        return { connected: false, email: '' };
+    }
 }
 
 async function fetchGmail(pathname, options = {}) {
@@ -364,12 +401,11 @@ const server = http.createServer(async (request, response) => {
         }
 
         if (url.pathname === '/api/gmail/status' && request.method === 'GET') {
-            const store = await readTokenStore();
-            const email = await resolveStoredGmailEmail();
+            const status = await getGmailConnectionStatus();
             sendJson(request, response, 200, {
                 backendConfigured: isConfigured(),
-                connected: Boolean(store?.refresh_token || store?.access_token),
-                email
+                connected: status.connected,
+                email: status.email
             });
             return;
         }
@@ -573,7 +609,7 @@ const server = http.createServer(async (request, response) => {
     }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Google Gmail backend listening on http://127.0.0.1:${PORT}`);
     console.log(`Allowed frontend origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });

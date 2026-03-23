@@ -118,6 +118,13 @@ async function refreshAccessToken(refreshToken) {
     return response.json();
 }
 
+function isRevokedOAuthTokenError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return message.includes('invalid_grant')
+        || message.includes('expired or revoked')
+        || message.includes('token expired or unauthorized');
+}
+
 async function getValidTokenStore() {
     const store = await readTokenStore();
     if (!store?.refresh_token && !store?.access_token) return null;
@@ -128,7 +135,16 @@ async function getValidTokenStore() {
     }
     if (!store.refresh_token) return null;
 
-    const refreshed = await refreshAccessToken(store.refresh_token);
+    let refreshed;
+    try {
+        refreshed = await refreshAccessToken(store.refresh_token);
+    } catch (error) {
+        if (isRevokedOAuthTokenError(error)) {
+            await clearTokenStore();
+            return null;
+        }
+        throw error;
+    }
     const nextStore = {
         ...store,
         access_token: refreshed.access_token,
@@ -137,6 +153,17 @@ async function getValidTokenStore() {
     };
     await writeTokenStore(nextStore);
     return nextStore;
+}
+
+async function getCalendarConnectionStatus() {
+    if (!isConfigured()) return false;
+    try {
+        const store = await getValidTokenStore();
+        return Boolean(store?.access_token);
+    } catch (error) {
+        console.error('Google Calendar status check failed:', error);
+        return false;
+    }
 }
 
 async function fetchGoogleCalendar(pathname, options = {}) {
@@ -213,10 +240,9 @@ const server = http.createServer(async (request, response) => {
         }
 
         if (url.pathname === '/api/google-calendar/status' && request.method === 'GET') {
-            const store = await readTokenStore();
             sendJson(request, response, 200, {
                 backendConfigured: isConfigured(),
-                connected: Boolean(store?.refresh_token || store?.access_token)
+                connected: await getCalendarConnectionStatus()
             });
             return;
         }
@@ -375,7 +401,7 @@ const server = http.createServer(async (request, response) => {
     }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Google Calendar backend listening on http://127.0.0.1:${PORT}`);
     console.log(`Frontend origin: ${FRONTEND_ORIGIN}`);
     console.log(`Configured: ${isConfigured() ? 'yes' : 'no'}`);

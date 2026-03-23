@@ -86,6 +86,7 @@ IMPORTANT - Tool Usage Rules:
 6. Never pretend to have a capability or tool unless it is actually available in this environment.
 7. Do not take destructive, irreversible, or sensitive actions without first asking for confirmation.
 8. If the user's intent is unclear, ask a short clarifying question instead of guessing.
+9. Gmail and email: You do not send mail yourself in this JSON reply. Never say an email was sent, delivered, or reached someone's inbox unless the user actually used the in-app Gmail send flow (or explicitly said the app confirmed it). Updating a contact or drafting text is not sending. If an email is only prepared, say it is ready to send or ask them to say send in the Email panel — do not claim it was sent.
 
 Current Date: ${dateStr}
 Current Time: ${timeStr}
@@ -94,7 +95,7 @@ You must always respond in valid JSON format:
 {
   "emotion": "string",
   "text": "string",
-  "action": "none|weather|currency|map|reviews|movies|products|time|timer|calendar|youtube|search|chart|list|nutrition|translate",
+  "action": "none|weather|currency|map|reviews|movies|products|time|timer|calendar|youtube|search|chart|list|nutrition|translate|telegram",
   "tool_params": {},
   "symbol": "optional emoji for face bubble"
 }
@@ -116,7 +117,8 @@ Actions & tool_params:
     "from":"",
     "to":"",
     "mode":"translate|reply"
-  }
+  },
+- telegram: {"chatId": "optional alias or id", "text": "message content"}
 
 TRANSLATION EXAMPLES:
 
@@ -204,8 +206,8 @@ function parseGeminiResponse(raw) {
   const ALLOWED_ACTIONS = [
     'none', 'weather', 'currency', 'map', 'reviews', 'movies', 'products',
     'time', 'timer', 'calendar', 'youtube', 'search', 'chart', 'list',
-    'nutrition', 'translate',
-  ];
+    'nutrition', 'translate', 'telegram',
+];
 
   function normalizeEmotion(value) {
     return ALLOWED_EMOTIONS.includes(value) ? value : 'serious';
