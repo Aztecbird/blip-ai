@@ -15,14 +15,17 @@ let configuredClientId = '';
 let tokenClientId = '';
 let accessToken = '';
 let accessTokenExpiresAt = 0;
-let authStateListener = () => {};
+const authStateListeners = new Set();
 let pendingAuth = null;
 let backendConfigured = false;
 let backendConnected = false;
 let activeMode = 'none'; // 'backend' | 'browser' | 'none'
 
 function emitAuthState() {
-    authStateListener(getGoogleCalendarAuthState());
+    const state = getGoogleCalendarAuthState();
+    authStateListeners.forEach(listener => {
+        try { listener(state); } catch (e) { console.error('Calendar auth listener error:', e); }
+    });
 }
 
 function clearBrowserAccessToken() {
@@ -234,8 +237,10 @@ export function setGoogleCalendarClientId(clientId) {
 }
 
 export function onGoogleCalendarAuthStateChange(listener) {
-    authStateListener = typeof listener === 'function' ? listener : () => {};
-    emitAuthState();
+    if (typeof listener !== 'function') return () => {};
+    authStateListeners.add(listener);
+    listener(getGoogleCalendarAuthState());
+    return () => authStateListeners.delete(listener);
 }
 
 export function getGoogleCalendarAuthState() {

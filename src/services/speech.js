@@ -161,6 +161,12 @@ class SpeechService {
         this.isSpeaking = false;
     }
 
+    /** Master cleanup: stops speaking and listening, clears all active handles. */
+    stopAll() {
+        this.stopSpeaking();
+        this.stopListening();
+    }
+
     // ── KOKORO TTS ─────────────────────────────────────────────────────────────
     async _speakKokoro(text, options = {}) {
         const timeout = createTimeoutSignal(90000);
@@ -212,18 +218,21 @@ class SpeechService {
                 if (options.onBoundary) options.onBoundary(0);
                 if (this._activeAudioSource === source) {
                     this._activeAudioSource = null;
-                    this._activeCleanup = null;
+                    if (this._activeCleanup === cleanup) this._activeCleanup = null;
                 }
                 this.isSpeaking = false;
                 resolve();
             };
-            source.onended = finalize;
-            this._activeAudioSource = source;
-            this._activeUtterance = null;
-            this._activeCleanup = () => {
+
+            const cleanup = () => {
                 try { source.stop(); } catch (_) { }
                 finalize();
             };
+
+            source.onended = finalize;
+            this._activeAudioSource = source;
+            this._activeUtterance = null;
+            this._activeCleanup = cleanup;
 
             source.start(0);
         });
@@ -264,17 +273,21 @@ class SpeechService {
                 if (options.onBoundary) options.onBoundary(0);
                 if (this._activeUtterance === utter) {
                     this._activeUtterance = null;
-                    this._activeCleanup = null;
+                    if (this._activeCleanup === cleanup) this._activeCleanup = null;
                 }
                 resolve();
             };
-            utter.onend = finalize;
-            this._activeAudioSource = null;
-            this._activeUtterance = utter;
-            this._activeCleanup = () => {
+
+            const cleanup = () => {
                 try { this.synth.cancel(); } catch (_) { }
                 finalize();
             };
+
+            utter.onend = finalize;
+            utter.onerror = finalize; // Ensure cleanup on error
+            this._activeAudioSource = null;
+            this._activeUtterance = utter;
+            this._activeCleanup = cleanup;
 
             this.synth.speak(utter);
             window._latestUtter = utter;

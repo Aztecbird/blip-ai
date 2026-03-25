@@ -1,0 +1,31 @@
+<!--
+Ear training panel markup (reference).
+Blip integration typically copies this into `index.html` under the "Learning Games" container.
+ -->
+
+<div id="ear-training-card" class="blip-game-card ear-training-card">
+  <div class="blip-game-kicker">Game 2</div>
+  <h2>Ear Training</h2>
+  <div id="ear-training-menu-wrap" class="ear-training-menu">
+    <div class="ear-training-menu-subtitle">Choose a mode</div>
+    <button id="ear-training-btn-intervals" type="button" class="ear-training-big-btn">Intervals</button>
+    <button id="ear-training-btn-harmony" type="button" class="ear-training-big-btn">Harmony (Major / Minor)</button>
+  </div>
+
+  <div id="ear-training-exercise-wrap" class="ear-training-exercise" style="display:none;">
+    <div class="ear-training-topline">
+      <div class="ear-training-mode-label" id="ear-training-mode-label">Intervals</div>
+    </div>
+
+    <div class="ear-training-prompt" id="ear-training-prompt"></div>
+    <div class="ear-training-options" id="ear-training-options"></div>
+    <div class="ear-training-feedback" id="ear-training-feedback"></div>
+
+    <div class="ear-training-controls">
+      <div class="ear-training-score ear-training-score--bottom" id="ear-training-score">Score: 0 / 0</div>
+      <button id="ear-training-replay-btn" type="button" class="ear-training-small-btn">Replay</button>
+      <button id="ear-training-next-btn" type="button" class="ear-training-small-btn" disabled>Next</button>
+    </div>
+  </div>
+</div>
+

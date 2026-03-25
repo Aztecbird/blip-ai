@@ -8,16 +8,19 @@ const BACKEND_BASE = (() => {
     }
 })();
 
-let authStateListener = () => {};
+const authStateListeners = new Set();
 let backendConfigured = false;
 let backendConnected = false;
 let connectedEmail = '';
 
 function emitAuthState() {
-    authStateListener(getGoogleGmailAuthState());
+    const state = getGoogleGmailAuthState();
+    authStateListeners.forEach(listener => {
+        try { listener(state); } catch (e) { console.error('Gmail auth listener error:', e); }
+    });
 }
 
-async function fetchBackend(path = '', options = {}) {
+function fetchBackend(path = '', options = {}) {
     return fetch(`${BACKEND_BASE}${path}`, options);
 }
 
@@ -60,8 +63,10 @@ export async function initGoogleGmail() {
 }
 
 export function onGoogleGmailAuthStateChange(listener) {
-    authStateListener = typeof listener === 'function' ? listener : () => {};
-    emitAuthState();
+    if (typeof listener !== 'function') return () => {};
+    authStateListeners.add(listener);
+    listener(getGoogleGmailAuthState());
+    return () => authStateListeners.delete(listener);
 }
 
 export function getGoogleGmailAuthState() {

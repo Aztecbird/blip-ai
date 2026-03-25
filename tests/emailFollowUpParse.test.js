@@ -16,6 +16,9 @@ test('parseEmailDraftFollowUp recognizes cancel and append', () => {
     assert.equal(parseEmailDraftFollowUp('add see you soon').text, 'see you soon');
     assert.equal(parseEmailDraftFollowUp('okay you can send it').action, 'sendDraft');
     assert.equal(parseEmailDraftFollowUp('really').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('no you send it').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('ya send it').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('send it for me').action, 'sendDraft');
     assert.equal(parseEmailDraftFollowUp('undo').action, 'undoDraft');
 });
 

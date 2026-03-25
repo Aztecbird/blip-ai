@@ -2,9 +2,10 @@
 set -e
 
 # Configuration
+cd "$(dirname "$0")"
 REMOTE_USER="joyandart_gmail_com"
 REMOTE_HOST="34.72.74.160"
-REMOTE_PATH="/var/www/blip-ai"
+REMOTE_PATH="/var/www/blipai-es"
 
 echo "🚀 Starting Deployment for Blip-AI..."
 

@@ -82,7 +82,7 @@ export function getTelegramVoiceCommand(command = '') {
         return { action: 'close' };
     }
 
-    if (/^(?:send|run)\s+(?:a\s+)?telegram\s+test$/.test(lower)) {
+    if (/^(?:send|run)\s+(?:a\s+)?telegram\s+test$/.test(lower) || /^telegram\s+test$/.test(lower)) {
         return { action: 'sendTest' };
     }
 

@@ -1,0 +1,156 @@
+/* Ear training card styling (lightweight + Blip-friendly). */
+
+.ear-training-card {
+    margin-top: 12px;
+}
+
+.ear-training-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.ear-training-menu-subtitle {
+    opacity: 0.8;
+    font-size: 0.95rem;
+    margin-bottom: 2px;
+}
+
+.ear-training-big-btn {
+    width: 100%;
+    padding: 14px 14px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    border-radius: 14px;
+    background: rgba(99, 102, 241, 0.18);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    color: #e5eefc;
+    cursor: pointer;
+    transition: transform 0.06s ease, background 0.15s ease;
+}
+
+.ear-training-big-btn:active {
+    transform: translateY(1px);
+}
+
+.ear-training-big-btn:hover {
+    background: rgba(99, 102, 241, 0.25);
+}
+
+.ear-training-exercise {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+.ear-training-topline {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.ear-training-mode-label {
+    font-weight: 800;
+    font-size: 1.05rem;
+}
+
+.ear-training-score {
+    opacity: 0.9;
+    font-size: 0.95rem;
+}
+
+.ear-training-prompt {
+    font-size: 1rem;
+    line-height: 1.35;
+    margin-bottom: 12px;
+    opacity: 0.95;
+}
+
+.ear-training-options {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.ear-training-option-btn {
+    width: 100%;
+    padding: 14px 14px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    border-radius: 14px;
+    background: rgba(2, 6, 23, 0.35);
+    border: 1px solid rgba(125, 211, 252, 0.18);
+    color: #e5eefc;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.06s ease;
+}
+
+.ear-training-option-btn:hover {
+    background: rgba(2, 6, 23, 0.45);
+    border-color: rgba(125, 211, 252, 0.35);
+}
+
+.ear-training-option-btn:active {
+    transform: translateY(1px);
+}
+
+.ear-training-option-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.ear-training-controls {
+    display: flex;
+    gap: 12px;
+    margin-top: auto; /* push controls to bottom */
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ear-training-score--bottom {
+    flex: 1;
+    text-align: left;
+    opacity: 0.95;
+}
+
+.ear-training-small-btn {
+    padding: 12px 14px;
+    font-size: 0.98rem;
+    font-weight: 700;
+    border-radius: 12px;
+    background: rgba(99, 102, 241, 0.16);
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    color: #e5eefc;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.06s ease;
+}
+
+.ear-training-small-btn:hover {
+    background: rgba(99, 102, 241, 0.24);
+}
+
+.ear-training-small-btn:active {
+    transform: translateY(1px);
+}
+
+.ear-training-small-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.ear-training-feedback {
+    min-height: 1.2em;
+    font-weight: 800;
+    margin-top: 2px;
+}
+
+.ear-training-feedback--correct {
+    color: #34d399; /* green-ish */
+}
+
+.ear-training-feedback--wrong {
+    color: #fb7185; /* pink-ish */
+}
+
