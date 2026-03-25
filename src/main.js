@@ -3270,7 +3270,12 @@ async function init() {
         applyFaceScale();
         syncSleepButtonUI();
 
-        talkBtn.onclick = toggleApp;
+        if (!talkBtn) {
+            console.error(
+                '[Blip] Missing #talkBtn — index.html is wrong or stale. Redeploy the fixed index.html (see face-area + interaction-area).'
+            );
+        }
+        if (talkBtn) talkBtn.onclick = toggleApp;
         if (sleepBtn) {
             sleepBtn.onclick = async () => {
                 if (state.softSleepMode || !state.isActive) {
@@ -3538,16 +3543,22 @@ function setMode(mode) {
             renderMediaGallery();
             break;
         case 'chart':
-            chartContainer.classList.add('active');
-            setTimeout(() => chartContainer?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
+            if (chartContainer) {
+                chartContainer.classList.add('active');
+                setTimeout(() => chartContainer.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
+            }
             break;
         case 'map':
-            mapContainer.classList.add('active');
-            setTimeout(() => mapContainer?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
+            if (mapContainer) {
+                mapContainer.classList.add('active');
+                setTimeout(() => mapContainer.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
+            }
             break;
-        case 'settings': underTheHood.classList.add('active'); break;
+        case 'settings':
+            if (underTheHood) underTheHood.classList.add('active');
+            break;
         case 'vision':
-            cameraControls.style.display = 'flex';
+            if (cameraControls) cameraControls.style.display = 'flex';
             if (closeCameraBtn) closeCameraBtn.style.display = 'flex';
             break;
         default:

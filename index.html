@@ -99,62 +99,54 @@
                         </div>
                     </div>
                     <video id="webcam-video" autoplay playsinline style="display: none;"></video>
-                    <button type="button" id="chatBtn" title="Chat">⌨️</button>
-                    <button type="button" id="notesBtn" title="Take Notes">📝</button>
-                    <button type="button" id="emailBtn" title="Email">📧</button>
-                    <button type="button" id="telegramBtn" title="Telegram">📨</button>
-                    <button type="button" id="cameraBtn" title="Camera">📷</button>
-                    <button type="button" id="calendarBtn" title="Calendar">📅</button>
-                    <button type="button" id="mediaBtn" title="Media">🖼️</button>
-                    <button type="button" id="gamesBtn" title="Learning Games">🎲</button>
-                    <button type="button" id="cartBtn" title="Cart">🛒</button>
-                    <button type="button" id="hubBtn" title="Hub">📱</button>
-                    <button type="button" id="gearBtn" title="Settings">⚙️</button>
+                    <div id="camera-controls" style="display: none;">
+                        <button id="snapBtn" class="primary-btn">📸 SNAP PHOTO</button>
+                        <button id="recordBtn" class="secondary-btn">🎬 RECORD VIDEO</button>
+                        <button id="stopCameraBtn" class="secondary-btn">⏹ STOP</button>
+                    </div>
                 </div>
 
-                <div id="media-strip" class="media-strip hidden" aria-label="Media strip">
-                    <div class="media-strip-head">
-                        <span id="media-strip-title">Photos</span>
-                        <div class="media-strip-head-actions">
-                            <span id="media-strip-count">0</span>
-                            <button id="closeMediaStripBtn" type="button" class="media-strip-close" aria-label="Close gallery">✕</button>
-                        </div>
+                <div class="controls-main">
+                    <button id="talkBtn" class="main-pulse-btn">
+                        <span class="btn-text">Ask Blip</span>
+                    </button>
+                    <button id="sleepBtn" class="secondary-orb-btn" type="button">Sleep</button>
+                    <div id="live-indicator">LIVE OBSERVER</div>
+                </div>
+                <div class="mic-meter" id="wake-meter" aria-live="polite" aria-label="Wake listening status">
+                    <span class="mic-meter-dot" aria-hidden="true"></span>
+                    <span id="meter-label">Say Hey Blip / Wake Up Blip / Blip</span>
+                    <div class="mic-meter-bar" aria-hidden="true">
+                        <div id="meter-level"></div>
                     </div>
-                    <div id="media-strip-tabs" class="media-strip-tabs" aria-label="Media categories">
-                        <button type="button" class="media-strip-tab is-active" data-media-lane="all">All</button>
-                        <button type="button" class="media-strip-tab" data-media-lane="shots">Photos</button>
-                        <button type="button" class="media-strip-tab" data-media-lane="music">Music</button>
-                        <button type="button" class="media-strip-tab" data-media-lane="videos">Videos</button>
-                    </div>
-                    <div id="media-strip-hint" class="media-strip-hint">Say "open 3", "delete 3", or "scroll down".</div>
-                    <div id="media-strip-commands" class="media-strip-commands" aria-label="Media voice shortcuts"></div>
-                    <div id="media-strip-shots-group" class="media-strip-group">
-                        <div class="media-strip-subhead">
-                            <span>Photos</span>
-                            <span id="media-strip-shots-count">0</span>
-                        </div>
-                        <div id="media-strip-list" class="media-strip-list">
-                            <button type="button" class="media-strip-empty">No snapshots yet.</button>
-                        </div>
-                    </div>
-                    <div id="media-strip-music-group" class="media-strip-group">
-                        <div class="media-strip-subhead">
-                            <span>Music</span>
-                            <span id="media-strip-music-count">0</span>
-                        </div>
-                        <div id="media-strip-music-list" class="media-strip-list">
-                            <button type="button" class="media-strip-empty">No saved music yet.</button>
-                        </div>
-                    </div>
-                    <div id="media-strip-videos-group" class="media-strip-group">
-                        <div class="media-strip-subhead">
-                            <span>Videos</span>
-                            <span id="media-strip-videos-count">0</span>
-                        </div>
-                        <div id="media-strip-videos-list" class="media-strip-list">
-                            <button type="button" class="media-strip-empty">No saved videos yet.</button>
-                        </div>
-                    </div>
+                </div>
+
+                <div id="weather-display" class="weather-display hidden" aria-live="polite" aria-label="Weather display"></div>
+                <div id="countdown-display" class="weather-display countdown-display hidden" aria-live="polite" aria-label="Countdown display"></div>
+
+                <div id="transcript-area">
+                    <div id="transcript">Ready to help.</div>
+                </div>
+            </section>
+
+            <section id="interaction-area">
+                <div id="chat-entry" class="hidden">
+                    <input type="text" id="chatInput" placeholder="Type to Blip...">
+                    <button id="sendChatBtn">➔</button>
+                </div>
+
+                <div class="mini-actions">
+                    <button id="chatBtn" title="Chat">⌨️</button>
+                    <button id="notesBtn" title="Take Notes">📝</button>
+                    <button id="emailBtn" title="Email">📧</button>
+                    <button id="telegramBtn" title="Telegram">📨</button>
+                    <button id="cameraBtn" title="Camera">📷</button>
+                    <button id="calendarBtn" title="Calendar">📅</button>
+                    <button id="mediaBtn" title="Media">🖼️</button>
+                    <button id="gamesBtn" title="Learning Games">🎲</button>
+                    <button id="cartBtn" title="Cart">🛒</button>
+                    <button id="hubBtn" title="Hub">📱</button>
+                    <button id="gearBtn" title="Settings">⚙️</button>
                 </div>
 
                 <div id="media-strip" class="media-strip hidden" aria-label="Media strip">
@@ -423,7 +415,42 @@ http://127.0.0.1:8188</pre>
                         </div>
                         <div id="math-score" class="math-score">Score: 0</div>
                     </div>
-                <button type="button" id="closeMediaLightboxBtn" class="panel-close-btn media-lightbox-close" aria-label="Close photo" title="Close">✕</button>
+                    <div id="blip-ear-training-game" class="blip-game-card ear-training-card">
+                        <div class="blip-game-kicker">Game 2</div>
+                        <h2>Ear Training</h2>
+                        <div id="ear-training-menu-wrap" class="ear-training-menu">
+                            <div class="ear-training-menu-subtitle">Choose a mode</div>
+                            <button id="ear-training-btn-intervals" type="button" class="ear-training-big-btn">Intervals</button>
+                            <button id="ear-training-btn-harmony" type="button" class="ear-training-big-btn">Harmony (Major / Minor)</button>
+                        </div>
+                        <div id="ear-training-exercise-wrap" class="ear-training-exercise" style="display:none;">
+                            <div class="ear-training-topline">
+                                <div class="ear-training-mode-label" id="ear-training-mode-label">Intervals</div>
+                            </div>
+                            <div class="ear-training-prompt" id="ear-training-prompt"></div>
+                            <div class="ear-training-options" id="ear-training-options"></div>
+                            <div class="ear-training-feedback" id="ear-training-feedback"></div>
+                            <div class="ear-training-controls">
+                                <div class="ear-training-score ear-training-score--bottom" id="ear-training-score">Score: 0 / 0</div>
+                                <button id="ear-training-replay-btn" type="button" class="ear-training-small-btn">Replay</button>
+                                <button id="ear-training-next-btn" type="button" class="ear-training-small-btn" disabled>Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="media-container" class="widget-panel media-panel">
+                <div class="panel-header">
+                    <span>🖼️ Media Gallery</span>
+                    <button id="closeMediaBtn" class="panel-close-btn" aria-label="Close media gallery">✕</button>
+                </div>
+                <div id="media-grid">
+                    <div class="media-empty">No snapshots yet. Say "snap photo" to create one.</div>
+                </div>
+            </div>
+            <div id="media-lightbox" class="media-lightbox" aria-hidden="true">
+                <button id="closeMediaLightboxBtn" class="panel-close-btn media-lightbox-close" aria-label="Close image">✕</button>
                 <div class="media-lightbox-actions">
                     <button id="shareMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Share</button>
                     <button id="downloadMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Download</button>
