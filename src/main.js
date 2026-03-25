@@ -102,6 +102,7 @@ const chatBtn = document.getElementById('chatBtn');
 const notesBtn = document.getElementById('notesBtn');
 const emailBtn = document.getElementById('emailBtn');
 const telegramBtn = document.getElementById('telegramBtn');
+const micTestBtn = document.getElementById('micTestBtn');
 const calendarBtn = document.getElementById('calendarBtn');
 const chatEntry = document.getElementById('chat-entry');
 const chatInput = document.getElementById('chatInput');
@@ -244,8 +245,8 @@ const countdownDisplay = document.getElementById('countdown-display');
 const isGitHub = window.location.hostname.includes('github.io');
 
 /** Single source of truth for app version — update here (and package.json) when releasing. */
-const BLIP_VERSION = '6.6';
-console.log('--- BLIP_VERSION 6.6 ACTIVE ---');
+const BLIP_VERSION = '6.7';
+console.log('--- BLIP_VERSION 6.7 ACTIVE ---');
 const WAKE_GREETING_ENABLED = true;
 
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
@@ -759,6 +760,8 @@ function clampIdleAmbientVolume(value) {
 const state = {
     isActive: false,
     isThinking: false,
+    micTestRunning: false,
+    micTestTimeout: null,
     sensitivity: 20,
     selectedVoice: null,
     currentEmotion: 'serious',
@@ -3276,6 +3279,15 @@ async function init() {
             );
         }
         if (talkBtn) talkBtn.onclick = toggleApp;
+        if (micTestBtn) {
+            micTestBtn.onclick = async () => {
+                if (state.micTestRunning) {
+                    stopMicrophoneTest('manual');
+                    return;
+                }
+                await startMicrophoneTest();
+            };
+        }
         if (sleepBtn) {
             sleepBtn.onclick = async () => {
                 if (state.softSleepMode || !state.isActive) {
@@ -3880,6 +3892,8 @@ async function toggleApp() {
             stopPassiveWakeLoop();
             // 🎙️ VITAL: Initialize AudioContext on the user gesture
             speech.initAudio();
+            // Prevent a stuck `isThinking` flag from blocking `startListeningLoop()`.
+            state.isThinking = false;
             markPassiveWakePrimed();
             if (state.idleAmbientEnabled) ensureIdleAmbienceEngine();
 
@@ -3899,6 +3913,7 @@ async function toggleApp() {
         } catch (err) {
             console.error("Wake up error:", err);
             state.isActive = false;
+            state.isThinking = false;
             talkBtn.classList.remove('active');
             chatEntry.classList.add('hidden');
             syncSleepButtonUI();
@@ -3975,6 +3990,7 @@ function stopApp() {
     state.isActive = false;
     state.softSleepMode = false;
     state.isListening = false;
+    state.isThinking = false;
     dismissActiveAlert({ resumeListening: false, clearVisual: true });
     resetBlipConversationMemory();
     document.body.classList.remove('reduce-motion');
@@ -4272,6 +4288,11 @@ function startListeningLoop() {
         return;
     }
 
+    // SpeechRecognition exists but could not start listening (permission prompt, busy mic, etc).
+    if (transcriptText && state.isActive) {
+        transcriptText.innerHTML = `<span style="color:#f59e0b">⚠️ Microphone not started. Allow mic permission, then try again.</span>`;
+    }
+
     state.isListening = false;
     syncScenerySuppression();
     syncWakeReadinessUI();
@@ -4290,6 +4311,98 @@ function stopListening() {
     syncScenerySuppression();
     syncWakeReadinessUI();
     if ((!state.isActive || state.softSleepMode) && !speech.isSpeaking) schedulePassiveWakeLoop(350);
+}
+
+function stopMicrophoneTest(reason = 'manual') {
+    if (!state.micTestRunning) return;
+    state.micTestRunning = false;
+    if (state.micTestTimeout) {
+        clearTimeout(state.micTestTimeout);
+        state.micTestTimeout = null;
+    }
+    try { speech.stopListening(); } catch (_) { }
+    state.isListening = false;
+    syncWakeReadinessUI();
+
+    if (talkBtn) {
+        talkBtn.classList.remove('listening');
+        if (state.isActive && !state.softSleepMode) {
+            talkBtn.classList.add('active');
+            talkBtn.textContent = 'Ask Blip';
+        } else {
+            talkBtn.classList.remove('active');
+            talkBtn.textContent = SLEEP_BUTTON_LABEL;
+        }
+    }
+    // Return the face to an idle look (mic is closed).
+    try {
+        setPersona('idle');
+        setRestingEyes(true);
+        face?.classList.remove('listening');
+        faceFrame?.classList.remove('listening-glow');
+    } catch (_) { }
+    if (transcriptText) {
+        transcriptText.innerText = reason === 'ended' ? 'Microphone test ended.' : 'Microphone test closed.';
+    }
+}
+
+async function startMicrophoneTest() {
+    if (state.micTestRunning) return;
+
+    // Ensure UI is in a state where the mic can run.
+    state.isThinking = false;
+    state.softSleepMode = false;
+    state.isActive = true;
+    state.emotionShowcaseActive = false;
+
+    setPersona('listening');
+    setRestingEyes(false);
+    talkBtn?.classList.add('active', 'listening');
+    if (talkBtn) talkBtn.textContent = '⏹ Mic Test';
+
+    stopListening();
+    stopPassiveWakeLoop();
+
+    speech.initAudio?.();
+
+    if (!speech.SR) {
+        if (transcriptText) transcriptText.innerText = 'Speech recognition is not supported in this browser.';
+        if (talkBtn) talkBtn.textContent = SLEEP_BUTTON_LABEL;
+        return;
+    }
+
+    if (micTestBtn) micTestBtn.classList.add('active');
+
+    const started = speech.startListening(
+        (result) => {
+            if (!transcriptText) return;
+            const text = String(result?.text || '').trim();
+            if (!text) return;
+            transcriptText.innerText = `🎤 Mic Test: ${text}`;
+        },
+        () => stopMicrophoneTest('ended'),
+        (err) => {
+            const code = String(err?.error || err?.message || '').toLowerCase();
+            if (code.includes('not-allowed') || code.includes('service-not-allowed')) {
+                if (transcriptText) transcriptText.innerText = '⚠️ Microphone blocked. Allow mic permission and try again.';
+            } else if (transcriptText) {
+                transcriptText.innerText = `⚠️ Microphone error: ${code || 'unknown'}`;
+            }
+            stopMicrophoneTest('error');
+        }
+    );
+
+    if (!started) {
+        if (transcriptText) transcriptText.innerHTML = `<span style="color:#f59e0b">⚠️ Could not start microphone test.</span>`;
+        if (micTestBtn) micTestBtn.classList.remove('active');
+        if (talkBtn) talkBtn.textContent = SLEEP_BUTTON_LABEL;
+        return;
+    }
+
+    state.micTestRunning = true;
+    state.micTestTimeout = setTimeout(() => {
+        stopMicrophoneTest('ended');
+    }, 9000);
 }
 
 function normalizeHatStyle(value) {
