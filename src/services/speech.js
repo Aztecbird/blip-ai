@@ -161,31 +161,75 @@ class SpeechService {
         this.isSpeaking = false;
     }
 
-                    if (this._activeCleanup === cleanup) this._activeCleanup = null;
-                }
-                this.isSpeaking = false;
-                resolve();
-            };
-            source.onended = finalize;
-            this._activeAudioSource = source;
-            this._activeUtterance = null;
-            this._activeCleanup = () => {
-                try { source.stop(); } catch (_) { }
-                finalize();
-            };
+    stopAll() {
+        this.stopSpeaking();
+        this.stopListening();
+        if (this._audioCtx && this._audioCtx.state !== 'closed') {
+            this._audioCtx.suspend().catch(() => {});
+        }
+    }
 
-            const cleanup = () => {
-                try { source.stop(); } catch (_) { }
-                finalize();
-            };
+    // ── KOKORO TTS ─────────────────────────────────────────────────────────────
+    async _speakKokoro(text, options = {}) {
+        const timeout = createTimeoutSignal(90000);
+        try {
+            const response = await fetch(`${KOKORO_URL}/tts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text,
+                    voice: this.kokoroVoice,
+                    speed: options.rate || 1.0
+                }),
+                signal: timeout.signal
+            });
 
-            source.onended = finalize;
-            this._activeAudioSource = source;
-            this._activeUtterance = null;
-            this._activeCleanup = cleanup;
+            if (!response.ok) throw new Error(`Kokoro TTS failed: ${response.status}`);
+            const audioData = await response.arrayBuffer();
+            const audioCtx = await this.ensureAudioReady();
+            const audioBuffer = await audioCtx.decodeAudioData(audioData);
 
-            source.start(0);
-        });
+            return await new Promise((resolve) => {
+                const source = audioCtx.createBufferSource();
+                source.buffer = audioBuffer;
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = options.volume ?? 1.0;
+                source.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                const interval = setInterval(() => {
+                    if (options.onBoundary) options.onBoundary(0.3 + Math.random() * 0.6);
+                }, 70);
+
+                let settled = false;
+                const finalize = () => {
+                    if (settled) return;
+                    settled = true;
+                    if (interval) clearInterval(interval);
+                    if (options.onBoundary) options.onBoundary(0);
+                    if (this._activeAudioSource === source) {
+                        this._activeAudioSource = null;
+                        if (this._activeCleanup === cleanup) this._activeCleanup = null;
+                    }
+                    this.isSpeaking = false;
+                    resolve();
+                };
+
+                const cleanup = () => {
+                    try { source.stop(); } catch (_) { }
+                    finalize();
+                };
+
+                source.onended = finalize;
+                this._activeAudioSource = source;
+                this._activeUtterance = null;
+                this._activeCleanup = cleanup;
+
+                source.start(0);
+            });
+        } finally {
+            timeout.clear();
+        }
     }
 
     // ── BROWSER TTS FALLBACK ───────────────────────────────────────────────────
@@ -217,8 +261,8 @@ class SpeechService {
             const finalize = () => {
                 if (settled) return;
                 settled = true;
-                clearTimeout(safetyTimeout);
-                clearInterval(interval);
+                if (safetyTimeout) clearTimeout(safetyTimeout);
+                if (interval) clearInterval(interval);
                 this.isSpeaking = false;
                 if (options.onBoundary) options.onBoundary(0);
                 if (this._activeUtterance === utter) {
@@ -316,8 +360,8 @@ class SpeechService {
                 const finalize = () => {
                     if (settled) return;
                     settled = true;
-                    clearTimeout(safetyTimeout);
-                    clearInterval(interval);
+                    if (safetyTimeout) clearTimeout(safetyTimeout);
+                    if (interval) clearInterval(interval);
                     if (options.onBoundary) options.onBoundary(0);
                     if (this._activeAudioSource === source) {
                         this._activeAudioSource = null;

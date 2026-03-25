@@ -454,13 +454,3651 @@ body.blip-telegram-panel-open #blip-side-panel.blip-telegram-dock {
   top: auto !important;
   bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
   transform: none !important;
->>>>>>> ui-update-final
   box-sizing: border-box !important;
   background: rgba(4, 10, 26, 0.72) !important;
   backdrop-filter: blur(24px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
   border: 1px solid rgba(255, 255, 255, 0.15) !important;
 }
+body.blip-telegram-panel-open #blip-side-panel.blip-telegram-dock {
+  width: min(380px, calc(100vw - 24px)) !important;
+  max-width: min(380px, calc(100vw - 24px)) !important;
+  height: min(72vh, 720px) !important;
+  max-height: min(72vh, 720px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: 10px 12px !important;
+}
+body.blip-gmail-panel-open #blip-side-panel.blip-gmail-dock {
+  width: min(400px, calc(100vw - 24px)) !important;
+  max-width: min(400px, calc(100vw - 24px)) !important;
+  height: min(78vh, 820px) !important;
+  max-height: min(78vh, 820px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: 10px 12px !important;
+}
+`;
+
+const SCENERY_SUPPRESSION_CSS = `
+body.scenery-suppressed .scenery-object,
+body.scenery-suppressed .cloud {
+  opacity: 0 !important;
+  animation: none !important;
+}
+`;
+
+let activeChart = null; // Chart.js instance
+let sidePanelChart = null; // Chart.js instance for side panel
+/** YouTube IFrame API player instance for the side panel; used to unmute when user says "Blip, unmute". */
+let blipYtPlayer = null;
+
+const HISTORY_STORAGE_KEY = 'blip_history';
+const HISTORY_MAX = 30;
+const HISTORY_PERSIST_MAX = 20;
+const TIMER_STORAGE_KEY = 'blip_timers_v1';
+const MEDIA_STORAGE_KEY = 'blip_media_gallery';
+const CALENDAR_CACHE_STORAGE_KEY = 'blip_calendar_cache_v1';
+const CALENDAR_PENDING_STORAGE_KEY = 'blip_calendar_pending_v1';
+const CALENDAR_PENDING_DELETE_STORAGE_KEY = 'blip_calendar_pending_deletes_v1';
+const USER_PROFILE_STORAGE_KEY = 'blip_user_profile_v1';
+const VIDEO_PLAYLISTS_STORAGE_KEY = 'blip_video_playlists_v1';
+const EMAIL_CONTACTS_STORAGE_KEY = 'blip_email_contacts_v1';
+const MEDIA_MAX = 80;
+const MEDIA_BUCKET_SHOTS = 'shots';
+const MEDIA_BUCKET_CREATED = 'created';
+const MEDIA_ACTIONS_BACKEND_URL = '/api/media-actions';
+const CREATIONS_TOOL_ENABLED = false;
+const CREATIONS_DISABLED_MESSAGE = 'Creations is turned off for now.';
+const ENABLE_BLIP_PERSONALIZATION = false; // Standby mode: keep code, disable runtime behavior.
+const BLIP_PERSONALIZATION_STORAGE_KEY = 'blip_personalization_v1';
+const BLIP_DEFAULT_PERSONALIZATION = Object.freeze({
+    hat: 'none',       // none | cap | beanie | crown
+    glasses: 'none',   // none | round | visor
+    eyeColor: 'white', // white | blue | green | amber | purple | pink | cyan
+    auraColor: 'default' // default | blue | green | gold | pink | purple | cyan
+});
+const BLIP_EYE_COLOR_MAP = Object.freeze({
+    white: '#ffffff',
+    blue: '#93c5fd',
+    green: '#86efac',
+    amber: '#fcd34d',
+    purple: '#c4b5fd',
+    pink: '#f9a8d4',
+    cyan: '#67e8f9'
+});
+const BLIP_AURA_COLOR_MAP = Object.freeze({
+    default: { core: 'rgba(0, 255, 255, 0.4)', mid: 'rgba(124, 58, 237, 0.2)' },
+    blue: { core: 'rgba(59, 130, 246, 0.45)', mid: 'rgba(59, 130, 246, 0.2)' },
+    green: { core: 'rgba(16, 185, 129, 0.45)', mid: 'rgba(5, 150, 105, 0.22)' },
+    gold: { core: 'rgba(251, 191, 36, 0.45)', mid: 'rgba(245, 158, 11, 0.22)' },
+    pink: { core: 'rgba(244, 114, 182, 0.45)', mid: 'rgba(236, 72, 153, 0.22)' },
+    purple: { core: 'rgba(167, 139, 250, 0.45)', mid: 'rgba(124, 58, 237, 0.25)' },
+    cyan: { core: 'rgba(34, 211, 238, 0.45)', mid: 'rgba(6, 182, 212, 0.22)' }
+});
+
+const BLIP_USAGE_TIER_PRESETS = Object.freeze({
+    cheap: {
+        selectedModel: 'gemini-2.5-flash',
+        voiceEngine: 'kokoro',
+        imageModel: 'gemini-3.1-flash-image-preview'
+    },
+    balanced: {
+        selectedModel: 'gemini-2.5-flash',
+        voiceEngine: 'gemini',
+        imageModel: 'gemini-3.1-flash-image-preview'
+    },
+    premium: {
+        selectedModel: 'gemini-2.5-pro',
+        voiceEngine: 'gemini',
+        imageModel: 'gemini-3.1-flash-image-preview'
+    }
+});
+
+const BLIP_DEFAULT_USER_PROFILE = Object.freeze({
+    name: '',
+    preferredName: '',
+    preferredStore: '',
+    shoppingHabits: '',
+    onboardingComplete: false
+});
+
+function normalizeComfyuiCheckpointName(value = '') {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    // Common mismatch: user downloads `...emaonly.fp16.safetensors` but types `...emaonly-fp16.safetensors`.
+    if (/-fp16\.safetensors$/i.test(raw) && !/\.fp16\.safetensors$/i.test(raw)) {
+        return raw.replace(/-fp16\.safetensors$/i, '.fp16.safetensors');
+    }
+    return raw;
+}
+
+function normalizeUsageTier(value) {
+    return Object.prototype.hasOwnProperty.call(BLIP_USAGE_TIER_PRESETS, value) ? value : 'cheap';
+}
+
+function normalizeUserProfile(profile = {}) {
+    const safe = profile && typeof profile === 'object' ? profile : {};
+    const name = String(safe.name || '').trim();
+    const preferredName = String(safe.preferredName || '').trim();
+    const preferredStore = String(safe.preferredStore || '').trim();
+    const shoppingHabits = String(safe.shoppingHabits || '').trim();
+    return {
+        ...BLIP_DEFAULT_USER_PROFILE,
+        name: name.slice(0, 48),
+        preferredName: preferredName.slice(0, 48),
+        preferredStore: preferredStore.slice(0, 64),
+        shoppingHabits: shoppingHabits.slice(0, 160),
+        onboardingComplete: Boolean(safe.onboardingComplete) || Boolean(name || preferredName)
+    };
+}
+
+function stripTrailingYouTubeControlPhrases(text = '') {
+    return String(text || '')
+        .replace(/\b(?:and|then)\s+(?:un\s*-?\s*mute|sound\s+on|audio\s+on)\b[\s\S]*$/i, '')
+        .replace(/\b(?:with\s+)?sound\s+on\b[\s\S]*$/i, '')
+        .replace(/\b(?:with\s+)?audio\s+on\b[\s\S]*$/i, '')
+        .trim();
+}
+
+function parseExplicitPercentFromText(lower = '') {
+    const s = String(lower || '');
+    // Examples: "30", "30%", "30 percent", "30 pct"
+    const m = s.match(/\b(\d{1,3})\s*(?:%|percent|pct)?\b/);
+    if (!m) return null;
+    const n = Number(m[1]);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function parseStandaloneDurationMs(text = '') {
+    const lower = normalizeVoiceTokens(String(text || '')).replace(/\bcounter\b/g, 'countdown');
+    const match = lower.match(/\b(\d{1,4})(?:\s*)(seconds?|secs?|sec|s|minutes?|mins?|min|m|hours?|hrs?|hr|h)\b/);
+    if (!match) return null;
+    const amount = Number(match[1]);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const unit = String(match[2] || '').toLowerCase();
+    const msPerUnit = /^(?:seconds?|secs?|sec|s)$/.test(unit)
+        ? 1000
+        : /^(?:minutes?|mins?|min|m)$/.test(unit)
+            ? 60000
+            : 3600000;
+    const prettyUnit = msPerUnit === 1000
+        ? (amount === 1 ? 'second' : 'seconds')
+        : msPerUnit === 60000
+            ? (amount === 1 ? 'minute' : 'minutes')
+            : (amount === 1 ? 'hour' : 'hours');
+    return { ms: amount * msPerUnit, amount, prettyUnit, label: 'Timer' };
+}
+
+function clearPendingNaturalConversation() {
+    state.pendingNaturalConversation = null;
+}
+
+function beginPendingNaturalConversation(kind = '', meta = {}) {
+    state.pendingNaturalConversation = {
+        kind: String(kind || '').trim(),
+        meta: meta && typeof meta === 'object' ? { ...meta } : {},
+        createdAt: Date.now()
+    };
+}
+
+function getNaturalPlayQuery(cmd = '') {
+    const lower = normalizeVoiceTokens(String(cmd || ''));
+    const match = lower.match(/^(?:please\s+)?(?:play|watch|open|show)\s+(.+)$/);
+    if (!match?.[1]) return '';
+    const query = sanitizeVoiceQuery(match[1])
+        .replace(/\s+(?:please|now)\s*$/, '')
+        .trim();
+    if (!query) return '';
+    if (/^(?:it|this|that|the video|video|music|youtube|yt|gmail|email|telegram|calendar|map|chart|settings|chat|games|camera|cart|notes|hub|photos?|fotos?|pictures?|shots?|snapshots?)$/.test(query)) return '';
+    if (/\b(?:email|gmail|telegram|calendar|map|chart|settings|chat|games|camera|cart|notes|hub|photos?|fotos?|pictures?|shots?|snapshots?)\b/.test(query)) return '';
+    if (/^(?:the\s+)?(?:video|music)\s+(?:big|bigger|small|smaller|full(?:\s+screen)?)$/.test(query)) return '';
+    return query;
+}
+
+function resolveNaturalOpenIntent(cmd = '') {
+    const lower = normalizeVoiceTokens(String(cmd || ''));
+    if (!/^(?:please\s+)?(?:open|show|view|play)\s+(?:it|this|that)(?:\s+again)?(?:\s+please)?$/.test(lower)) return null;
+    if (state.lastContext?.lastYoutubeUrl) return { type: 'youtube' };
+    if (state.lastContext?.lastChartData) return { type: 'chart' };
+    if (state.lastContext?.lastLocation) return { type: 'map' };
+    if (state.mediaItems?.length) {
+        return {
+            type: 'media',
+            bucket: state.activeMediaBucket === MEDIA_BUCKET_CREATED ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS
+        };
+    }
+    return null;
+}
+
+/** Return explicit target YouTube volume (0-100) or null. */
+function getYouTubeVolumeSetCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (!/\b(video|youtube|yt|player)\b/.test(lower)) return null;
+    if (!/\b(volume|vol|sound)\b/.test(lower)) return null;
+    if (!/\b(set|put|make|to|at|volume)\b/.test(lower)) return null;
+    return parseExplicitPercentFromText(lower);
+}
+
+function setYouTubeVolume(value) {
+    if (!blipYtPlayer || typeof blipYtPlayer.setVolume !== 'function') return null;
+    try {
+        const next = Math.max(0, Math.min(100, Math.round(Number(value))));
+        blipYtPlayer.setVolume(next);
+        if (typeof blipYtPlayer.unMute === 'function') blipYtPlayer.unMute();
+        return next;
+    } catch (e) {
+        console.warn('YouTube setVolume failed:', e.message);
+        return null;
+    }
+}
+
+function normalizeSavedVideoEntry(entry = {}) {
+    const safe = entry && typeof entry === 'object' ? entry : {};
+    const url = String(safe.url || '').trim();
+    const videoId = String(safe.videoId || extractYouTubeVideoId(url || safe.embedUrl || '') || '').trim();
+    const embedUrl = String(safe.embedUrl || (videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : '')).trim();
+    if (!url && !videoId) return null;
+    return {
+        id: String(safe.id || Date.now()),
+        title: String(safe.title || safe.query || 'YouTube video').trim().slice(0, 140) || 'YouTube video',
+        query: String(safe.query || '').trim().slice(0, 140),
+        url: url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : ''),
+        embedUrl,
+        videoId,
+        savedAt: Number.isFinite(Number(safe.savedAt)) ? Number(safe.savedAt) : Date.now()
+    };
+}
+
+function normalizeVideoPlaylists(raw = {}) {
+    const safe = raw && typeof raw === 'object' ? raw : {};
+    const normalized = {};
+    Object.entries(safe).forEach(([name, items]) => {
+        const playlistName = normalizeVideoPlaylistName(name);
+        if (!Array.isArray(items)) return;
+        const nextItems = items
+            .map((item) => normalizeSavedVideoEntry(item))
+            .filter(Boolean)
+            .slice(0, 80);
+        if (nextItems.length) normalized[playlistName] = nextItems;
+    });
+    return normalized;
+}
+
+function getUsageTierPreset(value) {
+    return BLIP_USAGE_TIER_PRESETS[normalizeUsageTier(value)];
+}
+
+const initialUsageTier = normalizeUsageTier(localStorage.getItem('blip_usage_tier') || 'cheap');
+const initialTierPreset = getUsageTierPreset(initialUsageTier);
+const storedVoiceEngine = localStorage.getItem('blip_voice_engine');
+const storedVoiceEngineOverridden = localStorage.getItem('blip_voice_engine_overridden');
+const storedVoiceEngineOverrideSource = localStorage.getItem('blip_voice_engine_override_source');
+const DISPLAY_LUMA_OPTIONS = Object.freeze(['low', 'medium', 'high']);
+const IDLE_WEATHER_REFRESH_MS = 15 * 60 * 1000;
+const WEATHER_DISPLAY_TICK_MS = 15 * 1000;
+const BLIP_HOME_LOCATION = 'Valencia, Spain';
+
+function normalizeIdleWeatherLocation(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return BLIP_HOME_LOCATION;
+    if (/^paris(?:,\s*france)?$/i.test(trimmed)) return BLIP_HOME_LOCATION;
+    return trimmed;
+}
+
+function clampIdleAmbientVolume(value) {
+    const parsed = parseFloat(value);
+    if (!Number.isFinite(parsed)) return 0.35;
+    return Math.min(1, Math.max(0.1, parsed));
+}
+
+const state = {
+    isActive: false,
+    isThinking: false,
+    sensitivity: 20,
+    selectedVoice: null,
+    currentEmotion: 'serious',
+    history: [], // Loaded from localStorage in init
+    timers: [],
+    activeAlert: null,
+    alarmAudioCtx: null,
+    alarmLoopTimer: null,
+    timerCornerTicker: null,
+    timerPanelTicker: null,
+    weatherDisplayTicker: null,
+    alertDisplay: null,
+    alertDisplayClearTimer: null,
+    lastScheduledReminder: null,
+    pendingImage: null, // Base64 string
+    cameraStream: null,
+    geminiKey: localStorage.getItem('blip_gemini_key') || '',
+    youtubeApiKey: localStorage.getItem('blip_youtube_key') || '', // optional: for in-panel video playback (YouTube Data API v3)
+    weatherApiKey: localStorage.getItem('blip_weather_key') || '',
+    googleCalendarClientId: localStorage.getItem('blip_google_calendar_client_id') || '',
+    usageTier: initialUsageTier,
+    displayLuma: DISPLAY_LUMA_OPTIONS.includes(localStorage.getItem('blip_display_luma')) ? localStorage.getItem('blip_display_luma') : 'medium',
+    idleWeatherLocation: normalizeIdleWeatherLocation(localStorage.getItem('blip_idle_weather_location')),
+    selectedModel: localStorage.getItem('blip_selected_model') || initialTierPreset.selectedModel,
+    voiceEngine: storedVoiceEngine || initialTierPreset.voiceEngine,
+    voiceEngineOverridden: storedVoiceEngineOverridden === '1' || (!!storedVoiceEngine && storedVoiceEngine !== initialTierPreset.voiceEngine),
+    voiceEngineOverrideSource: storedVoiceEngineOverrideSource || ((storedVoiceEngineOverridden === '1' || (!!storedVoiceEngine && storedVoiceEngine !== initialTierPreset.voiceEngine)) ? 'manual' : 'tier'),
+    imageModel: localStorage.getItem('blip_image_model') || initialTierPreset.imageModel,
+    imageEngine: localStorage.getItem('blip_image_engine') || 'gemini',
+    comfyuiBaseUrl: (localStorage.getItem('blip_comfyui_base_url') || 'http://127.0.0.1:8188').trim(),
+    comfyuiCheckpoint: normalizeComfyuiCheckpointName(localStorage.getItem('blip_comfyui_checkpoint') || ''),
+    selectedGeminiVoice: 'Kore',       // Standardized for V3.1.0
+    lastSpeechStartedAt: 0,
+    lastSpokenText: '',
+    lastSpokenFinishedAt: 0,
+    speechVolume: Math.min(1, Math.max(0.2, (parseFloat(localStorage.getItem('blip_speech_volume')) || 1))),
+    idleAmbientEnabled: localStorage.getItem('blip_idle_ambient_enabled') === '1',
+    idleAmbientFxEnabled: localStorage.getItem('blip_idle_ambient_fx_enabled') !== '0',
+    idleAmbientVolume: clampIdleAmbientVolume(localStorage.getItem('blip_idle_ambient_volume') || 0.35),
+    passiveWakeEnabled: localStorage.getItem('blip_passive_wake_enabled') !== '0',
+    passiveWakePrimed: localStorage.getItem('blip_passive_wake_primed') === '1',
+    passiveWakeListening: false,
+    passiveWakeLoopTimer: null,
+    autoScrollTimer: null,
+    autoScrollDirection: '',
+    idleAudioCtx: null,
+    idleAmbientMasterGain: null,
+    idleAmbientPadGain: null,
+    idleAmbientFilter: null,
+    idleAmbientLfo: null,
+    idleAmbientLfoGain: null,
+    idleAmbientVoices: [],
+    idleAmbientFxTimer: null,
+    idleAmbientRunning: false,
+    calendarCache: (() => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(CALENDAR_CACHE_STORAGE_KEY) || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+            return [];
+        }
+    })(),
+    pendingCalendarEvents: (() => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(CALENDAR_PENDING_STORAGE_KEY) || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+            return [];
+        }
+    })(),
+    pendingCalendarDeletes: (() => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(CALENDAR_PENDING_DELETE_STORAGE_KEY) || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+            return [];
+        }
+    })(),
+    gmailProfile: null,
+    gmailMailbox: 'inbox',
+    gmailMessages: [],
+    gmailSelectedMessageId: '',
+    gmailSelectedMessage: null,
+    gmailComposeDraft: { to: '', subject: '', text: '', attachments: [] },
+    lastGmailDraft: null,
+    lastGmailSendResult: null,
+    telegramDraft: { chatId: '', text: '' },
+    lastTelegramSendResult: null,
+    pendingTelegramReview: false,
+    emailContacts: (() => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(EMAIL_CONTACTS_STORAGE_KEY) || '{}');
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch (_) {
+            return {};
+        }
+    })(),
+    pendingEmailReview: null,
+    gmailVoiceMergeBuffer: '',
+    gmailVoiceMergeTimer: null,
+    gmailVoiceMergeWindowUntil: 0,
+    listeningRestartTimer: null,
+    listeningRestartSuppressedUntil: 0,
+    gmailDraftUndoStack: [],
+    pendingNaturalConversation: null,
+    pendingCalendarDraft: null,
+    pendingNotesDraft: null,
+    pendingProfileDraft: null,
+    activeCalendarViewRequest: null,
+    calendarDisplayMode: normalizeCalendarDisplayMode(localStorage.getItem('blip_calendar_display_mode') || 'month'),
+    calendarAnchorDate: normalizeCalendarAnchorDate(localStorage.getItem('blip_calendar_anchor_date') || '').toISOString(),
+    hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
+    cartItems: JSON.parse(localStorage.getItem('blip_cart') || '[]'),
+    // Per-session overrides for media display (not persisted).
+    // Prevents edits like "darken photo" from sticking forever unless explicitly baked into a data URL.
+    mediaBrightnessOverrides: {},
+    userProfile: (() => {
+        try {
+            return normalizeUserProfile(JSON.parse(localStorage.getItem(USER_PROFILE_STORAGE_KEY) || '{}'));
+        } catch (_) {
+            return normalizeUserProfile({});
+        }
+    })(),
+    videoPlaylists: (() => {
+        try {
+            return normalizeVideoPlaylists(JSON.parse(localStorage.getItem(VIDEO_PLAYLISTS_STORAGE_KEY) || '{}'));
+        } catch (_) {
+            return {};
+        }
+    })(),
+    youtubeLibraryView: localStorage.getItem('blip_youtube_library_view') || 'Music',
+    youtubeLibraryBrowseIndex: 0,
+    cartBrowseIndex: 0,
+    mathGame: {
+        score: 0,
+        currentAnswer: null,
+        currentQuestion: '',
+        started: false,
+        answered: false
+    },
+    currentSidePanelAction: '',
+    currentSidePanelVisualUrl: '',
+    designPanelZoomed: false,
+    lastJokeIndex: -1,
+    mediaItems: (() => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(MEDIA_STORAGE_KEY) || '[]');
+            if (!Array.isArray(parsed)) return [];
+            return parsed
+                .filter((item) => item && typeof item === 'object' && typeof item.url === 'string')
+                .map((item) => ({
+                    ...item,
+                    kind: item.kind === 'video' ? 'video' : 'image',
+                    bucket: item.bucket === MEDIA_BUCKET_CREATED ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS,
+                    title: normalizeMediaItemTitle(item),
+                    voiceLabel: item.bucket === MEDIA_BUCKET_CREATED
+                        ? normalizeCreationVoiceLabel(item.voiceLabel || item.title || item.source || '')
+                        : buildPhotoVoiceLabel({ ...item, title: normalizeMediaItemTitle(item) }),
+                    createdAt: normalizeMediaCreatedAt(item.createdAt, item.id),
+                    rotation: normalizeMediaRotation(item.rotation),
+                    brightness: normalizeMediaBrightness(item.brightness),
+                    originalUrl: typeof item.originalUrl === 'string' && item.originalUrl ? item.originalUrl : item.url,
+                    lastEdit: normalizeMediaEditSnapshot(item.lastEdit)
+                }));
+        } catch (_) {
+            return [];
+        }
+    })(),
+    lastMediaUndo: null,
+    mediaRecorder: null,
+    recordingStream: null,
+    recordingAudioStream: null,
+    recordingChunks: [],
+    isVideoRecording: false,
+    recordingTimer: null,
+    recordingAutoStopTimer: null,
+    recordingStartedAt: 0,
+    recordingStopReason: null,
+    sleepDreamInterval: null,
+    isMediaStripOpen: false,
+    mediaStripLane: 'shots', // 'shots' | 'created' | 'all'
+    activeMediaIndex: -1, // 0-based index of currently expanded media item
+    activeMediaBucket: MEDIA_BUCKET_SHOTS,
+    idleBehavior: null, // 'dreamer', 'observer', 'squinter'
+    isProjectorMode: false,
+    isLiveWatch: false,
+    isListening: false,
+    emotionShowcaseActive: false,
+    chatEngaged: false,
+    softSleepMode: false,
+    currentWeatherScene: 'clear',
+    currentWeatherSceneIntensity: 'active',
+    weatherSceneShowcaseTimer: null,
+    weatherSceneShowcaseIndex: -1,
+    idleWeatherRefreshTimer: null,
+    lastIdleWeatherFetchAt: 0,
+    currentVoiceCommandText: '',
+    pendingYouTubeAction: null,
+    faceScale: Math.min(1.45, Math.max(0.72, parseFloat(localStorage.getItem('blip_face_scale') || '1') || 1)),
+    liveInterval: null,
+    liveFrames: [], // Queue of last 5 frames [{data, mimeType}]
+    videoBigMode: false, // When true, side panel is large with mini Blip beside video
+    videoCompanionSize: localStorage.getItem('blip_video_companion_size') === 'mini' ? 'mini' : 'big',
+    lastMediaPersistStatus: 'ok',
+    personalization: (() => {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(BLIP_PERSONALIZATION_STORAGE_KEY) || '{}');
+            return {
+                ...BLIP_DEFAULT_PERSONALIZATION,
+                ...(parsed && typeof parsed === 'object' ? parsed : {})
+            };
+        } catch (_) {
+            return { ...BLIP_DEFAULT_PERSONALIZATION };
+        }
+    })(),
+    // Working memory: what we just did (so "another graph", "there", "that" make sense)
+    lastContext: {
+        lastUserQuery: '',
+        lastChartTitle: '',
+        lastChartData: null, // { labels, data, title, type } for re-showing graph
+        lastOpenableUrl: '',
+        lastYoutubeUrl: null,
+        lastYoutubeEmbedUrl: null,
+        lastYoutubeVideoId: null,
+        lastYoutubeSearchResults: null, // [{videoId, title}, ...] for next/skip
+        lastYoutubeQuery: null,
+        lastYoutubeSearchIndex: 0,
+        lastLocation: '',
+        lastSearchTopic: '',
+        lastIntentActions: [],
+        lastProductLinks: [],
+        lastProductPreviewDataUrl: '',
+        lastProductRetailer: '',
+        lastRecipeQuery: '',
+        lastRecipeText: '',
+        lastDesignDataUrl: '',
+        lastWeather: null,
+        lastWeatherLocation: ''
+    }
+};
+
+// ── Features: Email (Gmail) ──────────────────────────────────────────────────
+const emailFeature = createEmailFeature({
+    state,
+    transcriptText,
+    elements: {
+        connectGmailBtn,
+        openGmailInboxBtn,
+        disconnectGmailBtn,
+        gmailAuthStatus
+    },
+    services: {
+        connectGoogleGmail,
+        disconnectGoogleGmail,
+        getGoogleGmailAuthState,
+        getGoogleGmailMessage,
+        getGoogleGmailProfile,
+        initGoogleGmail,
+        listGoogleGmailMessages,
+        onGoogleGmailAuthStateChange,
+        sendGoogleGmailMessage
+    },
+    helpers: {
+        escapeHtml,
+        renderActionInSidePanel,
+        isSidePanelActuallyVisible,
+        closeSidePanel,
+        quickReply: (...args) => featureQuickReply(...args),
+        getNoteItems,
+        getEmailPhotoAttachmentPayload,
+        isMediaLightboxActuallyVisible,
+        normalizeMediaLane,
+        getSelectedCalendarDate,
+        formatCalendarDateKey,
+        formatCalendarEventDate,
+        formatCalendarEventTimeRange,
+        getCurrentYouTubeTitle,
+        /** Short “sent” swoosh after Gmail API accepts the message (non-blocking). */
+        playEmailSendConfirm: (options) => triggerEmailSendConfirm(options),
+        persistEmailContacts
+    }
+});
+
+const telegramFeature = createTelegramFeature({
+    state,
+    transcriptText,
+    elements: {
+        openTelegramBtn,
+        sendTelegramTestBtn,
+        telegramAuthStatus
+    },
+    services: {
+        getTelegramAuthState,
+        initTelegram,
+        onTelegramAuthStateChange,
+        sendTelegramMessage,
+        sendTelegramPhoto,
+        sendTelegramTest
+    },
+    helpers: {
+        escapeHtml,
+        renderActionInSidePanel,
+        isSidePanelActuallyVisible,
+        closeSidePanel,
+        quickReply: (...args) => featureQuickReply(...args),
+        getEmailPhotoAttachmentPayload,
+    }
+});
+
+function triggerEmailSendConfirm(options = {}) {
+    const baseDelay = Number.isFinite(Number(options?.delayMs)) ? Number(options.delayMs) : 0;
+    const delays = [baseDelay, baseDelay + 180, baseDelay + 420]
+        .filter((delay, index, list) => delay >= 0 && list.indexOf(delay) === index);
+    let played = false;
+    delays.forEach((delay) => {
+        setTimeout(() => {
+            if (played) return;
+            try {
+                played = !!playEmailSentSwish();
+            } catch (_) { }
+        }, delay);
+    });
+}
+
+async function featureQuickReply(message, emotion = 'happy', extraHtml = '', resumeListening = true, commandText = '') {
+    const heard = String(commandText || state.currentVoiceCommandText || '').trim();
+    const cleanMessage = sanitizeBlipReplyText(message);
+    const shouldPlayEmailSendConfirm = /^(?:email sent to|gmail accepted the email for)\b/i.test(String(cleanMessage || '').trim());
+    transcriptText.innerHTML = `${heard ? `<b>You:</b> ${heard}<br>` : ''}<b>Blip:</b> ${cleanMessage}${extraHtml}`;
+    if (heard && cleanMessage) {
+        state.history.push({ user: heard, blip: cleanMessage });
+        if (state.history.length > HISTORY_MAX) state.history.shift();
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+    }
+    setBlipEmotion(emotion);
+    setPersona(getReplyPersonaKey(emotion));
+    talkBtn.innerText = '🔊 SPEAKING...';
+    await speakWithGuard(cleanMessage, emotion);
+    if (shouldPlayEmailSendConfirm) {
+        try {
+            triggerEmailSendConfirm({ delayMs: 90 });
+        } catch (_) { }
+    }
+    if (resumeListening && state.isActive && !state.isThinking && !speech.isSpeaking && !state.softSleepMode) {
+        startListeningLoop();
+    }
+}
+
+function persistUsageTierState() {
+    try { localStorage.setItem('blip_usage_tier', state.usageTier); } catch (e) { }
+    try { localStorage.setItem('blip_selected_model', state.selectedModel); } catch (e) { }
+    try { localStorage.setItem('blip_voice_engine', state.voiceEngine); } catch (e) { }
+    try { localStorage.setItem('blip_voice_engine_overridden', state.voiceEngineOverridden ? '1' : '0'); } catch (e) { }
+    try { localStorage.setItem('blip_voice_engine_override_source', state.voiceEngineOverrideSource || 'tier'); } catch (e) { }
+    try { localStorage.setItem('blip_image_model', state.imageModel); } catch (e) { }
+    try { localStorage.setItem('blip_image_engine', state.imageEngine); } catch (e) { }
+    try { localStorage.setItem('blip_comfyui_base_url', state.comfyuiBaseUrl || ''); } catch (e) { }
+    try { localStorage.setItem('blip_comfyui_checkpoint', state.comfyuiCheckpoint || ''); } catch (e) { }
+}
+
+function getVoiceEngineLabel(engine = '') {
+    if (engine === 'kokoro') return 'Kokoro';
+    if (engine === 'gemini') return 'Gemini';
+    if (engine === 'web') return 'Browser';
+    return 'Unknown';
+}
+
+function getVoiceEngineSourceLabel() {
+    if (state.voiceEngineOverrideSource === 'manual') return 'manual selection';
+    if (state.voiceEngineOverrideSource === 'auto-quota') return 'automatic fallback after Gemini quota';
+    if (state.voiceEngineOverrideSource === 'auto-error') return 'automatic fallback after Gemini voice error';
+    return `usage tier ${normalizeUsageTier(state.usageTier)}`;
+}
+
+function updateVoiceEngineStatus() {
+    if (!voiceEngineStatus) return;
+    const engine = state.voiceEngine;
+    const source = getVoiceEngineSourceLabel();
+    if (engine === 'kokoro') {
+        voiceEngineStatus.textContent = speech.kokoroOnline
+            ? `Active now: Kokoro. Source: ${source}.`
+            : `Active now: Kokoro, but Kokoro is offline, so speech will fall back to browser voice. Source: ${source}.`;
+        return;
+    }
+    if (engine === 'gemini') {
+        voiceEngineStatus.textContent = `Active now: Gemini voice. Source: ${source}.`;
+        return;
+    }
+    voiceEngineStatus.textContent = `Active now: Browser voice. Source: ${source}.`;
+}
+
+function syncVoiceEngineUi() {
+    const engine = state.voiceEngine;
+    if (voiceEngineSelect) voiceEngineSelect.value = engine;
+    if (browserVoiceGroup) browserVoiceGroup.style.display = engine === 'web' ? 'block' : 'none';
+    if (kokoroHintGroup) kokoroHintGroup.style.display = engine === 'kokoro' ? 'block' : 'none';
+    updateVoiceEngineStatus();
+}
+
+function isGeminiQuotaError(error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes('quota exceeded') ||
+        message.includes('resource exhausted') ||
+        message.includes('rate limit') ||
+        message.includes('too many requests') ||
+        message.includes('429');
+}
+
+function switchAwayFromGeminiVoice(reason = 'auto-error') {
+    if (state.voiceEngine !== 'gemini') return;
+    const nextEngine = speech.kokoroOnline ? 'kokoro' : 'web';
+    state.voiceEngine = nextEngine;
+    state.voiceEngineOverridden = true;
+    state.voiceEngineOverrideSource = reason;
+    persistUsageTierState();
+    syncVoiceEngineUi();
+    console.warn(`Voice engine auto-switched from Gemini to ${getVoiceEngineLabel(nextEngine)}.`);
+}
+
+function normalizeDisplayLuma(value) {
+    return DISPLAY_LUMA_OPTIONS.includes(value) ? value : 'medium';
+}
+
+function normalizeCalendarDisplayMode(value) {
+    return ['day', 'week', 'month'].includes(value) ? 'month' : 'month';
+}
+
+function normalizeCalendarAnchorDate(value) {
+    const parsed = new Date(value || Date.now());
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function persistDisplayLuma() {
+    try { localStorage.setItem('blip_display_luma', state.displayLuma); } catch (e) { }
+}
+
+function persistIdleWeatherLocation() {
+    state.idleWeatherLocation = normalizeIdleWeatherLocation(state.idleWeatherLocation);
+    try { localStorage.setItem('blip_idle_weather_location', state.idleWeatherLocation || ''); } catch (e) { }
+}
+
+function persistIdleAudioPreferences() {
+    try { localStorage.setItem('blip_idle_ambient_enabled', state.idleAmbientEnabled ? '1' : '0'); } catch (e) { }
+    try { localStorage.setItem('blip_idle_ambient_fx_enabled', state.idleAmbientFxEnabled ? '1' : '0'); } catch (e) { }
+    try { localStorage.setItem('blip_idle_ambient_volume', String(state.idleAmbientVolume)); } catch (e) { }
+}
+
+function persistUserProfile() {
+    try { localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(normalizeUserProfile(state.userProfile))); } catch (e) { }
+}
+
+function persistEmailContacts() {
+    try { localStorage.setItem(EMAIL_CONTACTS_STORAGE_KEY, JSON.stringify(state.emailContacts || {})); } catch (e) { }
+}
+
+function persistVideoPlaylists() {
+    try { localStorage.setItem(VIDEO_PLAYLISTS_STORAGE_KEY, JSON.stringify(normalizeVideoPlaylists(state.videoPlaylists))); } catch (e) { }
+}
+
+function normalizeYouTubeLibraryView(view = 'Music') {
+    return view === 'Videos' ? 'Videos' : 'Music';
+}
+
+function setYouTubeLibraryView(view = 'Music') {
+    state.youtubeLibraryView = normalizeYouTubeLibraryView(view);
+    state.youtubeLibraryBrowseIndex = 0;
+    try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
+    return state.youtubeLibraryView;
+}
+
+function openSavedMediaLane(view = state.youtubeLibraryView) {
+    const activeView = setYouTubeLibraryView(view);
+    const lane = activeView === 'Videos' ? 'videos' : 'music';
+    toggleMediaGallery(true, lane);
+    if (!isMediaStripActuallyVisible()) {
+        logUiOpenVisibilityFailure('open-saved-media-lane', 'media-strip', {
+            lane,
+            view: activeView
+        });
+    }
+    return activeView;
+}
+
+function resolveRequestedYouTubeLibraryView(...candidates) {
+    for (const candidate of candidates) {
+        if (typeof candidate !== 'string' || !candidate.trim()) continue;
+        const resolved = resolveYouTubeLibraryViewFromVoice(candidate);
+        if (resolved) return normalizeYouTubeLibraryView(resolved);
+    }
+    return null;
+}
+
+function getSimilarYouTubeQueryFromContext() {
+    const last = state.lastContext || {};
+    const base = String(getCurrentYouTubeTitle?.() || last.lastYoutubeQuery || '').trim();
+    if (!base) return '';
+    const currentEntry = Array.isArray(last.lastYoutubeSearchResults)
+        ? (last.lastYoutubeSearchResults[Math.max(0, Number(last.lastYoutubeSearchIndex) || 0)] || last.lastYoutubeSearchResults[0] || null)
+        : null;
+    const kind = classifyYouTubeContentType(base, currentEntry);
+    const normalizedBase = base.replace(/\b(?:and|then)\s+(?:un\s*-?\s*mute|sound\s+on|audio\s+on)\b[\s\S]*$/i, '').trim();
+    if (!normalizedBase) return '';
+    if (kind === 'music') {
+        // "mix" usually yields close-style results on YouTube for music.
+        return /\bmix\b/i.test(normalizedBase) ? normalizedBase : `${normalizedBase} mix`;
+    }
+    return `${normalizedBase} similar`;
+}
+
+function getYouTubeSimilarVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (!/\b(?:another|more|different|new)\b/.test(lower) && !/\b(?:similar|same)\b/.test(lower)) return null;
+    if (!/\b(?:video|youtube|yt|one)\b/.test(lower)) return null;
+    if (!/\b(?:same\s+style|same\s+vibe|same\s+kind|similar|like\s+this|like\s+that)\b/.test(lower)) return null;
+    const query = getSimilarYouTubeQueryFromContext();
+    return query ? { query } : null;
+}
+
+function listVideoPlaylistsByLibrary(view = 'Music') {
+    const v = normalizeVideoPlaylistName(view);
+    const playlists = state.videoPlaylists && typeof state.videoPlaylists === 'object' ? state.videoPlaylists : {};
+    const names = Object.keys(playlists);
+    if (v === 'Music') {
+        const preferred = names.includes('Music') ? ['Music'] : [];
+        const others = names.filter((n) => n !== 'Music' && !['Videos', 'Watch Later', 'Favorites'].includes(n));
+        return [...preferred, ...others].slice(0, 24);
+    }
+    if (v === 'Videos') {
+        const preferred = names.includes('Videos') ? ['Videos'] : [];
+        const others = names.filter((n) => n !== 'Videos' && !['Music', 'Watch Later', 'Favorites'].includes(n));
+        return [...preferred, ...others].slice(0, 24);
+    }
+    return names.slice(0, 24);
+}
+
+function getYouTubeLibraryItems(view = state.youtubeLibraryView) {
+    const focusName = view === 'Videos' ? 'Videos' : 'Music';
+    const rawItems = Array.isArray(state.videoPlaylists?.[focusName]) ? state.videoPlaylists[focusName] : [];
+    return rawItems
+        .filter((item) => item && typeof item === 'object' && typeof item.videoId === 'string' && item.videoId.trim())
+        .slice(0, 80);
+}
+
+function getRawSavedYouTubeItems(view = state.youtubeLibraryView) {
+    const focusName = view === 'Videos' ? 'Videos' : 'Music';
+    return Array.isArray(state.videoPlaylists?.[focusName]) ? state.videoPlaylists[focusName] : [];
+}
+
+function findRawSavedYouTubeItemIndex(view = state.youtubeLibraryView, item = null, visibleIndex = -1) {
+    const rawItems = getRawSavedYouTubeItems(view);
+    if (!rawItems.length) return -1;
+
+    const preferredVisibleIndex = Number(visibleIndex);
+    if (Number.isFinite(preferredVisibleIndex) && preferredVisibleIndex >= 0) {
+        let currentVisibleIndex = -1;
+        for (let rawIndex = 0; rawIndex < rawItems.length; rawIndex += 1) {
+            const currentItem = rawItems[rawIndex];
+            if (!currentItem || typeof currentItem !== 'object') continue;
+            const currentVideoId = String(currentItem.videoId || '').trim();
+            if (!currentVideoId) continue;
+            currentVisibleIndex += 1;
+            if (currentVisibleIndex === preferredVisibleIndex) return rawIndex;
+        }
+    }
+
+    if (!item || typeof item !== 'object') return -1;
+
+    const directIndex = rawItems.indexOf(item);
+    if (directIndex >= 0) return directIndex;
+
+    const targetVideoId = String(item.videoId || '').trim();
+    if (targetVideoId) {
+        const byVideoId = rawItems.findIndex((entry) => String(entry?.videoId || '').trim() === targetVideoId);
+        if (byVideoId >= 0) return byVideoId;
+    }
+
+    const targetUrl = String(item.url || '').trim();
+    if (targetUrl) {
+        const byUrl = rawItems.findIndex((entry) => String(entry?.url || '').trim() === targetUrl);
+        if (byUrl >= 0) return byUrl;
+    }
+
+    const targetTitle = normalizeVoiceTokens(String(item.title || item.query || ''));
+    if (targetTitle) {
+        return rawItems.findIndex((entry) => normalizeVoiceTokens(String(entry?.title || entry?.query || '')) === targetTitle);
+    }
+
+    return -1;
+}
+
+function getActiveSavedYouTubeViewForVoice() {
+    const lane = normalizeMediaLane(state.mediaStripLane);
+    if (lane === 'videos') return 'Videos';
+    if (lane === 'music') return 'Music';
+    return state.youtubeLibraryView === 'Videos' ? 'Videos' : 'Music';
+}
+
+function getSavedYouTubeItemsByView(view = 'Music') {
+    return getYouTubeLibraryItems(view === 'Videos' ? 'Videos' : 'Music');
+}
+
+function getSavedYouTubeItemMatch(view = state.youtubeLibraryView, title = '') {
+    const requested = normalizeYouTubeTitleForMatch(title);
+    const focusName = view === 'Videos' ? 'Videos' : 'Music';
+    const currentItems = getSavedYouTubeItemsByView(focusName);
+    if (!requested || requested.length < 2 || !currentItems.length) {
+        return { item: null, index: -1, score: -1, view: focusName, requested };
+    }
+
+    let bestIndex = -1;
+    let bestScore = -1;
+    currentItems.forEach((item, index) => {
+        const rawTitle = normalizeVoiceTokens(String(item?.title || item?.query || ''));
+        const cleanTitle = normalizeYouTubeTitleForMatch(String(item?.title || item?.query || ''));
+        let score = -1;
+        if (rawTitle === requested || cleanTitle === requested) score = 100;
+        else if (rawTitle.includes(requested) || cleanTitle.includes(requested)) score = 80;
+        else if (requested.includes(rawTitle) || requested.includes(cleanTitle)) score = 70;
+        else {
+            const requestedWords = requested.split(' ').filter(Boolean);
+            const cleanWords = cleanTitle.split(' ').filter(Boolean);
+            const overlap = requestedWords.filter((word) => cleanWords.includes(word)).length;
+            if (overlap >= Math.max(2, Math.min(requestedWords.length, cleanWords.length))) score = 50 + overlap;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestIndex = index;
+        }
+    });
+
+    return {
+        item: bestIndex >= 0 ? currentItems[bestIndex] : null,
+        index: bestIndex,
+        score: bestScore,
+        view: focusName,
+        requested
+    };
+}
+
+function openSavedYouTubePlayback(item, view = state.youtubeLibraryView, index = 0, options = {}) {
+    const focusName = view === 'Videos' ? 'Videos' : 'Music';
+    const videoId = String(item?.videoId || '').trim();
+    if (!videoId) return { ok: false, message: `No ${focusName.toLowerCase()} item ready.` };
+    const title = String(item?.title || item?.query || 'Saved video').trim() || 'Saved video';
+    const safeIndex = Number.isFinite(Number(index)) ? Math.max(0, Math.floor(Number(index))) : 0;
+    setYouTubeLibraryView(focusName);
+    state.youtubeLibraryBrowseIndex = safeIndex;
+    syncYouTubeLibraryBrowseSelection({ scrollIntoView: true });
+    renderActionInSidePanel({
+        action: 'youtube',
+        tool_params: {
+            videoId,
+            query: title,
+            focusedPlayer: options.focusedPlayer !== false,
+            mediaView: focusName
+        },
+        text: `Playing ${title}.`
+    });
+    const visible = isYouTubePanelActuallyVisible();
+    if (!visible) {
+        logUiOpenVisibilityFailure('saved-youtube-playback', 'youtube-panel', {
+            title,
+            view: focusName,
+            index: safeIndex
+        });
+    }
+    return {
+        ok: visible,
+        message: visible ? `Playing ${title}.` : 'I tried to open it, but the window did not appear.',
+        title,
+        view: focusName,
+        index: safeIndex
+    };
+}
+
+function playSavedYouTubeItemByNumber(number, view = getActiveSavedYouTubeViewForVoice()) {
+    const items = getSavedYouTubeItemsByView(view);
+    const oneBased = Number(number);
+    if (!Number.isFinite(oneBased) || oneBased < 1) return { ok: false, message: `No ${view.toLowerCase()} item ${number}.` };
+    const safeIndex = Math.floor(oneBased) - 1;
+    const item = items[safeIndex];
+    if (!item) return { ok: false, message: `No ${view.toLowerCase()} item ${number}.` };
+    const result = openSavedYouTubePlayback(item, view, safeIndex, { focusedPlayer: true });
+    return result.ok
+        ? { ...result, message: `Opening ${view.toLowerCase()} ${oneBased}.` }
+        : { ok: false, message: `No ${view.toLowerCase()} item ${number}.` };
+}
+
+function playCurrentSavedYouTubeItem(view = getActiveSavedYouTubeViewForVoice()) {
+    const items = getSavedYouTubeItemsByView(view);
+    if (!items.length) return { ok: false, message: `No ${view.toLowerCase()} yet.` };
+    const safeIndex = normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, items);
+    const item = items[safeIndex];
+    return openSavedYouTubePlayback(item, view, safeIndex, { focusedPlayer: true });
+}
+
+function playSavedYouTubeItemByTitle(title = '', options = {}) {
+    const preferredViews = Array.isArray(options.preferredViews) && options.preferredViews.length
+        ? options.preferredViews.map((view) => view === 'Videos' ? 'Videos' : 'Music')
+        : [getActiveSavedYouTubeViewForVoice(), getActiveSavedYouTubeViewForVoice() === 'Videos' ? 'Music' : 'Videos'];
+    const uniqueViews = [...new Set(preferredViews)];
+    let best = null;
+
+    uniqueViews.forEach((view) => {
+        const match = getSavedYouTubeItemMatch(view, title);
+        if (match.score > (best?.score ?? -1)) best = match;
+    });
+
+    if (!best?.item || best.score < 50) {
+        const label = uniqueViews.length === 1
+            ? uniqueViews[0]
+            : 'saved music or videos';
+        return {
+            ok: false,
+            message: uniqueViews.length === 1
+                ? `I could not find "${title}" in ${label}.`
+                : `I could not find "${title}" in ${label}.`
+        };
+    }
+
+    return openSavedYouTubePlayback(best.item, best.view, best.index, { focusedPlayer: true });
+}
+
+function clearSavedYouTubeItems(view = getActiveSavedYouTubeViewForVoice()) {
+    const focusName = view === 'Videos' ? 'Videos' : 'Music';
+    const currentItems = Array.isArray(state.videoPlaylists?.[focusName]) ? state.videoPlaylists[focusName] : [];
+    if (!currentItems.length) {
+        return { ok: false, message: `No ${focusName.toLowerCase()} to clear.` };
+    }
+    rememberMediaUndo({
+        type: 'youtube-bulk',
+        view: focusName,
+        items: currentItems.map((item, index) => ({ item, index }))
+    });
+    const nextPlaylists = { ...(state.videoPlaylists || {}) };
+    delete nextPlaylists[focusName];
+    state.videoPlaylists = nextPlaylists;
+    state.youtubeLibraryBrowseIndex = -1;
+    persistVideoPlaylists();
+    renderMediaGallery();
+    return {
+        ok: true,
+        message: `Cleared ${focusName.toLowerCase()}. Removed ${currentItems.length} item${currentItems.length === 1 ? '' : 's'}.`
+    };
+}
+
+function removeSavedYouTubeItemByNumber(number, view = getActiveSavedYouTubeViewForVoice()) {
+    const items = getSavedYouTubeItemsByView(view);
+    const oneBased = Number(number);
+    if (!Number.isFinite(oneBased) || oneBased < 1) return { ok: false, message: `No ${view.toLowerCase()} item ${number}.` };
+    const safeIndex = Math.floor(oneBased) - 1;
+    const item = items[safeIndex];
+    if (!item) return { ok: false, message: `No ${view.toLowerCase()} item ${number}.` };
+    const playlistName = view === 'Videos' ? 'Videos' : 'Music';
+    const currentItems = getRawSavedYouTubeItems(playlistName);
+    const rawIndex = findRawSavedYouTubeItemIndex(playlistName, item, safeIndex);
+    if (rawIndex < 0) return { ok: false, message: `Could not remove ${view.toLowerCase()} ${oneBased}.` };
+    rememberMediaUndo({
+        type: 'youtube-single',
+        view: playlistName,
+        items: [{ item, index: rawIndex }]
+    });
+    const nextItems = currentItems.filter((_, index) => index !== rawIndex);
+    const nextPlaylists = { ...(state.videoPlaylists || {}) };
+    if (nextItems.length) nextPlaylists[playlistName] = nextItems;
+    else delete nextPlaylists[playlistName];
+    state.videoPlaylists = nextPlaylists;
+    state.youtubeLibraryBrowseIndex = normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, getSavedYouTubeItemsByView(playlistName));
+    persistVideoPlaylists();
+    renderMediaGallery();
+    return { ok: true, message: `Removed ${view.toLowerCase()} ${oneBased}.` };
+}
+
+function removeSavedYouTubeItemsByNumbers(numbers = [], view = getActiveSavedYouTubeViewForVoice()) {
+    const playlistName = view === 'Videos' ? 'Videos' : 'Music';
+    const visibleItems = getSavedYouTubeItemsByView(playlistName);
+    const requested = Array.isArray(numbers)
+        ? [...new Set(numbers.map((value) => Math.floor(Number(value))).filter((value) => Number.isFinite(value) && value > 0))]
+        : [];
+    if (!requested.length) return { ok: false, message: `No ${playlistName.toLowerCase()} items selected.` };
+
+    const removals = requested
+        .map((oneBased) => {
+            const visibleIndex = oneBased - 1;
+            const item = visibleItems[visibleIndex];
+            if (!item) return null;
+            const rawIndex = findRawSavedYouTubeItemIndex(playlistName, item, visibleIndex);
+            if (rawIndex < 0) return null;
+            return { oneBased, rawIndex, item };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.rawIndex - a.rawIndex);
+
+    if (!removals.length) {
+        return { ok: false, message: `No matching ${playlistName.toLowerCase()} items.` };
+    }
+
+    const rawItems = getRawSavedYouTubeItems(playlistName);
+    const removedEntries = removals.map(({ rawIndex, item }) => ({ item, index: rawIndex }));
+    const rawIndexes = new Set(removals.map(({ rawIndex }) => rawIndex));
+    rememberMediaUndo({
+        type: 'youtube-bulk',
+        view: playlistName,
+        items: removedEntries
+    });
+    const nextItems = rawItems.filter((_, index) => !rawIndexes.has(index));
+    const nextPlaylists = { ...(state.videoPlaylists || {}) };
+    if (nextItems.length) nextPlaylists[playlistName] = nextItems;
+    else delete nextPlaylists[playlistName];
+    state.videoPlaylists = nextPlaylists;
+    state.youtubeLibraryBrowseIndex = normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, getSavedYouTubeItemsByView(playlistName));
+    persistVideoPlaylists();
+    renderMediaGallery();
+
+    const labels = removals
+        .map(({ oneBased }) => `#${oneBased}`)
+        .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+        .join(', ');
+    return {
+        ok: true,
+        message: `Removed ${playlistName.toLowerCase()} ${labels}.`
+    };
+}
+
+function normalizeYouTubeLibraryBrowseIndex(index, items = getYouTubeLibraryItems()) {
+    if (!Array.isArray(items) || !items.length) return -1;
+    const numeric = Number(index);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(0, Math.min(items.length - 1, Math.round(numeric)));
+}
+
+function isYouTubeLibraryOnlyPanelOpen() {
+    const sidePanel = document.getElementById('blip-side-panel');
+    return !!sidePanel &&
+        sidePanel.style.display !== 'none' &&
+        state.currentSidePanelAction === 'youtube' &&
+        sidePanel.dataset.youtubeLibraryOnly === '1';
+}
+
+function isYouTubeLibraryVoiceContextOpen() {
+    const sidePanel = document.getElementById('blip-side-panel');
+    const panelHasLibrary = !!sidePanel &&
+        sidePanel.style.display !== 'none' &&
+        state.currentSidePanelAction === 'youtube' &&
+        !!sidePanel.querySelector('[data-yt-play-video][data-yt-index]');
+    const mediaLane = normalizeMediaLane(state.mediaStripLane);
+    const mediaHasLibrary = state.isMediaStripOpen && ['music', 'videos', 'all'].includes(mediaLane);
+    return panelHasLibrary || mediaHasLibrary;
+}
+
+function syncYouTubeLibraryBrowseSelection(options = {}) {
+    const { scrollIntoView = false } = options;
+    const view = getActiveSavedYouTubeViewForVoice();
+    const sidePanel = document.getElementById('blip-side-panel');
+    const sidePanelButtons = sidePanel
+        ? Array.from(sidePanel.querySelectorAll('[data-yt-play-video][data-yt-index]'))
+        : [];
+    const mediaStripButtons = Array.from(document.querySelectorAll(`.media-strip [data-yt-media-play="${view}"][data-yt-index]`));
+    const buttons = sidePanelButtons.length ? sidePanelButtons : mediaStripButtons;
+    if (!buttons.length) return false;
+    const items = getYouTubeLibraryItems(view);
+    const nextIndex = normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, items);
+    state.youtubeLibraryBrowseIndex = nextIndex;
+    buttons.forEach((button, index) => {
+        const active = index === nextIndex;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-current', active ? 'true' : 'false');
+    });
+    const activeButton = buttons[nextIndex];
+    if (scrollIntoView && activeButton?.scrollIntoView) {
+        activeButton.scrollIntoView({
+            block: 'nearest',
+            inline: 'nearest',
+            behavior: 'smooth'
+        });
+    }
+    return !!activeButton;
+}
+
+function browseYouTubeLibrary(delta = 1) {
+    if (!isYouTubeLibraryVoiceContextOpen()) return { ok: false, message: 'No YouTube list open.' };
+    const view = getActiveSavedYouTubeViewForVoice();
+    const items = getYouTubeLibraryItems(view);
+    if (!items.length) return { ok: false, message: 'That list is empty.' };
+    const current = normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, items);
+    const nextIndex = (current + delta + items.length) % items.length;
+    state.youtubeLibraryBrowseIndex = nextIndex;
+    syncYouTubeLibraryBrowseSelection({ scrollIntoView: true });
+    const item = items[nextIndex];
+    const title = String(item?.title || item?.query || 'Saved video').trim() || 'Saved video';
+    return {
+        ok: true,
+        index: nextIndex,
+        total: items.length,
+        title,
+        message: `${nextIndex + 1} of ${items.length}. ${title}`
+    };
+}
+
+function deleteSavedYouTubeItemByTitle(title = '', view = state.youtubeLibraryView) {
+    const focusName = view === 'Videos' ? 'Videos' : 'Music';
+    const currentItems = getRawSavedYouTubeItems(focusName);
+    const match = getSavedYouTubeItemMatch(focusName, title);
+    if (!match.requested || match.requested.length < 2) return { ok: false, message: 'Say the YouTube title you want to delete.' };
+    if (!currentItems.length) return { ok: false, message: `${focusName} is empty.` };
+    if (!match.item || match.score < 50) {
+        return { ok: false, message: `Could not find "${title}" in ${focusName}.` };
+    }
+
+    const rawIndex = findRawSavedYouTubeItemIndex(focusName, match.item, match.index);
+    if (rawIndex < 0) return { ok: false, message: `Could not remove "${title}" from ${focusName}.` };
+    const removedItem = currentItems[rawIndex];
+    rememberMediaUndo({
+        type: 'youtube-single',
+        view: focusName,
+        items: [{ item: removedItem, index: rawIndex }]
+    });
+    const nextList = currentItems.filter((_, index) => index !== rawIndex);
+    const nextPlaylists = { ...(state.videoPlaylists || {}) };
+    if (nextList.length) nextPlaylists[focusName] = nextList;
+    else delete nextPlaylists[focusName];
+    state.videoPlaylists = nextPlaylists;
+    state.youtubeLibraryBrowseIndex = normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, getSavedYouTubeItemsByView(focusName));
+    persistVideoPlaylists();
+    renderMediaGallery();
+
+    const removedTitle = String(removedItem?.title || removedItem?.query || title).trim() || title;
+    return { ok: true, message: `Deleted ${removedTitle} from ${focusName}.`, removedTitle };
+}
+
+function moveSavedYouTubeItemToPlaylist(request = {}) {
+    const targetView = normalizeVideoPlaylistName(request?.targetView || '');
+    if (!targetView) return { ok: false, message: 'Tell me where to move it, like Music or Videos.' };
+
+    const candidateViews = [];
+    const requestedSource = request?.sourceView ? normalizeVideoPlaylistName(request.sourceView) : '';
+    if (requestedSource) candidateViews.push(requestedSource);
+    candidateViews.push(getActiveSavedYouTubeViewForVoice());
+    ['Music', 'Videos', DEFAULT_VIDEO_PLAYLIST, WATCH_LATER_PLAYLIST].forEach((view) => candidateViews.push(view));
+    const uniqueViews = [...new Set(candidateViews.filter(Boolean))];
+
+    let sourceView = '';
+    let rawIndex = -1;
+    let movedItem = null;
+    let matchedTitle = '';
+
+    if (request?.mode === 'number') {
+        const index = Math.floor(Number(request.index));
+        if (!Number.isFinite(index) || index < 1) return { ok: false, message: 'Say the saved number you want to move.' };
+        const preferredView = requestedSource || getActiveSavedYouTubeViewForVoice();
+        const visibleItems = getSavedYouTubeItemsByView(preferredView);
+        const item = visibleItems[index - 1];
+        if (!item) return { ok: false, message: `No ${preferredView.toLowerCase()} item ${index}.` };
+        sourceView = preferredView;
+        rawIndex = findRawSavedYouTubeItemIndex(sourceView, item, index - 1);
+        movedItem = rawIndex >= 0 ? getRawSavedYouTubeItems(sourceView)[rawIndex] : null;
+        matchedTitle = String(item?.title || item?.query || '').trim();
+    } else {
+        const requestedTitle = String(request?.title || '').trim();
+        if (!requestedTitle) return { ok: false, message: 'Say the saved title you want to move.' };
+        let best = null;
+        uniqueViews.forEach((view) => {
+            const match = getSavedYouTubeItemMatch(view, requestedTitle);
+            if (match?.item && match.score > (best?.score ?? -1)) best = match;
+        });
+        if (!best?.item || best.score < 50) {
+            return { ok: false, message: `I could not find "${requestedTitle}" in your saved music or videos.` };
+        }
+        sourceView = best.view;
+        rawIndex = findRawSavedYouTubeItemIndex(sourceView, best.item, best.index);
+        movedItem = rawIndex >= 0 ? getRawSavedYouTubeItems(sourceView)[rawIndex] : null;
+        matchedTitle = String(best.item?.title || best.item?.query || requestedTitle).trim();
+    }
+
+    if (!sourceView || rawIndex < 0 || !movedItem) {
+        return { ok: false, message: 'I could not move that saved item yet.' };
+    }
+
+    if (sourceView === targetView) {
+        return { ok: true, message: `${matchedTitle || 'That saved item'} is already in ${targetView}.` };
+    }
+
+    const sourceItems = getRawSavedYouTubeItems(sourceView);
+    const targetItems = getRawSavedYouTubeItems(targetView);
+    const duplicateInTarget = targetItems.find((item) => {
+        const sameId = movedItem?.videoId && item?.videoId && movedItem.videoId === item.videoId;
+        const sameUrl = movedItem?.url && item?.url && movedItem.url === item.url;
+        return sameId || sameUrl;
+    });
+
+    const nextSourceItems = sourceItems.filter((_, index) => index !== rawIndex);
+    const normalizedItem = normalizeSavedVideoEntry(movedItem);
+    const nextTargetItems = duplicateInTarget
+        ? targetItems
+        : [normalizedItem, ...targetItems].slice(0, 80);
+    const nextPlaylists = { ...(state.videoPlaylists || {}) };
+    if (nextSourceItems.length) nextPlaylists[sourceView] = nextSourceItems;
+    else delete nextPlaylists[sourceView];
+    if (nextTargetItems.length) nextPlaylists[targetView] = nextTargetItems;
+    else delete nextPlaylists[targetView];
+    state.videoPlaylists = nextPlaylists;
+
+    if (targetView === 'Music' || targetView === 'Videos') {
+        setYouTubeLibraryView(targetView);
+        state.youtubeLibraryBrowseIndex = 0;
+    } else {
+        state.youtubeLibraryBrowseIndex = normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, getSavedYouTubeItemsByView(getActiveSavedYouTubeViewForVoice()));
+    }
+
+    persistVideoPlaylists();
+    renderMediaGallery();
+
+    const finalTitle = matchedTitle || String(movedItem?.title || movedItem?.query || 'Saved video').trim() || 'Saved video';
+    return {
+        ok: true,
+        message: duplicateInTarget
+            ? `${finalTitle} is already in ${targetView}, so I removed it from ${sourceView}.`
+            : `Moved ${finalTitle} from ${sourceView} to ${targetView}.`,
+        sourceView,
+        targetView,
+        title: finalTitle
+    };
+}
+
+function buildYouTubeLibraryHtml(options = {}) {
+    const { simple = false, compact = false } = options;
+    const useSimpleList = simple || compact;
+    const view = state.youtubeLibraryView === 'Videos' ? 'Videos' : 'Music';
+    const focusName = view === 'Music' ? 'Music' : 'Videos';
+    const focusItems = getYouTubeLibraryItems(view);
+    state.youtubeLibraryBrowseIndex = normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, focusItems);
+    const focusList = focusItems.length
+        ? `
+            <div class="blip-yt-recent-label">Saved in ${escapeHtml(focusName)}</div>
+            <div class="blip-yt-library-note">${useSimpleList ? 'Say "play music 1", "play video 1", or tap one.' : 'Say "next", "previous", or "scroll down".'}</div>
+            <div class="blip-yt-recent-list blip-panel-scroll${useSimpleList ? ' blip-yt-simple-list' : ''}">
+              ${focusItems.map((it, index) => {
+                  const vid = escapeHtml(String(it?.videoId || ''));
+                  const title = escapeHtml(String(it?.title || it?.query || 'Saved video').slice(0, 120));
+                  const activeClass = index === state.youtubeLibraryBrowseIndex ? ' active' : '';
+                  return `
+                      <button
+                          type="button"
+                          class="${useSimpleList ? 'blip-yt-simple-item' : 'action-link outline blip-yt-video-item'}${activeClass}"
+                          data-yt-play-video="${vid}"
+                          data-yt-index="${index}"
+                          aria-current="${index === state.youtubeLibraryBrowseIndex ? 'true' : 'false'}"
+                      >
+                          <span class="blip-yt-video-item-index">${index + 1}</span>
+                          <span class="blip-yt-video-item-title">${title}</span>
+                      </button>
+                  `;
+              }).join('')}
+            </div>
+          `
+        : `<div class="blip-yt-library-note">No saved ${escapeHtml(focusName.toLowerCase())} yet.</div>`;
+    return `
+        <div class="blip-yt-library${useSimpleList ? ' blip-yt-library-simple' : ''}${compact ? ' blip-yt-library-compact' : ''}">
+            <div class="blip-yt-library-switches${useSimpleList ? ' blip-yt-library-switches-simple' : ''}">
+                <button type="button" class="action-link ${view === 'Music' ? 'blue' : 'outline'}" data-yt-library="Music">🎵 Music</button>
+                <button type="button" class="action-link ${view === 'Videos' ? 'blue' : 'outline'}" data-yt-library="Videos">🎬 Videos</button>
+            </div>
+            ${focusList}
+        </div>
+    `;
+}
+
+function downloadTextFile(filename, content, mime = 'application/json') {
+    try {
+        const blob = new Blob([String(content || '')], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 500);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function getActiveMediaLightboxImageUrl() {
+    if (!mediaLightbox?.classList.contains('active')) return '';
+    if (mediaLightboxVideo?.style.display !== 'none') return '';
+    return String(mediaLightboxImage?.getAttribute('src') || mediaLightboxImage?.src || '').trim();
+}
+
+function getActiveMediaLightboxImageItem() {
+    if (!mediaLightbox?.classList.contains('active')) return null;
+    if (mediaLightboxVideo?.style.display !== 'none') return null;
+    if (Number.isFinite(state.activeMediaIndex) && state.activeMediaIndex >= 0) {
+        const item = state.mediaItems?.[state.activeMediaIndex] || null;
+        if (item?.kind !== 'video') return item;
+    }
+    return null;
+}
+
+function getActiveMediaLightboxFilename() {
+    const item = getActiveMediaLightboxImageItem();
+    const title = normalizeMediaItemTitle(item || {});
+    const base = String(title || 'blip-photo')
+        .toLowerCase()
+        .replace(/[^\w.-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 64) || 'blip-photo';
+    return `${base}.png`;
+}
+
+async function getActiveMediaLightboxImageBlob() {
+    const imageUrl = getActiveMediaLightboxImageUrl();
+    if (!imageUrl) throw new Error('Open a photo first.');
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error('Could not read that photo.');
+    return response.blob();
+}
+
+function downloadBlobFile(filename, blob) {
+    const safeName = String(filename || 'blip-photo.png').trim() || 'blip-photo.png';
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = safeName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 800);
+}
+
+async function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = String(reader.result || '');
+            const base64 = result.includes(',') ? result.split(',').pop() : '';
+            if (!base64) {
+                reject(new Error('Could not encode file.'));
+                return;
+            }
+            resolve(base64);
+        };
+        reader.onerror = () => reject(new Error('Could not read file.'));
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function getEmailPhotoAttachmentPayload() {
+    let item = getActiveMediaLightboxImageItem();
+    let blob = null;
+    if (item) {
+        blob = await getActiveMediaLightboxImageBlob();
+    } else {
+        item = getLatestImageItemByBucket(MEDIA_BUCKET_SHOTS);
+        if (!item?.url) throw new Error('Open a photo first or save one in Media.');
+        const response = await fetch(item.url);
+        if (!response.ok) throw new Error('Could not read that photo.');
+        blob = await response.blob();
+    }
+    return {
+        kind: 'photo',
+        subject: normalizeMediaItemTitle(item || {}) || 'Blip photo',
+        text: `Photo from Blip: ${normalizeMediaItemTitle(item || {}) || 'Photo'}`,
+        attachments: [{
+            filename: getActiveMediaLightboxImageItem() ? getActiveMediaLightboxFilename() : `${String(normalizeMediaItemTitle(item || {}) || 'blip-photo').toLowerCase().replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'blip-photo'}.png`,
+            mimeType: blob.type || 'image/png',
+            contentBase64: await blobToBase64(blob)
+        }]
+    };
+}
+
+async function downloadActiveMediaImage() {
+    try {
+        const blob = await getActiveMediaLightboxImageBlob();
+        downloadBlobFile(getActiveMediaLightboxFilename(), blob);
+        return { ok: true, message: 'Photo downloaded.' };
+    } catch (error) {
+        return { ok: false, message: error?.message || 'Could not download that photo.' };
+    }
+}
+
+async function shareActiveMediaImage() {
+    try {
+        const blob = await getActiveMediaLightboxImageBlob();
+        const filename = getActiveMediaLightboxFilename();
+        const mime = blob.type || 'image/png';
+        const file = new File([blob], filename, { type: mime });
+        if (navigator.share && navigator.canShare?.({ files: [file] })) {
+            await navigator.share({
+                title: filename.replace(/\.[^.]+$/, ''),
+                files: [file]
+            });
+            return { ok: true, message: 'Photo shared.' };
+        }
+        if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+            await navigator.clipboard.write([new ClipboardItem({ [mime]: blob })]);
+            return { ok: true, message: 'Photo copied. You can paste it now.' };
+        }
+        downloadBlobFile(filename, blob);
+        return { ok: true, message: 'Share is not available here, so I downloaded the photo instead.' };
+    } catch (error) {
+        if (String(error?.name || '').toLowerCase() === 'aborterror') {
+            return { ok: false, message: 'Share canceled.' };
+        }
+        return { ok: false, message: error?.message || 'Could not share that photo.' };
+    }
+}
+
+async function setActiveMediaImageAsWallpaper() {
+    try {
+        const blob = await getActiveMediaLightboxImageBlob();
+        const response = await fetch(`${MEDIA_ACTIONS_BACKEND_URL}/wallpaper`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': blob.type || 'image/png',
+                'X-File-Name': getActiveMediaLightboxFilename()
+            },
+            body: blob
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false) {
+            return {
+                ok: false,
+                message: payload?.message || 'Could not set wallpaper. Start `npm run dev:media-backend` first.'
+            };
+        }
+        return { ok: true, message: payload?.message || 'Wallpaper set.' };
+    } catch (error) {
+        return {
+            ok: false,
+            message: 'Could not set wallpaper. Start `npm run dev:media-backend` first.'
+        };
+    }
+}
+
+function exportYouTubePlaylists() {
+    const payload = normalizeVideoPlaylists(state.videoPlaylists || {});
+    const filename = `blip-youtube-playlists-${new Date().toISOString().slice(0, 10)}.json`;
+    return downloadTextFile(filename, JSON.stringify(payload, null, 2));
+}
+
+async function importYouTubePlaylistsFromFile(file) {
+    if (!file) return { ok: false, message: 'No file selected.' };
+    const text = await file.text().catch(() => '');
+    if (!text) return { ok: false, message: 'Could not read that file.' };
+    try {
+        const parsed = JSON.parse(text);
+        const next = normalizeVideoPlaylists(parsed);
+        state.videoPlaylists = next;
+        persistVideoPlaylists();
+        return { ok: true, message: 'Playlists imported.' };
+    } catch (e) {
+        return { ok: false, message: 'Invalid JSON playlist file.' };
+    }
+}
+
+function deleteYouTubePlaylistByName(name = '') {
+    const playlistName = normalizeVideoPlaylistName(name);
+    const playlists = state.videoPlaylists && typeof state.videoPlaylists === 'object' ? state.videoPlaylists : {};
+    if (!playlists[playlistName]) return { ok: false, message: `No playlist called ${playlistName}.` };
+    const next = { ...playlists };
+    delete next[playlistName];
+    state.videoPlaylists = next;
+    persistVideoPlaylists();
+    return { ok: true, message: `Deleted ${playlistName}.` };
+}
+
+function renameYouTubePlaylist(oldName = '', newName = '') {
+    const from = normalizeVideoPlaylistName(oldName);
+    const to = normalizeVideoPlaylistName(newName);
+    if (!from || !to) return { ok: false, message: 'Missing playlist name.' };
+    const playlists = state.videoPlaylists && typeof state.videoPlaylists === 'object' ? state.videoPlaylists : {};
+    if (!playlists[from]) return { ok: false, message: `No playlist called ${from}.` };
+    const existing = Array.isArray(playlists[to]) ? playlists[to] : [];
+    const moved = Array.isArray(playlists[from]) ? playlists[from] : [];
+    const next = { ...playlists };
+    next[to] = [...moved, ...existing].slice(0, 80);
+    delete next[from];
+    state.videoPlaylists = next;
+    persistVideoPlaylists();
+    return { ok: true, message: `Renamed ${from} to ${to}.` };
+}
+
+function persistPassiveWakePreference() {
+    try { localStorage.setItem('blip_passive_wake_enabled', state.passiveWakeEnabled ? '1' : '0'); } catch (e) { }
+}
+
+const SLEEP_BUTTON_LABEL = 'Wake Blip';
+const WAKE_PHRASE_HINT = 'Hey Blip / Wake Up Blip / Blip';
+const SLEEP_PROMPT_TEXT = "Say 'Hey Blip', 'Wake Up Blip', or 'Blip' to wake me.";
+const EXACT_WAKE_ONLY_RE = /^(?:hey\s+blip|wake\s+up\s+blip|wake\s+blip|blip|hi\s+blip|ok(?:ay)?\s+blip|blip\s+wake(?:\s+up)?)$/;
+const WAKE_PREFIX_RE = /^(?:hey\s+blip|wake\s+up\s+blip|wake\s+blip|blip|hi\s+blip|ok(?:ay)?\s+blip)\b/;
+
+async function syncPassiveWakePermission() {
+    try {
+        const status = await navigator?.permissions?.query?.({ name: 'microphone' });
+        if (status?.state === 'granted') {
+            markPassiveWakePrimed();
+            return true;
+        }
+    } catch (_) {
+        return false;
+    }
+    return false;
+}
+
+function markPassiveWakePrimed() {
+    if (state.passiveWakePrimed) return;
+    state.passiveWakePrimed = true;
+    try { localStorage.setItem('blip_passive_wake_primed', '1'); } catch (e) { }
+}
+
+function getWakeWordSimilarity(rawToken = '') {
+    const token = String(rawToken || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (!token) return 0;
+    if (token === 'blip') return 1;
+    const targets = ['blip', 'blep', 'blib', 'blit', 'blup', 'bleep', 'plip', 'flip', 'clip'];
+    let best = 0;
+    for (const target of targets) {
+        let matches = 0;
+        const limit = Math.max(token.length, target.length);
+        for (let i = 0; i < Math.min(token.length, target.length); i += 1) {
+            if (token[i] === target[i]) matches += 1;
+        }
+        const lengthPenalty = Math.abs(token.length - target.length) * 0.08;
+        const score = Math.max(0, (matches / limit) - lengthPenalty);
+        if (score > best) best = score;
+    }
+    if (/^bl[a-z]{2}$/.test(token)) best = Math.max(best, 0.76);
+    if (/^(?:bl|pl|fl|cl)[a-z]{2,3}$/.test(token)) best = Math.max(best, 0.68);
+    return Math.min(1, best);
+}
+
+function syncWakeReadinessUI() {
+    if (!meterBox || !meterLevel || !meterLabel) return;
+    let uiState = 'off';
+    let label = '';
+
+    if (state.softSleepMode && (state.isListening || state.passiveWakeListening)) {
+        uiState = 'sleep-armed';
+        label = 'Voice Wake Ready';
+    } else if (state.softSleepMode && !state.passiveWakePrimed) {
+        uiState = 'sleep-tap';
+        label = 'Press Wake Blip Once';
+    } else if (state.softSleepMode) {
+        uiState = 'sleep-ready';
+        label = `Say ${WAKE_PHRASE_HINT}`;
+    } else if (!state.isActive && state.passiveWakeEnabled && state.passiveWakeListening) {
+        uiState = 'wake-armed';
+        label = 'Listening For Blip';
+    } else if (!state.isActive && state.passiveWakeEnabled && !state.passiveWakePrimed) {
+        uiState = 'wake-tap';
+        label = 'Press To Arm Voice';
+    } else if (!state.isActive && state.passiveWakeEnabled) {
+        uiState = 'wake-ready';
+        label = 'Hands-Free Wake Ready';
+    }
+
+    meterBox.dataset.state = uiState;
+    meterBox.classList.toggle('visible', uiState !== 'off');
+    meterLabel.textContent = label || `Say ${WAKE_PHRASE_HINT}`;
+
+    if (!['sleep-armed', 'wake-armed'].includes(uiState)) {
+        meterLevel.style.width = ['sleep-ready', 'wake-ready'].includes(uiState) ? '42%' : '22%';
+    }
+}
+
+function syncSleepButtonUI() {
+    if (!sleepBtn) return;
+    const resting = !state.isActive || state.softSleepMode;
+    sleepBtn.textContent = resting ? 'Wake' : 'Sleep';
+    sleepBtn.setAttribute('aria-label', resting ? 'Wake Blip' : 'Put Blip to sleep');
+    sleepBtn.classList.toggle('wake-mode', resting);
+}
+
+function parseWakePhrase(text = '', options = {}) {
+    const normalized = normalizeVoiceTokens(text);
+    if (!normalized) return { matched: false, command: '' };
+    const cleaned = normalized
+        .replace(/[!?.,;:]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const compacted = cleaned.replace(/([a-z])\1{1,}/g, '$1');
+    const tokens = cleaned
+        .split(/\s+/)
+        .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
+        .filter(Boolean);
+    const compactTokens = compacted
+        .split(/\s+/)
+        .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''))
+        .filter(Boolean);
+    if (!tokens.length || !compactTokens.length) return { matched: false, command: '', score: 0 };
+
+    if (EXACT_WAKE_ONLY_RE.test(cleaned) || EXACT_WAKE_ONLY_RE.test(compacted)) {
+        return { matched: true, command: '', score: 1 };
+    }
+
+    const directPrefixMatch = cleaned.match(WAKE_PREFIX_RE) || compacted.match(WAKE_PREFIX_RE);
+    if (directPrefixMatch) {
+        const command = cleaned.slice(directPrefixMatch[0].length).replace(/^[,.:;\-]+\s*/, '').trim();
+        return { matched: true, command, score: 1 };
+    }
+
+    const starters = new Set(['hey', 'hi', 'okay', 'ok', 'wake']);
+    let wakeIndex = 0;
+    if (starters.has(compactTokens[0])) {
+        wakeIndex = 1;
+        if (compactTokens[0] === 'wake' && compactTokens[1] === 'up') wakeIndex = 2;
+    }
+
+    const wakeToken = compactTokens[wakeIndex] || '';
+    const wakeScore = getWakeWordSimilarity(wakeToken);
+    const confidence = Number.isFinite(Number(options.confidence)) ? Number(options.confidence) : 0;
+    const hasStarter = wakeIndex > 0 || starters.has(compactTokens[0]);
+    // Wake sensitivity tuning:
+    // Lower thresholds so users don't need to repeat "Blip" multiple times,
+    // while still requiring a wake-like token similarity.
+    const threshold = hasStarter
+        ? (confidence > 0 ? 0.34 : 0.46)
+        : (confidence > 0 ? 0.44 : 0.56);
+    if (wakeScore < threshold) return { matched: false, command: '', score: wakeScore };
+
+    const command = tokens.slice(wakeIndex + 1).join(' ').replace(/^[,.:;-]+\s*/, '').trim();
+    return { matched: true, command, score: wakeScore };
+}
+
+function stopPassiveWakeLoop() {
+    if (state.passiveWakeLoopTimer) {
+        clearTimeout(state.passiveWakeLoopTimer);
+        state.passiveWakeLoopTimer = null;
+    }
+    if (state.passiveWakeListening) {
+        state.passiveWakeListening = false;
+        speech.stopListening();
+    }
+    syncWakeReadinessUI();
+}
+
+function shouldRunPassiveWakeLoop() {
+    const wantsHandsFreeWake = state.passiveWakeEnabled || state.softSleepMode;
+    return !!(
+        wantsHandsFreeWake &&
+        state.passiveWakePrimed &&
+        !state.passiveWakeListening &&
+        !state.isThinking &&
+        !speech.isSpeaking &&
+        !state.activeAlert &&
+        !state.isLiveWatch &&
+        (!state.isActive || state.softSleepMode)
+    );
+}
+
+function schedulePassiveWakeLoop(delay = 320) {
+    if (state.passiveWakeLoopTimer) clearTimeout(state.passiveWakeLoopTimer);
+    if (!shouldRunPassiveWakeLoop()) {
+        syncWakeReadinessUI();
+        return;
+    }
+    state.passiveWakeLoopTimer = setTimeout(() => {
+        state.passiveWakeLoopTimer = null;
+        startPassiveWakeLoop();
+    }, delay);
+    syncWakeReadinessUI();
+}
+
+async function wakeBlipHandsFree(spokenText = '') {
+    stopPassiveWakeLoop();
+    speech.initAudio?.();
+    if (state.idleAmbientEnabled) ensureIdleAmbienceEngine();
+    state.isActive = true;
+    state.softSleepMode = false;
+    state.isThinking = false;
+    setRestingEyes(false);
+    setPersona('listening');
+    triggerWakeRainbowBurst();
+    talkBtn.classList.add('active');
+    chatEntry.classList.remove('hidden');
+    syncChatEngagementState();
+    syncWakeReadinessUI();
+    syncSleepButtonUI();
+
+    const wakeInfo = parseWakePhrase(spokenText);
+    if (wakeInfo.command) {
+        transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${spokenText}</i>`;
+        await handleCommand(spokenText);
+        return;
+    }
+
+    transcriptText.innerText = 'I am awake.';
+    if (WAKE_GREETING_ENABLED) {
+        await speakWithGuard('I am awake.', 'happy');
+    }
+    resumeListeningAfterWake(220);
+}
+
+function startPassiveWakeLoop() {
+    if (!speech.SR || !shouldRunPassiveWakeLoop()) return false;
+    stopPassiveWakeLoop();
+    state.passiveWakeListening = true;
+    syncWakeReadinessUI();
+
+    const started = speech.startListening(
+        (result) => {
+            if (!result?.isFinal) return;
+            const wakeInfo = parseWakePhrase(result.text || '', { confidence: result.confidence });
+            if (!wakeInfo.matched) return;
+            state.passiveWakeListening = false;
+            speech.stopListening();
+            syncWakeReadinessUI();
+            wakeBlipHandsFree(result.text || '').catch((error) => {
+                console.warn('Hands-free wake failed:', error?.message || error);
+                schedulePassiveWakeLoop(800);
+            });
+        },
+        () => {
+            state.passiveWakeListening = false;
+            syncWakeReadinessUI();
+            if (shouldRunPassiveWakeLoop()) schedulePassiveWakeLoop(260);
+        },
+        (error) => {
+            state.passiveWakeListening = false;
+            syncWakeReadinessUI();
+            const code = String(error?.error || error?.message || '').toLowerCase();
+            if (code.includes('not-allowed') || code.includes('service-not-allowed')) return;
+            if (shouldRunPassiveWakeLoop()) schedulePassiveWakeLoop(900);
+        }
+    );
+
+    if (started) {
+        markPassiveWakePrimed();
+        syncWakeReadinessUI();
+        return true;
+    }
+    state.passiveWakeListening = false;
+    syncWakeReadinessUI();
+    return false;
+}
+
+function isForegroundMediaPlaying() {
+    if (document.visibilityState === 'hidden') return true;
+    if (isVideoPanelVisible()) return true;
+    const mediaEls = Array.from(document.querySelectorAll('audio, video'));
+    return mediaEls.some((el) => {
+        if (!el || typeof el.paused !== 'boolean') return false;
+        if (el.paused || el.ended) return false;
+        if (typeof el.muted === 'boolean' && el.muted) return false;
+        const volume = typeof el.volume === 'number' ? el.volume : 1;
+        return volume > 0.02;
+    });
+}
+
+function shouldPlayIdleAmbience() {
+    return !!(
+        state.idleAmbientEnabled &&
+        state.isActive &&
+        !state.softSleepMode &&
+        !state.isThinking &&
+        !speech.isSpeaking &&
+        !state.activeAlert &&
+        !isForegroundMediaPlaying()
+    );
+}
+
+function getIdleAmbienceTargetGain() {
+    return 0.012 + (state.idleAmbientVolume * 0.06);
+}
+
+function rampAudioParam(audioParam, target, duration = 1.4) {
+    if (!audioParam || !Number.isFinite(target)) return;
+    const now = state.idleAudioCtx?.currentTime || 0;
+    const current = Number.isFinite(audioParam.value) ? audioParam.value : 0;
+    try {
+        audioParam.cancelScheduledValues(now);
+        audioParam.setValueAtTime(current, now);
+        audioParam.linearRampToValueAtTime(target, now + Math.max(0.05, duration));
+    } catch (_) {
+        audioParam.value = target;
+    }
+}
+
+function ensureIdleAmbienceEngine() {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return null;
+    if (!state.idleAudioCtx) state.idleAudioCtx = new Ctor();
+    const ctx = state.idleAudioCtx;
+    if (state.idleAmbientMasterGain) return ctx;
+
+    const master = ctx.createGain();
+    master.gain.value = 0;
+    master.connect(ctx.destination);
+
+    const padGain = ctx.createGain();
+    padGain.gain.value = 0.55;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 880;
+    filter.Q.value = 0.18;
+
+    padGain.connect(filter);
+    filter.connect(master);
+
+    const voices = [
+        { freq: 146.83, type: 'triangle', gain: 0.12, detune: -6 },
+        { freq: 220.0, type: 'sine', gain: 0.09, detune: 3 },
+        { freq: 293.66, type: 'triangle', gain: 0.07, detune: 8 }
+    ].map(({ freq, type, gain, detune }) => {
+        const osc = ctx.createOscillator();
+        const voiceGain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        osc.detune.value = detune;
+        voiceGain.gain.value = gain;
+        osc.connect(voiceGain);
+        voiceGain.connect(padGain);
+        osc.start();
+        return { osc, gain: voiceGain };
+    });
+
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.065;
+    lfoGain.gain.value = 120;
+    lfo.connect(lfoGain);
+    lfoGain.connect(filter.frequency);
+    lfo.start();
+
+    state.idleAmbientMasterGain = master;
+    state.idleAmbientPadGain = padGain;
+    state.idleAmbientFilter = filter;
+    state.idleAmbientLfo = lfo;
+    state.idleAmbientLfoGain = lfoGain;
+    state.idleAmbientVoices = voices;
+
+    return ctx;
+}
+
+function playIdleAmbientFx() {
+    if (!state.idleAmbientRunning || !state.idleAmbientFxEnabled) return;
+    const ctx = ensureIdleAmbienceEngine();
+    if (!ctx || !state.idleAmbientMasterGain) return;
+    if (ctx.state === 'suspended') return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 2600;
+    osc.type = Math.random() > 0.45 ? 'sine' : 'triangle';
+    const base = 520 + (Math.random() * 220);
+    osc.frequency.setValueAtTime(base, now);
+    osc.frequency.exponentialRampToValueAtTime(base * (1.55 + Math.random() * 0.28), now + 1.25);
+    const peak = 0.012 + (state.idleAmbientVolume * 0.02);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(peak, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(state.idleAmbientMasterGain);
+    osc.start(now);
+    osc.stop(now + 1.45);
+}
+
+function playWakeChime() {
+    const ctx = ensureIdleAmbienceEngine();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => { });
+    }
+
+    const now = ctx.currentTime + 0.02;
+    const master = ctx.createGain();
+    const shimmer = ctx.createBiquadFilter();
+    master.gain.value = 0.0001;
+    shimmer.type = 'highshelf';
+    shimmer.frequency.value = 1800;
+    shimmer.gain.value = 4;
+    master.connect(shimmer);
+    shimmer.connect(ctx.destination);
+
+    const notes = [
+        { freq: 392.0, start: 0, dur: 1.35, gain: 0.022, type: 'triangle' },
+        { freq: 523.25, start: 0.06, dur: 1.2, gain: 0.02, type: 'sine' },
+        { freq: 783.99, start: 0.14, dur: 0.95, gain: 0.013, type: 'sine' }
+    ];
+
+    notes.forEach(({ freq, start, dur, gain, type }) => {
+        const osc = ctx.createOscillator();
+        const noteGain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now + start);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.08, now + start + (dur * 0.45));
+        noteGain.gain.setValueAtTime(0.0001, now + start);
+        noteGain.gain.exponentialRampToValueAtTime(gain, now + start + 0.06);
+        noteGain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+        osc.connect(noteGain);
+        noteGain.connect(master);
+        osc.start(now + start);
+        osc.stop(now + start + dur + 0.04);
+    });
+
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.95, now + 0.05);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 1.42);
+}
+
+function scheduleIdleAmbientFx() {
+    if (state.idleAmbientFxTimer) {
+        clearTimeout(state.idleAmbientFxTimer);
+        state.idleAmbientFxTimer = null;
+    }
+    if (!state.idleAmbientRunning || !state.idleAmbientFxEnabled) return;
+    const delay = 9000 + Math.random() * 12000;
+    state.idleAmbientFxTimer = setTimeout(() => {
+        playIdleAmbientFx();
+        scheduleIdleAmbientFx();
+    }, delay);
+}
+
+function stopIdleAmbience({ immediate = false } = {}) {
+    state.idleAmbientRunning = false;
+    if (state.idleAmbientFxTimer) {
+        clearTimeout(state.idleAmbientFxTimer);
+        state.idleAmbientFxTimer = null;
+    }
+    if (!state.idleAmbientMasterGain) return;
+    rampAudioParam(state.idleAmbientMasterGain.gain, 0, immediate ? 0.08 : 0.9);
+}
+
+function syncIdleAmbience({ immediate = false } = {}) {
+    if (!shouldPlayIdleAmbience()) {
+        stopIdleAmbience({ immediate });
+        return;
+    }
+    const ctx = ensureIdleAmbienceEngine();
+    if (!ctx || !state.idleAmbientMasterGain) return;
+    if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => { });
+    }
+    state.idleAmbientRunning = true;
+    rampAudioParam(state.idleAmbientMasterGain.gain, getIdleAmbienceTargetGain(), immediate ? 0.08 : 2.2);
+    scheduleIdleAmbientFx();
+}
+
+function persistCalendarCache() {
+    try { localStorage.setItem(CALENDAR_CACHE_STORAGE_KEY, JSON.stringify(state.calendarCache || [])); } catch (e) { }
+}
+
+function persistPendingCalendarEvents() {
+    try { localStorage.setItem(CALENDAR_PENDING_STORAGE_KEY, JSON.stringify(state.pendingCalendarEvents || [])); } catch (e) { }
+}
+
+function persistPendingCalendarDeletes() {
+    try { localStorage.setItem(CALENDAR_PENDING_DELETE_STORAGE_KEY, JSON.stringify(state.pendingCalendarDeletes || [])); } catch (e) { }
+}
+
+function persistCalendarDisplayPreferences() {
+    try { localStorage.setItem('blip_calendar_display_mode', normalizeCalendarDisplayMode(state.calendarDisplayMode)); } catch (e) { }
+    try { localStorage.setItem('blip_calendar_anchor_date', normalizeCalendarAnchorDate(state.calendarAnchorDate).toISOString()); } catch (e) { }
+}
+
+function normalizeCachedCalendarEvent(event = {}) {
+    const start = event?.start?.dateTime || event?.start?.date || event.start || '';
+    const end = event?.end?.dateTime || event?.end?.date || event.end || '';
+    return {
+        id: String(event.id || `blip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+        summary: String(event.summary || event.title || 'Untitled'),
+        description: String(event.description || ''),
+        start,
+        end,
+        htmlLink: String(event.htmlLink || event.url || ''),
+        reminderMinutes: Math.max(0, Number(event.reminderMinutes || 0) || 0),
+        source: event.source === 'pending' ? 'pending' : 'google'
+    };
+}
+
+function normalizePendingCalendarDelete(entry = {}) {
+    const id = String(entry.id || '').trim();
+    if (!id) return null;
+    return {
+        id,
+        summary: String(entry.summary || ''),
+        start: String(entry.start || ''),
+        queuedAt: String(entry.queuedAt || new Date().toISOString())
+    };
+}
+
+function setCalendarCache(events) {
+    const deletedIds = new Set(
+        (state.pendingCalendarDeletes || [])
+            .map(normalizePendingCalendarDelete)
+            .filter(Boolean)
+            .map((entry) => entry.id)
+    );
+    const merged = new Map();
+    [...(Array.isArray(events) ? events : []), ...(state.pendingCalendarEvents || [])]
+        .map(normalizeCachedCalendarEvent)
+        .forEach((event) => {
+            if (deletedIds.has(event.id)) return;
+            merged.set(event.id, event);
+        });
+    state.calendarCache = Array.from(merged.values()).sort((a, b) => {
+        const aTime = new Date(a.start).getTime();
+        const bTime = new Date(b.start).getTime();
+        return aTime - bTime;
+    });
+    persistCalendarCache();
+}
+
+function mergeCalendarCache(events) {
+    const merged = new Map();
+    [...(state.calendarCache || []), ...(Array.isArray(events) ? events : [])]
+        .map(normalizeCachedCalendarEvent)
+        .forEach((event) => {
+            merged.set(event.id, event);
+        });
+    setCalendarCache(Array.from(merged.values()));
+}
+
+function queuePendingCalendarEvent(details) {
+    const pending = normalizeCachedCalendarEvent({
+        id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        summary: details.title || details.summary || 'Event',
+        description: details.description || '',
+        start: details.start,
+        end: details.end,
+        reminderMinutes: details.reminderMinutes || 0,
+        source: 'pending'
+    });
+    state.pendingCalendarEvents = [...(state.pendingCalendarEvents || []), pending];
+    persistPendingCalendarEvents();
+    mergeCalendarCache([pending]);
+    return pending;
+}
+
+function queuePendingCalendarDelete(event) {
+    const normalized = normalizeCachedCalendarEvent(event);
+    const pendingDelete = normalizePendingCalendarDelete({
+        id: normalized.id,
+        summary: normalized.summary,
+        start: normalized.start
+    });
+    if (!pendingDelete) return null;
+    const nextDeletes = new Map(
+        (state.pendingCalendarDeletes || [])
+            .map(normalizePendingCalendarDelete)
+            .filter(Boolean)
+            .map((entry) => [entry.id, entry])
+    );
+    nextDeletes.set(pendingDelete.id, pendingDelete);
+    state.pendingCalendarDeletes = Array.from(nextDeletes.values());
+    persistPendingCalendarDeletes();
+    removeCalendarEventFromCache(normalized.id);
+    return pendingDelete;
+}
+
+function removePendingCalendarEventById(eventId) {
+    state.pendingCalendarEvents = (state.pendingCalendarEvents || []).filter((event) => event.id !== eventId);
+    persistPendingCalendarEvents();
+    state.calendarCache = (state.calendarCache || []).filter((event) => event.id !== eventId);
+    persistCalendarCache();
+}
+
+function clearPendingCalendarDeleteById(eventId) {
+    state.pendingCalendarDeletes = (state.pendingCalendarDeletes || [])
+        .map(normalizePendingCalendarDelete)
+        .filter((entry) => entry && entry.id !== eventId);
+    persistPendingCalendarDeletes();
+}
+
+function updatePendingCalendarEventById(eventId, updates = {}) {
+    let changed = false;
+    state.pendingCalendarEvents = (state.pendingCalendarEvents || []).map((event) => {
+        if (event.id !== eventId) return event;
+        changed = true;
+        return normalizeCachedCalendarEvent({ ...event, ...updates, source: 'pending' });
+    });
+    if (changed) {
+        persistPendingCalendarEvents();
+        setCalendarCache(state.calendarCache.map((event) => event.id === eventId ? { ...event, ...updates, source: 'pending' } : event));
+    }
+    return changed;
+}
+
+function removeCalendarEventFromCache(eventId) {
+    state.calendarCache = (state.calendarCache || []).filter((event) => event.id !== eventId);
+    persistCalendarCache();
+}
+
+function setCalendarDisplayMode(mode) {
+    state.calendarDisplayMode = normalizeCalendarDisplayMode(mode);
+    persistCalendarDisplayPreferences();
+}
+
+function setCalendarAnchorDate(value) {
+    const anchor = normalizeCalendarAnchorDate(value);
+    state.calendarAnchorDate = anchor.toISOString();
+    persistCalendarDisplayPreferences();
+    return anchor;
+}
+
+function upsertCalendarEventInCache(event) {
+    mergeCalendarCache([event]);
+}
+
+function normalizeCalendarLookupText(value) {
+    return String(value || '').toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function findCalendarEventsByTitle(query) {
+    const needle = normalizeCalendarLookupText(query);
+    if (!needle) return [];
+    return (state.calendarCache || []).filter((event) => {
+        const hay = normalizeCalendarLookupText(event.summary || '');
+        return hay.includes(needle) || needle.includes(hay);
+    });
+}
+
+function formatCalendarAuthStatus(authState) {
+    const pendingCount = (state.pendingCalendarEvents || []).length;
+    if (authState.backendConfigured && authState.connected) {
+        return {
+            text: pendingCount
+                ? `Backend Google Calendar connected. ${pendingCount} event${pendingCount === 1 ? '' : 's'} waiting to sync.`
+                : 'Backend Google Calendar connected.',
+            tone: 'connected'
+        };
+    }
+    if (authState.backendConfigured) {
+        return {
+            text: pendingCount
+                ? `Backend Google Calendar ready. Press Connect Calendar to sign in and sync ${pendingCount} pending event${pendingCount === 1 ? '' : 's'}.`
+                : 'Backend Google Calendar ready. Press Connect Calendar to sign in.',
+            tone: 'warning'
+        };
+    }
+    if (!authState.hasClientId) {
+        return {
+            text: 'Paste your Google OAuth Client ID here, then press Connect Calendar.',
+            tone: 'warning'
+        };
+    }
+    if (authState.connected) {
+        return {
+            text: pendingCount
+                ? `Google Calendar connected. ${pendingCount} event${pendingCount === 1 ? '' : 's'} waiting to sync.`
+                : 'Google Calendar connected for this browser session.',
+            tone: 'connected'
+        };
+    }
+    return {
+        text: pendingCount
+            ? `Client ID saved. Press Connect Calendar to sign in and sync ${pendingCount} pending event${pendingCount === 1 ? '' : 's'}.`
+            : 'Client ID saved. Press Connect Calendar to sign in with Google.',
+        tone: ''
+    };
+}
+
+function updateCalendarAuthUi(authState = getGoogleCalendarAuthState()) {
+    if (googleCalendarClientIdInput && googleCalendarClientIdInput.value !== state.googleCalendarClientId) {
+        googleCalendarClientIdInput.value = state.googleCalendarClientId;
+    }
+
+    if (calendarAuthStatus) {
+        const status = formatCalendarAuthStatus(authState);
+        calendarAuthStatus.textContent = status.text;
+        calendarAuthStatus.classList.remove('connected', 'warning');
+        if (status.tone) calendarAuthStatus.classList.add(status.tone);
+    }
+
+    if (connectCalendarBtn) {
+        connectCalendarBtn.disabled = !authState.backendConfigured && !state.googleCalendarClientId.trim();
+        connectCalendarBtn.textContent = authState.connected ? 'Reconnect Calendar' : 'Connect Calendar';
+    }
+
+    if (disconnectCalendarBtn) {
+        disconnectCalendarBtn.disabled = !authState.connected;
+    }
+}
+
+function formatGmailAuthStatus(authState = getGoogleGmailAuthState()) {
+    if (authState.backendConfigured && authState.connected) {
+        return {
+            text: authState.email
+                ? `Backend Gmail connected as ${authState.email}.`
+                : 'Backend Gmail connected.',
+            tone: 'connected'
+        };
+    }
+    if (authState.backendConfigured) {
+        return {
+            text: 'Backend Gmail ready. Press Connect Gmail to sign in.',
+            tone: 'warning'
+        };
+    }
+    return {
+        text: 'Start the Gmail backend first, then press Connect Gmail.',
+        tone: 'warning'
+    };
+}
+
+function updateGmailAuthUi(authState = getGoogleGmailAuthState()) {
+    if (gmailAuthStatus) {
+        const status = formatGmailAuthStatus(authState);
+        gmailAuthStatus.textContent = status.text;
+        gmailAuthStatus.classList.remove('connected', 'warning');
+        if (status.tone) gmailAuthStatus.classList.add(status.tone);
+    }
+
+    if (connectGmailBtn) {
+        connectGmailBtn.disabled = !authState.backendConfigured;
+        connectGmailBtn.textContent = authState.connected ? 'Reconnect Gmail' : 'Connect Gmail';
+    }
+
+    if (openGmailInboxBtn) {
+        openGmailInboxBtn.disabled = !authState.connected;
+    }
+
+    if (disconnectGmailBtn) {
+        disconnectGmailBtn.disabled = !authState.connected;
+    }
+}
+
+function applyDisplayLumaProfile(profile) {
+    const normalized = normalizeDisplayLuma(profile);
+    state.displayLuma = normalized;
+    document.body.setAttribute('data-display-luma', normalized);
+    if (displayLumaSelect) displayLumaSelect.value = normalized;
+    persistDisplayLuma();
+}
+
+function syncUsageTierControls() {
+    if (usageTierSelect) usageTierSelect.value = normalizeUsageTier(state.usageTier);
+    if (voiceEngineSelect) voiceEngineSelect.value = state.voiceEngine;
+    if (modelSelect) modelSelect.value = state.selectedModel;
+    if (imageModelSelect) imageModelSelect.value = state.imageModel;
+    if (imageEngineSelect) imageEngineSelect.value = state.imageEngine || 'gemini';
+    if (comfyuiBaseUrlInput) comfyuiBaseUrlInput.value = state.comfyuiBaseUrl || 'http://127.0.0.1:8188';
+    if (comfyuiCheckpointInput) comfyuiCheckpointInput.value = state.comfyuiCheckpoint || '';
+    if (comfyuiUrlGroup) comfyuiUrlGroup.style.display = state.imageEngine === 'comfyui' ? '' : 'none';
+    if (displayLumaSelect) displayLumaSelect.value = normalizeDisplayLuma(state.displayLuma);
+    syncVoiceEngineUi();
+}
+
+function applyUsageTier(tier, options = {}) {
+    const normalizedTier = normalizeUsageTier(tier);
+    const preset = getUsageTierPreset(normalizedTier);
+    const preserveManual = options.preserveManual === true;
+
+    state.usageTier = normalizedTier;
+    if (!preserveManual) {
+        state.selectedModel = preset.selectedModel;
+        if (!state.voiceEngineOverridden) {
+            state.voiceEngine = preset.voiceEngine;
+            state.voiceEngineOverrideSource = 'tier';
+        }
+        state.imageModel = preset.imageModel;
+    }
+
+    syncUsageTierControls();
+    syncVoiceEngineUi();
+    persistUsageTierState();
+}
+// V4.3.4 - The Deep UI & Animation Restoration
+
+// ── PERSONA CONFIGURATION (V3.4.0) ───────────────────────────────────────────
+/** Reusable face animation states: add one to #face-container to run. Nose is included where appropriate. */
+const FACE_ANIMATIONS = [
+    'face-anim-wiggle', 'face-anim-bounce', 'face-anim-pulse', 'face-anim-blink',
+    'face-anim-nod', 'face-anim-shake', 'face-anim-float', 'face-anim-glow',
+    'face-anim-sniff', 'face-anim-sway'
+];
+let wakeRainbowTimer = null;
+let emotionShowcaseTimer = null;
+let emotionShowcaseResumeTimer = null;
+
+const PERSONAS = {
+    idle: { emoji: "✨", label: "BLIP", color: "#818cf8", emotion: "serious" },
+    listening: { emoji: "👂", label: "LISTENING", color: "#f43f5e", emotion: "surprised" },
+    thinking: { emoji: "🧠", label: "THINKING", color: "#8b5cf6", emotion: "thinking" },
+    happy: { emoji: "😊", label: "HAPPY", color: "#10b981", emotion: "happy" },
+    sad: { emoji: "😢", label: "SAD", color: "#64748b", emotion: "sad" },
+    angry: { emoji: "🔥", label: "ANGRY", color: "#fb7185", emotion: "angry" },
+    serious: { emoji: "🧊", label: "SERIOUS", color: "#8ec5ff", emotion: "serious" },
+    despair: { emoji: "😰", label: "DESPAIR", color: "#475569", emotion: "despair" },
+    warning: { emoji: "⚠️", label: "ALERT", color: "#f59e0b", emotion: "serious" },
+    sleepy: { emoji: "💤", label: "SLEEPY", color: "#334155", emotion: "sleepy" },
+    cooking: { emoji: "👨‍🍳", label: "CHEF MODE", color: "#fb923c", emotion: "gentle" },
+    study: { emoji: "📚", label: "STUDY MODE", color: "#3b82f6", emotion: "serious" },
+    media: { emoji: "🎬", label: "MEDIA", color: "#ef4444", emotion: "excited" },
+    advice: { emoji: "💡", label: "ADVISOR", color: "#eab308", emotion: "gentle" }
+};
+
+function injectAppStyle(id, cssText) {
+    let style = document.getElementById(id);
+    if (!style) {
+        style = document.createElement('style');
+        style.id = id;
+        document.head.appendChild(style);
+    }
+    style.textContent = cssText;
+}
+
+// ── UI: INITIALIZATION ───────────────────────────────────────────────────────
+async function init() {
+    try {
+        console.log(`🚀 Blip V${BLIP_VERSION} initializing...`);
+
+        // Fill the browser real estate by default.
+        injectAppStyle('blip-full-browser-layout', FULL_BROWSER_LAYOUT_CSS);
+        injectAppStyle('blip-scenery-suppression', SCENERY_SUPPRESSION_CSS);
+        syncScenerySuppression();
+
+        // Version only in upper-right corner; label above face stays "BLIP" (no version)
+        const versionTagEl = document.getElementById('version-tag');
+        const personaLabelEl = document.getElementById('persona-label');
+        if (versionTagEl) versionTagEl.textContent = `V${BLIP_VERSION}`;
+        if (personaLabelEl) personaLabelEl.textContent = "BLIP";
+        if (PERSONAS.idle) PERSONAS.idle.label = "BLIP";
+
+        // Restore conversation history from last session (better context)
+        try {
+            const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    state.history = parsed.length > HISTORY_MAX ? parsed.slice(-HISTORY_MAX) : parsed;
+                }
+            }
+        } catch (e) { state.history = []; }
+
+        // Load voices and prefer a nicer-sounding browser voice when using Browser Default
+        const voices = await speech.init();
+        if (voiceSelect && voices.length) {
+            const enVoices = voices.filter((v) => v.lang && v.lang.startsWith('en'));
+            voiceSelect.innerHTML = enVoices
+                .map((v, i) => `<option value="${i}">${v.name}</option>`)
+                .join('');
+            state.selectedVoice = speech.getPreferredVoice?.() || enVoices[0] || voices[0];
+            const idx = enVoices.indexOf(state.selectedVoice);
+            if (idx >= 0 && voiceSelect.options[idx]) voiceSelect.selectedIndex = idx;
+            voiceSelect.onchange = (e) => {
+                state.selectedVoice = enVoices[parseInt(e.target.value, 10)];
+            };
+        }
+        const hasMicPermission = await syncPassiveWakePermission();
+        if (state.passiveWakeEnabled && (state.passiveWakePrimed || hasMicPermission)) {
+            schedulePassiveWakeLoop(1200);
+        }
+        syncWakeReadinessUI();
+        window.addEventListener('focus', () => {
+            if ((!state.isActive || state.softSleepMode) && !speech.isSpeaking) {
+                schedulePassiveWakeLoop(180);
+            }
+            syncWakeReadinessUI();
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && (!state.isActive || state.softSleepMode) && !speech.isSpeaking) {
+                schedulePassiveWakeLoop(220);
+            }
+            syncWakeReadinessUI();
+        });
+        // Browser voice dropdown in Settings (when Voice = Browser Default)
+        if (browserVoiceSelect && speech.voices.length) {
+            const enVoicesList = speech.voices.filter((v) => v.lang && v.lang.startsWith('en'));
+            browserVoiceSelect.innerHTML = enVoicesList
+                .map((v, i) => `<option value="${i}">${v.name}</option>`)
+                .join('');
+            const preferredIdx = enVoicesList.indexOf(state.selectedVoice || speech.getPreferredVoice?.());
+            if (preferredIdx >= 0) browserVoiceSelect.selectedIndex = preferredIdx;
+            browserVoiceSelect.onchange = () => {
+                state.selectedVoice = enVoicesList[parseInt(browserVoiceSelect.value, 10)];
+            };
+        }
+        if (browserVoiceGroup && voiceEngineSelect) {
+            syncUsageTierControls();
+            syncVoiceEngineUi();
+            voiceEngineSelect.addEventListener('change', () => {
+                state.voiceEngine = voiceEngineSelect.value;
+                state.voiceEngineOverridden = true;
+                state.voiceEngineOverrideSource = 'manual';
+                persistUsageTierState();
+                syncVoiceEngineUi();
+                updateVoiceToggles();
+            });
+        }
+
+        // Kokoro voice selector
+        if (kokoroVoiceSelect) {
+            kokoroVoiceSelect.onchange = (e) => {
+                speech.setKokoroVoice(e.target.value);
+            };
+        }
+
+        // Initialize UI
+        geminiKeyInput.value = state.geminiKey;
+        if (youtubeKeyInput) youtubeKeyInput.value = state.youtubeApiKey;
+        if (weatherKeyInput) weatherKeyInput.value = state.weatherApiKey;
+        if (googleCalendarClientIdInput) googleCalendarClientIdInput.value = state.googleCalendarClientId;
+        await initGoogleCalendar();
+        setGoogleCalendarClientId(state.googleCalendarClientId);
+        onGoogleCalendarAuthStateChange((authState) => {
+            updateCalendarAuthUi(authState);
+        });
+        updateCalendarAuthUi();
+        await emailFeature.initBackend();
+        await telegramFeature.initBackend();
+        syncUsageTierControls();
+        if (usageTierSelect) {
+            usageTierSelect.onchange = () => {
+                applyUsageTier(usageTierSelect.value);
+            };
+        }
+        if (modelSelect) {
+            modelSelect.onchange = () => {
+                state.selectedModel = modelSelect.value;
+                persistUsageTierState();
+            };
+        }
+        if (imageModelSelect) {
+            imageModelSelect.onchange = () => {
+                state.imageModel = imageModelSelect.value;
+                persistUsageTierState();
+            };
+        }
+        if (imageEngineSelect) {
+            imageEngineSelect.onchange = () => {
+                state.imageEngine = imageEngineSelect.value || 'gemini';
+                if (comfyuiUrlGroup) comfyuiUrlGroup.style.display = state.imageEngine === 'comfyui' ? '' : 'none';
+                persistUsageTierState();
+            };
+        }
+        if (comfyuiBaseUrlInput) {
+            comfyuiBaseUrlInput.value = state.comfyuiBaseUrl || 'http://127.0.0.1:8188';
+            const syncComfyuiUrl = () => {
+                state.comfyuiBaseUrl = (comfyuiBaseUrlInput.value || 'http://127.0.0.1:8188').trim();
+                persistUsageTierState();
+            };
+            comfyuiBaseUrlInput.oninput = syncComfyuiUrl;
+            comfyuiBaseUrlInput.onchange = syncComfyuiUrl;
+        }
+        if (comfyuiCheckpointInput) {
+            comfyuiCheckpointInput.value = state.comfyuiCheckpoint || '';
+            const syncComfyuiCheckpoint = () => {
+                state.comfyuiCheckpoint = normalizeComfyuiCheckpointName(comfyuiCheckpointInput.value || '');
+                persistUsageTierState();
+            };
+            comfyuiCheckpointInput.oninput = syncComfyuiCheckpoint;
+            comfyuiCheckpointInput.onchange = syncComfyuiCheckpoint;
+        }
+        if (displayLumaSelect) {
+            displayLumaSelect.onchange = () => {
+                applyDisplayLumaProfile(displayLumaSelect.value);
+            };
+        }
+        if (idleWeatherLocationInput) {
+            idleWeatherLocationInput.value = state.idleWeatherLocation;
+            const syncIdleWeatherLocation = () => {
+                state.idleWeatherLocation = idleWeatherLocationInput.value.trim();
+                persistIdleWeatherLocation();
+            };
+            const saveIdleWeatherLocation = () => {
+                syncIdleWeatherLocation();
+                state.lastIdleWeatherFetchAt = 0;
+                refreshIdleWeatherScene({ force: true });
+            };
+            idleWeatherLocationInput.oninput = syncIdleWeatherLocation;
+            idleWeatherLocationInput.onchange = saveIdleWeatherLocation;
+            idleWeatherLocationInput.onblur = saveIdleWeatherLocation;
+        }
+        if (idleMusicToggle) {
+            idleMusicToggle.checked = !!state.idleAmbientEnabled;
+            idleMusicToggle.onchange = () => {
+                state.idleAmbientEnabled = !!idleMusicToggle.checked;
+                persistIdleAudioPreferences();
+                syncIdleAmbience({ immediate: true });
+            };
+        }
+        if (idleFxToggle) {
+            idleFxToggle.checked = !!state.idleAmbientFxEnabled;
+            idleFxToggle.onchange = () => {
+                state.idleAmbientFxEnabled = !!idleFxToggle.checked;
+                persistIdleAudioPreferences();
+                syncIdleAmbience({ immediate: true });
+            };
+        }
+        if (passiveWakeToggle) {
+            passiveWakeToggle.checked = !!state.passiveWakeEnabled;
+            passiveWakeToggle.onchange = async () => {
+                state.passiveWakeEnabled = !!passiveWakeToggle.checked;
+                persistPassiveWakePreference();
+                if (state.passiveWakeEnabled) {
+                    await syncPassiveWakePermission();
+                    schedulePassiveWakeLoop(500);
+                }
+                else stopPassiveWakeLoop();
+            };
+        }
+        applyDisplayLumaProfile(state.displayLuma);
+
+        const saveKey = (e) => {
+            state.geminiKey = e.target.value.trim();
+            localStorage.setItem('blip_gemini_key', state.geminiKey);
+            console.log('🔐 Access Key updated');
+        };
+        const saveYoutubeKey = (e) => {
+            if (!youtubeKeyInput) return;
+            state.youtubeApiKey = e.target.value.trim();
+            localStorage.setItem('blip_youtube_key', state.youtubeApiKey);
+            console.log('🔐 YouTube API key updated');
+        };
+        const saveWeatherKey = (e) => {
+            if (!weatherKeyInput) return;
+            state.weatherApiKey = e.target.value.trim();
+            localStorage.setItem('blip_weather_key', state.weatherApiKey);
+            console.log('🔐 Weather API key updated');
+        };
+        const saveGoogleCalendarClientId = (e) => {
+            if (!googleCalendarClientIdInput) return;
+            state.googleCalendarClientId = e.target.value.trim();
+            localStorage.setItem('blip_google_calendar_client_id', state.googleCalendarClientId);
+            setGoogleCalendarClientId(state.googleCalendarClientId);
+            updateCalendarAuthUi();
+            console.log('📅 Google Calendar Client ID updated');
+        };
+
+        // Persistence Fix: Listen to multiple events to ensure it saves on mobile
+        geminiKeyInput.oninput = saveKey;
+        geminiKeyInput.onchange = saveKey;
+        geminiKeyInput.onblur = saveKey;
+        if (youtubeKeyInput) {
+            youtubeKeyInput.oninput = saveYoutubeKey;
+            youtubeKeyInput.onchange = saveYoutubeKey;
+            youtubeKeyInput.onblur = saveYoutubeKey;
+        }
+        if (weatherKeyInput) {
+            weatherKeyInput.oninput = saveWeatherKey;
+            weatherKeyInput.onchange = saveWeatherKey;
+            weatherKeyInput.onblur = saveWeatherKey;
+        }
+        if (googleCalendarClientIdInput) {
+            googleCalendarClientIdInput.oninput = saveGoogleCalendarClientId;
+            googleCalendarClientIdInput.onchange = saveGoogleCalendarClientId;
+            googleCalendarClientIdInput.onblur = saveGoogleCalendarClientId;
+        }
+        if (connectCalendarBtn) {
+            connectCalendarBtn.onclick = async () => {
+                try {
+                    await connectGoogleCalendar();
+                    const synced = await syncPendingCalendarEvents();
+                    const imported = await syncGoogleCalendarIntoBlip().catch((error) => {
+                        console.warn('Initial Google Calendar import failed:', error?.message || error);
+                        return { count: 0 };
+                    });
+                    await refreshOpenCalendarPanel();
+                    if (transcriptText) {
+                        const parts = ['Google Calendar connected.'];
+                        if (synced > 0) {
+                            parts.push(`Synced ${synced} pending event${synced === 1 ? '' : 's'}.`);
+                        }
+                        if (Number(imported?.count || 0) > 0) {
+                            parts.push(`Loaded ${imported.count} Google event${imported.count === 1 ? '' : 's'} into Blip Calendar.`);
+                        }
+                        transcriptText.innerText = parts.join(' ');
+                    }
+                } catch (error) {
+                    console.warn('Google Calendar connect failed:', error?.message || error);
+                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not connect Google Calendar.';
+                } finally {
+                    updateCalendarAuthUi();
+                }
+            };
+        }
+        if (disconnectCalendarBtn) {
+            disconnectCalendarBtn.onclick = async () => {
+                try {
+                    await disconnectGoogleCalendar();
+                    if (transcriptText) transcriptText.innerText = 'Google Calendar disconnected.';
+                } catch (error) {
+                    console.warn('Google Calendar disconnect failed:', error?.message || error);
+                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not disconnect Google Calendar.';
+                } finally {
+                    updateCalendarAuthUi();
+                }
+            };
+        }
+        emailFeature.bindSettingsControls();
+        telegramFeature.bindSettingsControls();
+
+        // Blip volume (20% steps)
+        if (speechVolumeInput && speechVolumeValue) {
+            const pct = Math.round(state.speechVolume * 100);
+            const step = Math.min(100, Math.max(20, Math.round(pct / 5) * 5));
+            state.speechVolume = step / 100;
+            speechVolumeInput.value = step;
+            speechVolumeValue.textContent = step + '%';
+            const saveVolume = () => {
+                const val = parseInt(speechVolumeInput.value, 10);
+                state.speechVolume = val / 100;
+                localStorage.setItem('blip_speech_volume', state.speechVolume);
+                speechVolumeValue.textContent = val + '%';
+            };
+            speechVolumeInput.oninput = saveVolume;
+            speechVolumeInput.onchange = saveVolume;
+        }
+        if (idleSoundVolumeInput && idleSoundVolumeValue) {
+            const pct = Math.round(state.idleAmbientVolume * 100);
+            const step = Math.min(100, Math.max(10, Math.round(pct / 5) * 5));
+            state.idleAmbientVolume = clampIdleAmbientVolume(step / 100);
+            idleSoundVolumeInput.value = step;
+            idleSoundVolumeValue.textContent = step + '%';
+            const saveIdleVolume = () => {
+                const val = parseInt(idleSoundVolumeInput.value, 10);
+                state.idleAmbientVolume = clampIdleAmbientVolume(val / 100);
+                persistIdleAudioPreferences();
+                idleSoundVolumeValue.textContent = val + '%';
+                syncIdleAmbience({ immediate: true });
+            };
+            idleSoundVolumeInput.oninput = saveIdleVolume;
+            idleSoundVolumeInput.onchange = saveIdleVolume;
+        }
+
+        // Standardized Voice Engine Toggles (simplified)
+        updateVoiceToggles();
+
+        function updateVoiceToggles() {
+            const kItem = document.getElementById('kokoro-voice-item');
+            const gItem = document.getElementById('gemini-voice-item');
+            if (kItem) kItem.style.display = state.voiceEngine === 'kokoro' ? 'block' : 'none';
+            if (gItem) gItem.style.display = state.voiceEngine === 'gemini' ? 'block' : 'none';
+        }
+
+        // Check Kokoro status and update its dot
+        updateKokoroStatus();                          // immediate check (async, non-blocking)
+        setInterval(updateKokoroStatus, 15000);        // re-check every 15s
+
+        // Randomized Idle Personality (V3.1.0)
+        setInterval(() => {
+            if (!state.isActive || state.isThinking || speech.isSpeaking || state.activeAlert) return;
+
+            // Randomly trigger eye scanning
+            const eyes = document.querySelectorAll('.eye');
+            if (Math.random() > 0.7) {
+                eyes.forEach(e => e.classList.add('scanning'));
+                setTimeout(() => eyes.forEach(e => e.classList.remove('scanning')), 4000);
+            }
+
+            triggerRandomIdle();
+        }, 12000);
+
+        // Face blinking
+        setInterval(() => {
+            if (!state.isActive || state.activeAlert || face?.classList.contains('resting-eyes') || state.currentEmotion === 'surprised') return;
+            const eyes = document.querySelectorAll('.eye');
+            eyes.forEach(e => e.style.height = '2px');
+            setTimeout(() => {
+                eyes.forEach(e => e.style.height = '14px');
+            }, 150);
+        }, 4000);
+
+        // Build capability planets around Blip.
+        registerExtraSceneryObjects();
+
+        // Start Living Scenery Systems
+        startSceneryTracking();
+        startSceneryDirector();
+        window.addEventListener('resize', startSceneryDirector);
+
+        // Floating Symbols
+        setInterval(() => {
+            if (!state.isActive) return;
+            if (state.activeAlert) return;
+            if (state.softSleepMode || face?.classList.contains('resting-eyes')) return;
+
+            if (state.isThinking) {
+                // Spawn ??? or !!! when thinking
+                if (Math.random() > 0.4) spawnSymbol(Math.random() > 0.5 ? 'question' : 'exclamation');
+            } else if (!speech.isSpeaking && !state.cameraStream) {
+                // Spawn music notes when idle/listening
+                if (Math.random() > 0.8) spawnSymbol('music');
+            }
+        }, 600);
+
+        // Close panels on Esc
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (mediaLightbox && mediaLightbox.classList.contains('active')) {
+                    closeMediaLightbox();
+                    return;
+                }
+                setMode('core');
+            }
+        });
+
+        // Initial Mode
+        setMode('core');
+        setRestingEyes(true);
+        ensureWeatherSceneNodes();
+        setWeatherScene('clear');
+        startIdleWeatherRefreshLoop();
+        startWeatherDisplayTicker();
+        refreshIdleWeatherScene({ force: true });
+        applyBlipPersonalization();
+        applyFaceScale();
+        syncSleepButtonUI();
+
+        talkBtn.onclick = toggleApp;
+        if (sleepBtn) {
+            sleepBtn.onclick = async () => {
+                if (state.softSleepMode || !state.isActive) {
+                    await toggleApp();
+                } else {
+                    await enterSoftSleepMode('Wake me up if you need me.');
+                }
+            };
+        }
+        if (cameraBtn) cameraBtn.onclick = () => { if (state.cameraStream) exitVisionMode(); else startCamera(); };
+        if (snapBtn) {
+            snapBtn.onclick = async () => {
+                const ok = await capturePhotoWhenReady();
+                if (!ok) transcriptText.innerText = "Camera warming up. Try again.";
+            };
+        }
+        if (recordBtn) {
+            recordBtn.onclick = async () => {
+                if (!state.cameraStream) {
+                    await startCamera();
+                }
+                if (!state.cameraStream) return;
+                if (isVideoRecording()) {
+                    const stopped = await stopVideoRecording();
+                    if (stopped) transcriptText.innerText = 'Video saved.';
+                } else {
+                    const started = await startVideoRecording();
+                    transcriptText.innerText = started ? 'Recording video...' : 'Video recording unavailable.';
+                }
+            };
+        }
+        if (stopCameraBtn) stopCameraBtn.onclick = () => exitVisionMode();
+        if (closeCameraBtn) {
+            closeCameraBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                exitVisionMode();
+            };
+        }
+        if (watchBtn) watchBtn.onclick = toggleLiveWatch;
+        if (uploadBtn && fileInput) {
+            uploadBtn.onclick = () => fileInput.click();
+            fileInput.onchange = handleFileUpload;
+        }
+        if (clearImageBtn) clearImageBtn.onclick = clearPendingImage;
+        if (saveToHubBtn) saveToHubBtn.onclick = saveCurrentVisionToHub;
+        if (mediaBtn) mediaBtn.onclick = () => toggleMediaGallery(null, 'all');
+        if (creationsBtn) {
+            creationsBtn.onclick = () => {
+                if (isCreationsPanelOpen()) {
+                    closeSidePanel();
+                    return;
+                }
+                openCreationsPanel();
+            };
+        }
+        if (closeMediaStripBtn) {
+            closeMediaStripBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleMediaGallery(false);
+            };
+        }
+        if (mediaStripTabs) {
+            mediaStripTabs.querySelectorAll('[data-media-lane]').forEach((btn) => {
+                btn.onclick = () => {
+                    const lane = normalizeMediaLane(btn.getAttribute('data-media-lane'));
+                    if (lane === 'music') setYouTubeLibraryView('Music');
+                    if (lane === 'videos') setYouTubeLibraryView('Videos');
+                    toggleMediaGallery(true, lane);
+                };
+            });
+        }
+        if (closeMediaBtn) closeMediaBtn.onclick = () => toggleMediaGallery(false);
+        if (closeMediaLightboxBtn) {
+            closeMediaLightboxBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                closeMediaLightbox();
+            };
+        }
+        if (shareMediaLightboxBtn) {
+            shareMediaLightboxBtn.onclick = async () => {
+                const result = await shareActiveMediaImage();
+                if (transcriptText) transcriptText.innerText = result.message;
+            };
+        }
+        if (downloadMediaLightboxBtn) {
+            downloadMediaLightboxBtn.onclick = async () => {
+                const result = await downloadActiveMediaImage();
+                if (transcriptText) transcriptText.innerText = result.message;
+            };
+        }
+        if (wallpaperMediaLightboxBtn) {
+            wallpaperMediaLightboxBtn.onclick = async () => {
+                const result = await setActiveMediaImageAsWallpaper();
+                if (transcriptText) transcriptText.innerText = result.message;
+            };
+        }
+        if (mediaLightbox) {
+            mediaLightbox.onclick = (e) => {
+                if (e.target === mediaLightbox) closeMediaLightbox();
+            };
+        }
+        syncMediaLightboxActionButtons();
+        if (hubBtn) hubBtn.onclick = toggleHub;
+        if (notesBtn) notesBtn.onclick = toggleNotesPanel;
+        if (emailBtn) {
+            emailBtn.onclick = async () => {
+                if (state.currentSidePanelAction === 'gmail' && isSidePanelVisible()) {
+                    closeSidePanel();
+                    if (transcriptText) transcriptText.innerText = 'Email closed.';
+                    return;
+                }
+                try {
+                    await emailFeature.openInboxPanel({ summary: 'Email open.' });
+                    if (transcriptText) transcriptText.innerText = 'Email open.';
+                } catch (error) {
+                    console.warn('Open Email tool failed:', error?.message || error);
+                    openSettingsPanel();
+                    emailFeature.updateGmailAuthUi();
+                    if (transcriptText) transcriptText.innerText = error?.message || 'Connect Gmail in Settings first.';
+                }
+            };
+        }
+        if (telegramBtn) {
+            telegramBtn.onclick = async () => {
+                if (state.currentSidePanelAction === 'telegram' && isSidePanelVisible()) {
+                    closeSidePanel();
+                    state.pendingTelegramReview = false;
+                    if (transcriptText) transcriptText.innerText = 'Telegram closed.';
+                    return;
+                }
+                try {
+                    await telegramFeature.openPanel({ summary: 'Telegram open.' });
+                    state.pendingTelegramReview = true;
+                    if (transcriptText) transcriptText.innerText = 'Telegram open.';
+                } catch (error) {
+                    console.warn('Open Telegram tool failed:', error?.message || error);
+                    openSettingsPanel();
+                    telegramFeature.updateTelegramAuthUi();
+                    if (transcriptText) transcriptText.innerText = error?.message || 'Start Telegram in Settings first.';
+                }
+            };
+        }
+        if (closeHubBtn) closeHubBtn.onclick = toggleHub;
+        if (gamesBtn) gamesBtn.onclick = toggleLearningGames;
+        if (closeGamesBtn) closeGamesBtn.onclick = toggleLearningGames;
+        if (cartBtn) cartBtn.onclick = toggleCart;
+        if (closeCartBtn) closeCartBtn.onclick = toggleCart;
+        if (closeMapBtn) closeMapBtn.onclick = () => setMode('core');
+
+        // Appliance UI Toggles
+        gearBtn.onclick = () => {
+            if (isSettingsPanelOpen()) closeSettingsPanel();
+            else openSettingsPanel();
+        };
+        closePanelBtn.onclick = () => closeSettingsPanel();
+        document.getElementById('ui-debug-refresh-btn')?.addEventListener('click', refreshUiDebugDump);
+
+        // Chart Toggles
+        if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
+        if (downloadChartBtn) downloadChartBtn.onclick = downloadChart;
+        if (saveChartBtn) {
+            saveChartBtn.onclick = () => {
+                const saved = saveCurrentCreationToGallery();
+                transcriptText.innerText = saved ? 'Saved to media.' : 'No graph or design open.';
+            };
+        }
+        if (calendarBtn) {
+            calendarBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isCalendarPanelActuallyVisible()) {
+                    if (closeCalendarPanel()) {
+                        if (transcriptText) transcriptText.innerText = 'Calendar closed.';
+                    }
+                    return;
+                }
+                try {
+                    const result = await showCalendarOverview({ label: 'upcoming' });
+                    if (transcriptText) transcriptText.innerText = result?.text || 'Showing your Blip Calendar.';
+                } catch (error) {
+                    console.warn('Calendar button failed:', error?.message || error);
+                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not open Blip Calendar.';
+                }
+            });
+        }
+
+        // Scenery Orbit (V4.3.1)
+
+        chatBtn.onclick = () => toggleChatEntry();
+
+        sendChatBtn.onclick = () => {
+            syncChatEngagementState(true);
+            postChat();
+        };
+        chatInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                postChat();
+            }
+        };
+        chatInput.addEventListener('focus', () => syncChatEngagementState(true));
+        chatInput.addEventListener('input', () => syncChatEngagementState());
+        chatInput.addEventListener('blur', () => setTimeout(() => syncChatEngagementState(), 0));
+
+        renderHub();
+        renderCart();
+        initLearningGames();
+        persistMediaGallery();
+        renderMediaGallery();
+        restorePersistedTimers();
+        startTimerCornerTicker();
+        updateRecordButtonUI();
+    } catch (err) {
+        console.error('❌ Critical Initialization Error:', err);
+        if (typeof transcriptText !== 'undefined' && transcriptText) {
+            transcriptText.innerHTML = `<span style="color:#f43f5e">⚠️ System Error: ${err.message}. Please refresh.</span>`;
+        }
+    }
+}
+
+// ── UI: MODE CONTROLLER (V4.3.0) ─────────────────────────────────────────────
+function setMode(mode) {
+    console.log(`🎭 Switching to mode: ${mode}`);
+    if (mode !== 'settings' && isSettingsPanelOpen()) {
+        closeSettingsPanel();
+    }
+    state.currentMode = mode;
+    document.body.setAttribute('data-mode', mode || 'core');
+    if (mode !== 'media') closeMediaLightbox();
+    const appContainer = document.querySelector('.container');
+
+    // Hide all panels first
+    const panels = [chartContainer, mapContainer, underTheHood];
+    panels.forEach(p => { if (p) p.classList.remove('active'); });
+    if (underTheHood) {
+        underTheHood.style.display = 'none';
+        underTheHood.style.pointerEvents = 'none';
+    }
+    if (hubContainer) hubContainer.style.display = 'none';
+    if (gamesContainer) gamesContainer.style.display = 'none';
+    if (cartContainer) cartContainer.style.display = 'none';
+    if (mediaContainer) mediaContainer.style.display = 'none';
+    if (cameraControls) cameraControls.style.display = 'none';
+    if (closeCameraBtn) closeCameraBtn.style.display = 'none';
+
+    // Show specific panel based on mode
+    switch (mode) {
+        case 'hub':
+            if (hubContainer) hubContainer.style.display = 'flex';
+            renderHub();
+            break;
+        case 'games':
+            if (gamesContainer) gamesContainer.style.display = 'flex';
+            renderLearningGamesPanel();
+            break;
+        case 'cart':
+            if (cartContainer) cartContainer.style.display = 'flex';
+            renderCart();
+            break;
+        case 'media':
+            if (mediaContainer) mediaContainer.style.display = 'flex';
+            renderMediaGallery();
+            break;
+        case 'chart':
+            chartContainer.classList.add('active');
+            setTimeout(() => chartContainer?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
+            break;
+        case 'map':
+            mapContainer.classList.add('active');
+            setTimeout(() => mapContainer?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
+            break;
+        case 'settings': underTheHood.classList.add('active'); break;
+        case 'vision':
+            cameraControls.style.display = 'flex';
+            if (closeCameraBtn) closeCameraBtn.style.display = 'flex';
+            break;
+        default:
+            // Core mode
+            if (cameraControls) cameraControls.style.display = 'none';
+            if (closeCameraBtn) closeCameraBtn.style.display = 'none';
+            stopCamera({ keepTranscript: true });
+            break;
+    }
+
+    // Full-browser layout uses fixed-height container. Enable scroll only when a panel needs vertical room.
+    if (appContainer) {
+        const allowPanelScroll = mode === 'map' || mode === 'chart' || mode === 'settings' || mode === 'hub' || mode === 'games' || mode === 'media' || mode === 'cart' || state.isMediaStripOpen;
+        appContainer.style.overflowY = allowPanelScroll ? 'auto' : 'hidden';
+        appContainer.style.overflowX = 'hidden';
+    }
+
+    // Toggle body class for layout adjustments
+    document.body.setAttribute('data-mode', mode);
+}
+
+/**
+ * Apply BlipContextAgent decision: update face, mode, and response style.
+ * Kept lightweight; only applies mode/emotion and reduce_motion.
+ */
+function applyContextDecision(decision) {
+    if (!decision) return;
+    const { mode, emotion, action, payload } = decision;
+    if (mode && PERSONAS[mode]) setPersona(mode);
+    else if (emotion && contextAgent.TONE_TO_PERSONA[emotion]) setPersona(contextAgent.TONE_TO_PERSONA[emotion]);
+    if (action === 'reduce_motion' && payload?.reduce) {
+        document.body.classList.add('reduce-motion');
+    } else if (action !== 'reduce_motion') {
+        document.body.classList.remove('reduce-motion');
+    }
+    if (action === 'switch_mode' && payload?.mode && PERSONAS[payload.mode]) {
+        setPersona(payload.mode);
+    }
+}
+
+function syncChatEngagementState(forceValue = null) {
+    const engaged = typeof forceValue === 'boolean'
+        ? forceValue
+        : !!(
+            state.isActive &&
+            chatEntry &&
+            !chatEntry.classList.contains('hidden') &&
+            (
+                document.activeElement === chatInput ||
+                !!chatInput?.value?.trim() ||
+                state.isThinking
+            )
+        );
+    state.chatEngaged = engaged;
+    if (blipStage) blipStage.setAttribute('data-chat-engaged', engaged ? 'true' : 'false');
+}
+
+/**
+ * 📝 Text Communication Handler
+ */
+async function postChat() {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    // Fix: Initialize audio context on user gesture so cloud voice can play
+    if (speech.initAudio) speech.initAudio();
+    markPassiveWakePrimed();
+
+    chatInput.value = '';
+    syncChatEngagementState();
+    // chatEntry.classList.add('hidden'); // Removed auto-hide so it stays visible while awake
+
+    // Switch to thinking state
+    setPersona('thinking');
+    syncChatEngagementState(true);
+    transcriptText.innerHTML = `<i style="opacity: 0.7;">💬 ${text}</i>`;
+
+    await handleCommand(text);
+    syncChatEngagementState();
+}
+
+// ── VISION LOGIC ─────────────────────────────────────────────────────────────
+function waitForVideoReady(videoEl, timeoutMs = 1800) {
+    if (!videoEl) return Promise.resolve(false);
+    if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) return Promise.resolve(true);
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = (ok) => {
+            if (done) return;
+            done = true;
+            videoEl.removeEventListener('loadedmetadata', onReady);
+            videoEl.removeEventListener('canplay', onReady);
+            clearTimeout(timer);
+            resolve(ok);
+        };
+        const onReady = () => finish(true);
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        videoEl.addEventListener('loadedmetadata', onReady, { once: true });
+        videoEl.addEventListener('canplay', onReady, { once: true });
+    });
+}
+
+async function startCamera() {
+    if (state.cameraStream && webcamVideo?.srcObject) {
+        if (webcamVideo) webcamVideo.style.display = 'block';
+        if (cameraBtn) cameraBtn.style.display = 'none';
+        setMode('vision');
+        updateRecordButtonUI();
+        transcriptText.innerText = "Camera on. Say snap photo or record video.";
+        return true;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+        transcriptText.innerText = "Camera isn't available in this browser.";
+        setEmotion('sad');
+        if (state.isActive) startListeningLoop();
+        return false;
+    }
+    try {
+        setEmotion('curious');
+        transcriptText.innerText = "Opening my eyes...";
+
+        // Pause listening while camera is open
+        speech.stopListening();
+
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        state.cameraStream = stream;
+        if (webcamVideo) {
+            webcamVideo.muted = true;
+            webcamVideo.playsInline = true;
+            webcamVideo.srcObject = stream;
+            webcamVideo.style.display = 'block';
+            try { await webcamVideo.play?.(); } catch (_) { }
+            await waitForVideoReady(webcamVideo);
+        }
+        setMode('vision');
+        if (cameraBtn) cameraBtn.style.display = 'none'; // Hide camera icon while open
+        updateRecordButtonUI();
+
+        transcriptText.innerText = "Camera on. Say snap photo or record video.";
+        return true;
+    } catch (err) {
+        console.error("Camera error:", err);
+        transcriptText.innerText = "I couldn't open my eyes. Check camera permissions!";
+        setEmotion('sad');
+        if (state.isActive) startListeningLoop(); // Resume if failed
+        return false;
+    }
+}
+
+function stopCamera(options = {}) {
+    const { keepTranscript = false, transcript = "Camera closed.", resumeListening = true } = options;
+    if (isVideoRecording()) {
+        try { state.mediaRecorder.stop(); } catch (_) { }
+    }
+    if (state.liveInterval) {
+        clearInterval(state.liveInterval);
+        state.liveInterval = null;
+    }
+    state.isLiveWatch = false;
+    state.liveFrames = [];
+    if (watchBtn) watchBtn.classList.remove('active');
+    if (liveIndicator) liveIndicator.style.display = 'none';
+    if (state.cameraStream) {
+        state.cameraStream.getTracks().forEach(track => track.stop());
+        state.cameraStream = null;
+    }
+    if (webcamVideo) {
+        try { webcamVideo.pause?.(); } catch (_) { }
+        webcamVideo.srcObject = null;
+        webcamVideo.style.display = 'none';
+    }
+    if (cameraControls) cameraControls.style.display = 'none';
+    if (closeCameraBtn) closeCameraBtn.style.display = 'none';
+    if (cameraBtn) cameraBtn.style.display = 'block';
+    if (visionPreviewContainer) visionPreviewContainer.style.display = state.pendingImage ? 'block' : 'none';
+    updateRecordButtonUI();
+    setEmotion('serious');
+    if (!keepTranscript) transcriptText.innerText = transcript;
+
+    // Resume listening if Blip is still active
+    if (resumeListening && state.isActive && !state.isThinking && !speech.isSpeaking) startListeningLoop();
+}
+
+function capturePhoto() {
+    if (!state.cameraStream || !webcamVideo || !captureCanvas) return false;
+    if (!webcamVideo.videoWidth || !webcamVideo.videoHeight) return false;
+
+    const ctx = captureCanvas.getContext('2d');
+    if (!ctx) return false;
+    captureCanvas.width = webcamVideo.videoWidth;
+    captureCanvas.height = webcamVideo.videoHeight;
+    ctx.drawImage(webcamVideo, 0, 0);
+
+    const base64 = captureCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+    if (!base64) return false;
+    setPendingImage(base64);
+    addSnapshotToGallery(base64, 'camera');
+
+    exitVisionMode({ keepTranscript: true, resumeListening: false });
+    setEmotion('happy');
+    transcriptText.innerText = "I got it! Now, what would you like to know about this?";
+    return true;
+}
+
+async function capturePhotoWhenReady() {
+    if (!state.cameraStream) {
+        const started = await startCamera();
+        if (!started) return false;
+    }
+    const ready = await waitForVideoReady(webcamVideo, 2200);
+    if (!ready || !webcamVideo?.videoWidth || !webcamVideo?.videoHeight) return false;
+    return capturePhoto();
+}
+
+function exitVisionMode(options = {}) {
+    const appContainer = document.querySelector('.container');
+    stopCamera(options);
+    state.currentMode = 'core';
+    if (cameraControls) cameraControls.style.display = 'none';
+    if (appContainer) {
+        appContainer.style.overflowY = 'hidden';
+        appContainer.style.overflowX = 'hidden';
+    }
+    document.body.setAttribute('data-mode', 'core');
+}
+
+/** Video Brain V3.0.0 */
+function toggleLiveWatch() {
+    state.isLiveWatch = !state.isLiveWatch;
+    if (watchBtn) watchBtn.classList.toggle('active', state.isLiveWatch);
+    if (liveIndicator) liveIndicator.style.display = state.isLiveWatch ? 'block' : 'none';
+    if (visionPreviewContainer) visionPreviewContainer.style.display = state.isLiveWatch ? 'block' : (state.pendingImage ? 'block' : 'none');
+
+    if (state.isLiveWatch) {
+        setEmotion('curious');
+        transcriptText.innerText = "Live Watch ACTIVE. I'm observing everything...";
+        // If camera not yet on, start it
+        if (!state.cameraStream) startCamera();
+
+        state.liveInterval = setInterval(captureLiveFrame, 1500);
+    } else {
+        clearInterval(state.liveInterval);
+        state.liveFrames = [];
+        transcriptText.innerText = "Live Watch stopped.";
+        if (state.isActive) startListeningLoop();
+    }
+}
+
+function captureLiveFrame() {
+    if (!state.cameraStream || !webcamVideo || !captureCanvas) return;
+
+    const ctx = captureCanvas.getContext('2d');
+    if (!ctx) return;
+    captureCanvas.width = 160; // Tiny for performance
+    captureCanvas.height = 120;
+    ctx.drawImage(webcamVideo, 0, 0, 160, 120);
+
+    const base64 = captureCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+    state.liveFrames.push({ data: base64, mimeType: 'image/jpeg' });
+
+    if (state.liveFrames.length > 5) state.liveFrames.shift(); // Keep last 5 frames
+
+    // Update preview bubble with latest
+    if (visionPreview) visionPreview.src = `data:image/jpeg;base64,${base64}`;
+}
+
+function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const base64 = event.target.result.split(',')[1];
+        const mimeType = file.type;
+
+        if (mimeType.startsWith('video/')) {
+            state.pendingImage = { data: base64, mimeType };
+            // For video preview, we just show a placeholder or first frame if we could, 
+            // but for simplicity we'll use a generic icon or keep previous
+            if (visionPreview) visionPreview.src = 'https://cdn-icons-png.flaticon.com/512/1179/1179069.png';
+            transcriptText.innerText = "Video clip loaded! Analyzing the movement...";
+        } else {
+            setPendingImage(base64);
+            addSnapshotToGallery(base64, 'upload');
+            transcriptText.innerText = "Got the photo! Ask me anything about it.";
+        }
+
+        if (visionPreviewContainer) visionPreviewContainer.style.display = 'block';
+        setEmotion('happy');
+    };
+    reader.readAsDataURL(file);
+}
+
+function setPendingImage(base64) {
+    state.pendingImage = base64;
+    if (visionPreview) visionPreview.src = `data:image/jpeg;base64,${base64}`;
+    if (visionPreviewContainer) visionPreviewContainer.style.display = 'block';
+}
+
+function clearPendingImage() {
+    state.pendingImage = null;
+    if (visionPreviewContainer) visionPreviewContainer.style.display = 'none';
+    if (visionPreview) visionPreview.src = '';
+    if (fileInput) fileInput.value = '';
+    transcriptText.innerText = "Image cleared.";
+}
+
+// ── CORE LOGIC ───────────────────────────────────────────────────────────────
+async function toggleApp() {
+    if (state.isThinking) {
+        cancelInteraction();
+        return;
+    }
+
+    state.isActive = !state.isActive;
+
+    if (state.isActive) {
+        try {
+            stopPassiveWakeLoop();
+            // 🎙️ VITAL: Initialize AudioContext on the user gesture
+            speech.initAudio();
+            markPassiveWakePrimed();
+            if (state.idleAmbientEnabled) ensureIdleAmbienceEngine();
+
+            state.softSleepMode = false;
+            setRestingEyes(false);
+            setPersona('listening');
+            triggerWakeRainbowBurst();
+            talkBtn.classList.add('active');
+            chatEntry.classList.remove('hidden'); // Show chat entry automatically on wake
+            syncChatEngagementState();
+            syncSleepButtonUI();
+            transcriptText.innerText = 'I am awake.';
+            if (WAKE_GREETING_ENABLED) {
+                await speakWithGuard('I am awake.', 'happy');
+            }
+            if (state.isActive && !state.isThinking) startListeningLoop();
+        } catch (err) {
+            console.error("Wake up error:", err);
+            state.isActive = false;
+            talkBtn.classList.remove('active');
+            chatEntry.classList.add('hidden');
+            syncSleepButtonUI();
+            setPersona('sad');
+            transcriptText.innerHTML = `<span style="color:#ef4444">⚠️ ${err.message}. Try again!</span>`;
+        }
+    } else {
+        stopApp();
+    }
+}
+
+function cancelInteraction() {
+    console.log('🛑 Cancelling interaction...');
+    cancelCurrentRequest();
+    state.isThinking = false;
+    state.isActive = true;
+    dismissActiveAlert({ resumeListening: false, clearVisual: true });
+    speech.stopSpeaking?.();
+    speech.stopListening();
+
+    talkBtn.classList.add('active');
+    setPersona('idle');
+    document.body.classList.remove('projecting-visual');
+    transcriptText.innerHTML = '<span style="color:#f88">🛑 Interrupted.</span>';
+    startListeningLoop();
+}
+
+/** 
+ * Centralized resource cleanup: clears all active intervals and timeouts stored in state 
+ * or common globals to prevent memory leaks and "hanging" background tasks. 
+ */
+function cleanupAllSystemTimers() {
+    console.log('🧹 Cleaning up all system timers...');
+    
+    // 1. Clear speech (mouth animations, safety timeouts)
+    if (speech && typeof speech.stopAll === 'function') {
+        speech.stopAll();
+    }
+
+    // 2. Clear known state-tracked timers
+    const timerKeys = [
+        'alarmLoopTimer', 'timerCornerTicker', 'timerPanelTicker', 
+        'weatherDisplayTicker', 'alertDisplayClearTimer', 'passiveWakeLoopTimer', 
+        'autoScrollTimer', 'idleAmbientFxTimer', 'gmailVoiceMergeTimer', 
+        'listeningRestartTimer', 'recordingAutoStopTimer', 'liveInterval', 
+        'weatherSceneShowcaseTimer', 'idleWeatherRefreshTimer', 'sleepDreamInterval'
+    ];
+    
+    timerKeys.forEach(key => {
+        if (state[key]) {
+            clearInterval(state[key]);
+            clearTimeout(state[key]);
+            state[key] = null;
+        }
+    });
+
+    // 3. Clear global (non-state) timers
+    if (typeof emotionShowcaseResumeTimer !== 'undefined' && emotionShowcaseResumeTimer) {
+        clearTimeout(emotionShowcaseResumeTimer);
+        emotionShowcaseResumeTimer = null;
+    }
+    if (typeof emotionShowcaseTimer !== 'undefined' && emotionShowcaseTimer) {
+        clearTimeout(emotionShowcaseTimer);
+        emotionShowcaseTimer = null;
+    }
+    if (typeof wakeRainbowTimer !== 'undefined' && wakeRainbowTimer) {
+        clearTimeout(wakeRainbowTimer);
+        wakeRainbowTimer = null;
+    }
+}
+
+function stopApp() {
+    cleanupAllSystemTimers();
+    state.isActive = false;
+    state.softSleepMode = false;
+    state.isListening = false;
+    dismissActiveAlert({ resumeListening: false, clearVisual: true });
+    resetBlipConversationMemory();
+    document.body.classList.remove('reduce-motion');
+    clearPendingImage();
+    stopCamera();
+
+    talkBtn.classList.remove('active');
+    chatEntry.classList.add('hidden'); // Hide chat entry on sleep
+    syncChatEngagementState(false);
+    setPersona('idle');
+    setRestingEyes(true);
+    document.body.classList.remove('projecting-visual');
+    talkBtn.innerText = SLEEP_BUTTON_LABEL;
+    transcriptText.innerText = SLEEP_PROMPT_TEXT;
+    syncScenerySuppression();
+    schedulePassiveWakeLoop(500);
+    syncWakeReadinessUI();
+    syncSleepButtonUI();
+}
+
+async function enterSoftSleepMode(message = SLEEP_PROMPT_TEXT) {
+    state.softSleepMode = true;
+    state.isThinking = false;
+    stopListening();
+    closeEverythingPanels();
+    document.body.classList.remove('thinking-mode');
+    face.classList.remove('thinking', 'listening');
+    faceFrame?.classList.remove('listening-glow');
+    setRestingEyes(false);
+    setPersona('sleepy');
+    talkBtn.classList.remove('listening', 'thinking', 'active');
+    talkBtn.innerText = SLEEP_BUTTON_LABEL;
+    transcriptText.innerHTML = `<b>Blip:</b> ${message}`;
+    state.history.push({ user: '(system)', blip: message });
+    if (state.history.length > HISTORY_MAX) state.history.shift();
+    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+    await speakWithGuard(message, 'sleepy');
+    setPersona('sleepy');
+    setRestingEyes(true);
+    talkBtn.classList.remove('listening', 'thinking', 'active');
+    talkBtn.innerText = SLEEP_BUTTON_LABEL;
+    if (state.isActive && !speech.isSpeaking) {
+        startListeningLoop();
+    } else {
+        schedulePassiveWakeLoop(500);
+    }
+    syncWakeReadinessUI();
+    syncSleepButtonUI();
+}
+
+const GMAIL_VOICE_MERGE_FLUSH_MS = 850;
+const GMAIL_VOICE_MERGE_WINDOW_MS = 2200;
+
+function inActiveGmailDraftFlow() {
+    if (state.currentSidePanelAction !== 'gmail') return false;
+    if (state.pendingEmailReview) return true;
+    const d = state.gmailComposeDraft || {};
+    return !!(String(d.to || '').trim()
+        || String(d.subject || '').trim()
+        || String(d.text || '').trim()
+        || String(d.recipientQuery || '').trim());
+}
+
+function looksLikeCompleteGmailUtterance(text) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    if (t.length > 72) return true;
+    if (/[\w.-]+@[\w.-]+\.\w+/.test(t)) return true;
+    if (/^subject\s+/i.test(t)) return true;
+    if (/[.!?]$/.test(t)) return true;
+    if (/^no subject$/i.test(t)) return true;
+    return false;
+}
+
+function isGmailImmediateVoiceCommand(text) {
+    const t = normalizeVoiceTokens(String(text || '')).trim();
+    if (!t) return true;
+    if (looksLikeCompleteGmailUtterance(text)) return true;
+    return /^(send|send it|send now|yes|no|ok|okay|go ahead|go on|never mind|nevermind|forget it|cancel|stop|no subject|correct|change it)$/i.test(t)
+        || /^(okay you can send it|you can send it|please send)$/i.test(t)
+        || /^(undo|scratch that|take that back|oops)$/i.test(t);
+}
+
+function clearGmailVoiceMergeState() {
+    if (state.gmailVoiceMergeTimer) {
+        clearTimeout(state.gmailVoiceMergeTimer);
+        state.gmailVoiceMergeTimer = null;
+    }
+    state.gmailVoiceMergeBuffer = '';
+    state.gmailVoiceMergeWindowUntil = 0;
+}
+
+function flushGmailVoiceMergeBufferSync() {
+    if (state.gmailVoiceMergeTimer) {
+        clearTimeout(state.gmailVoiceMergeTimer);
+        state.gmailVoiceMergeTimer = null;
+    }
+    const full = state.gmailVoiceMergeBuffer;
+    state.gmailVoiceMergeBuffer = '';
+    state.gmailVoiceMergeWindowUntil = 0;
+    return String(full || '').trim();
+}
+
+function scheduleGmailVoiceMerge(cmdRaw, onVoiceError) {
+    const trimmed = String(cmdRaw || '').trim();
+    if (!trimmed) return;
+    if (looksLikeCompleteGmailUtterance(trimmed)) {
+        const pending = flushGmailVoiceMergeBufferSync();
+        (async () => {
+            try {
+                if (pending) await handleCommand(pending);
+                await handleCommand(trimmed);
+            } catch (error) {
+                onVoiceError?.(error);
+            }
+        })();
+        return;
+    }
+    clearTimeout(state.gmailVoiceMergeTimer);
+    const now = Date.now();
+    if (state.gmailVoiceMergeBuffer && now < state.gmailVoiceMergeWindowUntil) {
+        state.gmailVoiceMergeBuffer = `${state.gmailVoiceMergeBuffer} ${trimmed}`.trim();
+    } else {
+        state.gmailVoiceMergeBuffer = trimmed;
+    }
+    state.gmailVoiceMergeWindowUntil = now + GMAIL_VOICE_MERGE_WINDOW_MS;
+    state.gmailVoiceMergeTimer = setTimeout(() => {
+        state.gmailVoiceMergeTimer = null;
+        state.gmailVoiceMergeWindowUntil = 0;
+        const full = state.gmailVoiceMergeBuffer;
+        state.gmailVoiceMergeBuffer = '';
+        if (full) {
+            handleCommand(full).catch((error) => onVoiceError?.(error));
+        }
+    }, GMAIL_VOICE_MERGE_FLUSH_MS);
 }
 
 function clearListeningRestartTimer() {
@@ -496,6 +4134,49 @@ function scheduleListeningRestart(delayMs = 300) {
 function startListeningLoop() {
     if (!state.isActive || state.isThinking || state.emotionShowcaseActive) return;
     stopPassiveWakeLoop();
+    clearListeningRestartTimer();
+    if (speech.isSpeaking && state.lastSpeechStartedAt && (Date.now() - state.lastSpeechStartedAt > 45000)) {
+        console.warn('⚠️ Stale speaking state detected. Resetting speech flags.');
+        speech.isSpeaking = false;
+        state.lastSpeechStartedAt = 0;
+        speech.stopSpeaking?.();
+        animateMouth(0);
+    }
+
+    if (state.softSleepMode) {
+        setPersona('sleepy');
+        setRestingEyes(true);
+        face.classList.remove('listening');
+        faceFrame?.classList.remove('listening-glow');
+        talkBtn.classList.remove('thinking', 'listening', 'active');
+        talkBtn.innerText = SLEEP_BUTTON_LABEL;
+    } else {
+        setPersona('listening');
+        setRestingEyes(false);
+        face.classList.add('listening');
+        faceFrame?.classList.add('listening-glow');
+        talkBtn.classList.remove('thinking');
+        talkBtn.classList.add('active', 'listening');
+        talkBtn.innerText = 'Ask Blip';
+    }
+    face.classList.remove('thinking');
+    state.isListening = true;
+    syncChatEngagementState();
+    syncScenerySuppression();
+    syncWakeReadinessUI();
+
+    const listeningStarted = speech.startListening(
+        // On Result
+        (result) => {
+            // Always show the recognized transcript immediately.
+            // Even if we then stop listening (e.g. because speech playback is active),
+            // the student should still see what the mic heard.
+            if (state.softSleepMode && !result.isFinal) return;
+            transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${result.text}</i>`;
+            if (speech.isSpeaking) {
+                stopListening();
+                return;
+            }
             if (result.isFinal) {
                 const normalizedHeard = normalizeVoiceTokens(result.text);
                 const normalizedLastSpoken = normalizeVoiceTokens(state.lastSpokenText || '');
@@ -728,6 +4409,39 @@ function scrollActiveSurface(direction = 'down') {
         : [];
     const settingsPanelContent = underTheHood?.querySelector('.panel-content');
     const candidates = [
+        calendarMirrorContent,
+        calendarOrbBody,
+        calendarBody,
+        youtubeLibraryList,
+        ...sidePanelScrollables,
+        settingsPanelContent,
+        sidePanel,
+        mapContainer,
+        chartContainer,
+        hubMessages,
+        underTheHood,
+        mediaStrip,
+        createdStripList,
+        mediaStripList,
+        mediaContainer,
+        appContainer,
+        document.scrollingElement
+    ];
+    for (const el of candidates) {
+        if (!el || typeof el.scrollBy !== 'function') continue;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        const canScrollY = el.scrollHeight > el.clientHeight + 8;
+        const canScrollX = el.scrollWidth > el.clientWidth + 12;
+        if (canScrollY) {
+            el.scrollBy({ top: delta, behavior: 'smooth' });
+            return true;
+        }
+        if (canScrollX) {
+            el.scrollBy({ left: delta, behavior: 'smooth' });
+            return true;
+        }
+    }
     // Calendar is fixed; scrolling the page/window reads as "the panel went away" — do not fall back.
     if (isCalendarPanelActuallyVisible()) {
         return false;
@@ -2041,6 +5755,154 @@ function toggleCart() {
 function toggleLearningGames() {
     if (!gamesContainer) return;
     const shouldShow = state.currentMode !== 'games';
+    if (shouldShow) {
+        // When opening learning games, always return ear training to its 2-mode menu.
+        state.earTrainingController?.resetToMenu?.();
+    }
+    setMode(shouldShow ? 'games' : 'core');
+}
+
+function randomInt(min, max) {
+    const safeMin = Math.ceil(Number(min) || 0);
+    const safeMax = Math.floor(Number(max) || safeMin);
+    return Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin;
+}
+
+function shuffleArray(items = []) {
+    const copy = [...items];
+    for (let i = copy.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+}
+
+function generateMathQuestion() {
+    const type = Math.random() < 0.6 ? 'add' : 'subtract';
+    let a = 0;
+    let b = 0;
+    let answer = 0;
+    let text = '';
+
+    if (type === 'add') {
+        a = randomInt(1, 10);
+        b = randomInt(1, 10);
+        answer = a + b;
+        text = `${a} + ${b} = ?`;
+    } else {
+        a = randomInt(3, 10);
+        b = randomInt(1, a);
+        answer = a - b;
+        text = `${a} - ${b} = ?`;
+    }
+
+    const options = new Set([answer]);
+    while (options.size < 4) {
+        const candidate = Math.max(0, answer + randomInt(-5, 5));
+        options.add(candidate === answer ? answer + randomInt(1, 3) : candidate);
+    }
+
+    return {
+        text,
+        answer,
+        options: shuffleArray([...options].slice(0, 4))
+    };
+}
+
+async function speakLearningGameLine(text, emotion = 'curious') {
+    if (!text) return;
+    transcriptText.innerHTML = `<b>Blip:</b> ${text}`;
+    setBlipEmotion(emotion);
+    setPersona(getReplyPersonaKey(emotion));
+    if (!state.isThinking && !state.softSleepMode) {
+        try {
+            await speakWithGuard(text, emotion);
+        } catch (_) { }
+    }
+}
+
+async function renderMathQuestion() {
+    if (!mathQuestion || !mathOptions || !mathFeedback || !mathNextBtn) return;
+    const q = generateMathQuestion();
+    state.mathGame.currentAnswer = q.answer;
+    state.mathGame.currentQuestion = q.text;
+    state.mathGame.answered = false;
+
+    mathQuestion.textContent = q.text;
+    mathOptions.innerHTML = '';
+    mathFeedback.textContent = '';
+    mathNextBtn.style.display = 'none';
+
+    q.options.forEach((value) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'math-option-btn';
+        btn.textContent = String(value);
+        btn.addEventListener('click', () => {
+            void handleMathAnswer(value);
+        });
+        mathOptions.appendChild(btn);
+    });
+
+    setBlipEmotion('curious');
+    setPersona(getReplyPersonaKey('curious'));
+    if (mathIntro) mathIntro.textContent = 'Blip will ask easy number questions!';
+    await speakLearningGameLine(`Can you solve this? ${q.text}`, 'curious');
+}
+
+async function handleMathAnswer(selected) {
+    if (!mathFeedback || !mathNextBtn || !mathScore || state.mathGame.answered) return;
+    state.mathGame.answered = true;
+    const optionButtons = document.querySelectorAll('.math-option-btn');
+    optionButtons.forEach((btn) => {
+        btn.disabled = true;
+    });
+
+    if (selected === state.mathGame.currentAnswer) {
+        state.mathGame.score += 1;
+        mathScore.textContent = `Score: ${state.mathGame.score}`;
+        mathFeedback.textContent = "Great job! That's correct.";
+        await speakLearningGameLine('Yay! You got it!', 'happy');
+    } else {
+        mathFeedback.textContent = `Good try! The answer was ${state.mathGame.currentAnswer}.`;
+        await speakLearningGameLine(`That's okay, we can learn together. The answer was ${state.mathGame.currentAnswer}.`, 'gentle');
+    }
+
+    mathNextBtn.style.display = 'inline-block';
+}
+
+async function startMathGame() {
+    state.mathGame.score = 0;
+    state.mathGame.started = true;
+    state.mathGame.answered = false;
+    if (mathScore) mathScore.textContent = 'Score: 0';
+    if (mathIntro) mathIntro.textContent = 'Blip will ask easy number questions!';
+    await renderMathQuestion();
+}
+
+function renderLearningGamesPanel() {
+    if (!gamesContainer) return;
+    if (mathScore) mathScore.textContent = `Score: ${state.mathGame.score}`;
+    if (!state.mathGame.started) {
+        if (mathQuestion) mathQuestion.textContent = 'Press Start';
+        if (mathIntro) mathIntro.textContent = "Let's play with numbers!";
+        if (mathFeedback) mathFeedback.textContent = '';
+        if (mathOptions) mathOptions.innerHTML = '';
+        if (mathNextBtn) mathNextBtn.style.display = 'none';
+    }
+}
+
+function initLearningGames() {
+    if (mathStartBtn) {
+        mathStartBtn.addEventListener('click', () => {
+            void startMathGame();
+        });
+    }
+    if (mathNextBtn) {
+        mathNextBtn.addEventListener('click', () => {
+            void renderMathQuestion();
+        });
+    }
 
     // Ear training (intervals + major/minor)
     const earTrainingRoot = document.getElementById('blip-ear-training-game');
@@ -5913,6 +9775,187 @@ async function handleCommand(text) {
     if (await handleNaturalConversationBridge()) {
         return;
     }
+    // Photos / shots lane must win over YouTube `openVideos` — runs before prioritized YT shortcuts.
+    if (isPriorityOpenLocalPhotosIntentFromLower(lowerCmd)) {
+        face.classList.remove('thinking');
+        toggleMediaGallery(true, 'shots');
+        setVoiceToolFollowUpLock('media_shots');
+        const shotCount = getMediaItemsByBucket(MEDIA_BUCKET_SHOTS).length;
+        const photosMsg = getVerifiedOpenMessage({
+            cmd,
+            target: 'media-strip',
+            visible: isMediaStripActuallyVisible(),
+            successMessage: shotCount > 0
+                ? `Photos open. ${shotCount} item${shotCount === 1 ? '' : 's'}.`
+                : 'Photos open. Empty.',
+            details: { lane: 'shots' }
+        });
+        await quickReply(photosMsg, 'happy');
+        return;
+    }
+    const ytCmd = getYouTubeVoiceCommand(cmd);
+    const prioritizedYouTubeCommands = new Set([
+        'pause', 'play', 'stop', 'rewind', 'forward', 'mute', 'unmute', 'restart', 'next',
+        'close', 'new', 'videoBig', 'videoSmall', 'blipBig', 'blipSmall', 'openMusic', 'openVideos', 'openYouTube'
+    ]);
+    if (ytCmd && prioritizedYouTubeCommands.has(ytCmd) && await handleYouTubeVoiceShortcut(ytCmd)) {
+        return;
+    }
+
+    const jokeRequest = /^(?:tell\s+me\s+)?(?:a\s+)?joke\s*$|^tell\s+a\s+joke\s*$|^joke\s*$|^make\s+me\s+laugh\s*$|^say\s+(?:a\s+)?joke\s*$|^give\s+me\s+(?:a\s+)?joke\s*$|^another\s+joke\s*$/.test(lowerCmd);
+    if (jokeRequest) {
+        face.classList.remove('thinking');
+        await quickReply(getNextJoke(), 'playful');
+        return;
+    }
+
+    const openLinkCmd = getOpenLinkVoiceCommand(cmd);
+    if (openLinkCmd === 'openLatestLink') {
+        const url = state.lastContext?.lastOpenableUrl
+            || state.lastContext?.lastYoutubeUrl
+            || (state.lastContext?.lastLocation ? `https://www.google.com/maps/search/${encodeURIComponent(state.lastContext.lastLocation)}` : '')
+            || (state.lastContext?.lastSearchTopic ? `https://www.google.com/search?q=${encodeURIComponent(state.lastContext.lastSearchTopic)}` : '');
+        if (url) {
+            try { window.open(url, '_blank', 'noopener'); } catch (_) { }
+            await quickReply('Opening latest link.', 'happy');
+        } else {
+            await quickReply('No recent link to open yet.', 'happy');
+        }
+        return;
+    }
+
+    const systemCmd = getSystemVoiceCommand(cmd);
+    if (systemCmd) {
+        if (systemCmd === 'closeAllSleep') {
+            cancelCurrentRequest();
+            closeEverythingPanels();
+            dismissActiveAlert({ resumeListening: false, clearVisual: true });
+            await enterSoftSleepMode('Everything closed. Sleep mode on.');
+            return;
+        }
+        if (systemCmd === 'closeAll') {
+            cancelCurrentRequest();
+            dismissActiveAlert({ resumeListening: false, clearVisual: true });
+            closeEverythingPanels();
+            await quickReply('Everything closed.', 'happy');
+            return;
+        }
+        if (systemCmd === 'closeAlert') {
+            const closed = dismissActiveAlert({ resumeListening: false, clearVisual: true });
+            if (closed) {
+                await quickReply('Alert closed.', 'happy');
+                return;
+            }
+            const reminderCancelCmd = getReminderCancelVoiceCommand(cmd);
+            if (reminderCancelCmd?.action === 'clearAll') {
+                const removedCount = clearAllScheduledTimers();
+                await quickReply(
+                    removedCount
+                        ? `Cancelled ${removedCount} scheduled reminder${removedCount === 1 ? '' : 's'}.`
+                        : 'No scheduled reminders to cancel.',
+                    'happy'
+                );
+            } else {
+                const removed = reminderCancelCmd?.action === 'cancelMatch'
+                    ? cancelMatchingScheduledTimer(reminderCancelCmd.query)
+                    : cancelNextScheduledTimer();
+                await quickReply(
+                    removed
+                        ? `Cancelled ${String(removed.text || 'alarm')}.`
+                        : 'No scheduled reminders to cancel.',
+                    'happy'
+                );
+            }
+            return;
+        }
+        if (systemCmd === 'wake') {
+            state.isActive = true;
+            state.softSleepMode = false;
+            state.isThinking = false;
+            setRestingEyes(false);
+            setPersona('listening');
+            triggerWakeRainbowBurst();
+            talkBtn.classList.add('active');
+            await quickReply('I am awake.', 'happy', '', false);
+            resumeListeningAfterWake(220);
+            return;
+        }
+        if (systemCmd === 'sleepHelp') {
+            await quickReply('Say go to sleep.', 'happy');
+            return;
+        }
+        if (systemCmd === 'sleep') {
+            await enterSoftSleepMode('Wake me up if you need me.');
+            return;
+        }
+        if (systemCmd === 'stopScroll') {
+            const wasScrolling = !!state.autoScrollTimer;
+            stopAutoScroll();
+            await quickReply(wasScrolling ? 'Stopped scrolling.' : 'Nothing is scrolling right now.', 'happy');
+            return;
+        }
+        if (systemCmd === 'scrollDown' || systemCmd === 'scrollUp') {
+            const direction = systemCmd === 'scrollUp' ? 'up' : 'down';
+            const ok = scrollActiveSurface(direction);
+            await quickReply(ok ? (direction === 'up' ? 'Scrolled up.' : 'Scrolled down.') : 'Nothing to scroll.', 'happy');
+            return;
+        }
+        if (systemCmd === 'sizeUp' || systemCmd === 'sizeDown' || systemCmd === 'sizeReset') {
+            let scale = state.faceScale || 1;
+            if (systemCmd === 'sizeReset') scale = setFaceScale(1);
+            else if (systemCmd === 'sizeUp') scale = setFaceScale((state.faceScale || 1) + 0.1);
+            else scale = setFaceScale((state.faceScale || 1) - 0.1);
+            await quickReply(`Size ${Math.round(scale * 100)}%.`, 'happy');
+            return;
+        }
+    }
+
+    const reminderCancelCmd = getReminderCancelVoiceCommand(cmd);
+    if (reminderCancelCmd) {
+        face.classList.remove('thinking');
+        if (reminderCancelCmd.action === 'clearAll') {
+            const removedCount = clearAllScheduledTimers();
+            await quickReply(
+                removedCount
+                    ? `Cancelled ${removedCount} scheduled reminder${removedCount === 1 ? '' : 's'}.`
+                    : 'No scheduled reminders to cancel.',
+                'happy'
+            );
+        } else {
+            const removed = reminderCancelCmd.action === 'cancelMatch'
+                ? cancelMatchingScheduledTimer(reminderCancelCmd.query)
+                : cancelNextScheduledTimer();
+            await quickReply(
+                removed
+                    ? `Cancelled ${String(removed.text || 'alarm')}.`
+                    : 'No scheduled reminders to cancel.',
+                'happy'
+            );
+        }
+        return;
+    }
+
+    const settingsCmd = getSettingsVoiceCommand(cmd);
+    if (settingsCmd) {
+        face.classList.remove('thinking');
+        if (settingsCmd === 'open') {
+            openSettingsPanel();
+            await quickReply('Settings open.', 'happy');
+        } else {
+            closeSettingsPanel();
+            await quickReply('Settings closed.', 'happy');
+        }
+        return;
+    }
+
+    const chatCmd = getChatVoiceCommand(cmd);
+    if (chatCmd) {
+        face.classList.remove('thinking');
+        const opened = toggleChatEntry(chatCmd === 'open');
+        await quickReply(opened ? 'Chat open.' : 'Chat closed.', 'happy');
+        return;
+    }
+
     // Communication skills (deterministic canned answers)
     // Run before Gmail/Telegram “natural intent” routing so capability questions
     // like "can you write emails" don't accidentally open a compose panel.
@@ -9951,6 +13994,376 @@ function parseVoiceDateFromText(text, options = {}) {
     if (!matchedDate) return null;
 
     const parsedTime = parseVoiceTimeFromText(lower);
+    if (!requireTime && !parsedTime) {
+        return startOfCalendarDay(target);
+    }
+    const hours = parsedTime?.hours;
+    const minutes = parsedTime?.minutes ?? 0;
+    if (!Number.isFinite(hours) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    target.setHours(hours, minutes, 0, 0);
+    return target;
+}
+
+function parseVoiceTimeFromText(text) {
+    const lower = normalizeVoiceTokens(text);
+    const meridianMatch = lower.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+    if (meridianMatch) {
+        const rawHour = Number(meridianMatch[1] || meridianMatch[4]);
+        const rawMinute = Number(meridianMatch[2] || meridianMatch[5] || 0);
+        const meridian = meridianMatch[3] || meridianMatch[6];
+        let hours = rawHour % 12;
+        if (meridian === 'pm') hours += 12;
+        return { hours, minutes: rawMinute };
+    }
+
+    const twentyFourHourMatch = lower.match(/\bat\s+(\d{1,2}):(\d{2})\b|\b(\d{1,2}):(\d{2})\b/);
+    if (twentyFourHourMatch) {
+        return {
+            hours: Number(twentyFourHourMatch[1] || twentyFourHourMatch[3]),
+            minutes: Number(twentyFourHourMatch[2] || twentyFourHourMatch[4] || 0)
+        };
+    }
+    return null;
+}
+
+function isGenericCalendarDraftTitle(title) {
+    return !String(title || '').trim() || /^event$/i.test(String(title || '').trim());
+}
+
+function buildCalendarEventTitleFromText(text) {
+    const lower = normalizeVoiceTokens(text);
+    return toTitleWords(
+        sanitizeVoiceQuery(lower
+            .replace(/^(?:please\s+)?(?:add|create|make|schedule|set|put|book|save)\s+/, '')
+            .replace(/\bremind\s+me\s+to\b/g, '')
+            .replace(/\b(?:in|on|to)\s+(?:my\s+)?calendar\b/g, '')
+            .replace(/\b(calendar|event|meeting|appointment|reminder)\b/g, '')
+            .replace(/\b(today|tomorrow)\b/g, '')
+            .replace(/\bday\s+\d{1,2}(?:st|nd|rd|th)?(?:\s+of\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))?\b/g, '')
+            .replace(/\b(?:the\s+)?\d{1,2}(?:st|nd|rd|th)(?:\s+of\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))?\b/g, '')
+            .replace(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?\b/g, '')
+            .replace(/\bon\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/g, '')
+            .replace(/\b(20\d{2})-(\d{2})-(\d{2})\b/g, '')
+            .replace(/\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/g, '')
+            .replace(/\bfor\s+\d{1,3}\s*(?:minutes?|mins?|hours?|hrs?)\b/g, '')
+            .replace(/^(?:to|for)\s+/g, '')
+            .replace(/\s+/g, ' ')
+        )
+    ) || 'Event';
+}
+
+function buildCalendarTitleFromFollowUp(text) {
+    const title = toTitleWords(sanitizeVoiceQuery(normalizeVoiceTokens(text)));
+    return title || 'Event';
+}
+
+function parseCalendarReminderChoice(text) {
+    const lower = normalizeVoiceTokens(text);
+    if (/^(?:no|nope|none|no reminder|without reminder|don't remind me|do not remind me)$/.test(lower)) {
+        return { minutes: 0, reply: 'No reminder.' };
+    }
+    if (/^(?:yes|yeah|yep|sure|ok|okay|please do)$/.test(lower)) {
+        return { minutes: 60, reply: 'I will place a reminder 1 hour before the event.' };
+    }
+    const customMatch = lower.match(/\b(\d{1,3})\s*(minutes?|mins?|hours?|hrs?|hr)\s*(?:before|earlier|ahead)\b/);
+    if (customMatch) {
+        const amount = Number(customMatch[1]);
+        const unit = customMatch[2];
+        if (Number.isFinite(amount) && amount > 0) {
+            const minutes = /hour|hr/.test(unit) ? amount * 60 : amount;
+            const label = minutes % 60 === 0
+                ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}`
+                : `${minutes} minute${minutes === 1 ? '' : 's'}`;
+            return { minutes, reply: `I will place a reminder ${label} before the event.` };
+        }
+    }
+    return null;
+}
+
+function buildCalendarReminderFollowUpText(details = {}) {
+    const reminderMinutes = Number(details.reminderMinutes || 0);
+    if (!Number.isFinite(reminderMinutes) || reminderMinutes <= 0) return '';
+    const label = reminderMinutes % 60 === 0
+        ? `${reminderMinutes / 60} hour${reminderMinutes === 60 ? '' : 's'}`
+        : `${reminderMinutes} minute${reminderMinutes === 1 ? '' : 's'}`;
+    return ` Reminder set for ${label} before the event.`;
+}
+
+function formatPendingCalendarDraftPrompt(draft) {
+    if (draft?.stage === 'awaiting_title') return 'What is the event?';
+    if (draft?.stage === 'awaiting_reminder') return 'Do you want a reminder? Say yes, no, or for example 30 minutes before.';
+    const title = draft?.title || 'Event';
+    if (draft?.anchorDate) {
+        const when = new Date(draft.anchorDate).toLocaleDateString('en-US', {
+            month: 'long',
+            day: 'numeric'
+        });
+        return `What time for ${title} on ${when}?`;
+    }
+    return `What day and time for ${title}?`;
+}
+
+function resolvePendingCalendarFollowUp(cmd) {
+    const draft = state.pendingCalendarDraft;
+    if (!draft) return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (/^(?:cancel|never mind|nevermind|forget it|stop)$/.test(lower)) {
+        state.pendingCalendarDraft = null;
+        return { cancelled: true, message: 'Calendar draft cancelled.' };
+    }
+
+    if (draft.stage === 'awaiting_title') {
+        const title = buildCalendarTitleFromFollowUp(cmd);
+        if (isGenericCalendarDraftTitle(title)) {
+            return {
+                needsScheduleInfo: true,
+                message: 'What is the event?'
+            };
+        }
+        const hasScheduledTime = !!(draft.start && draft.end);
+        state.pendingCalendarDraft = {
+            ...draft,
+            title,
+            stage: hasScheduledTime ? 'awaiting_reminder' : 'awaiting_time'
+        };
+        return {
+            needsScheduleInfo: true,
+            message: formatPendingCalendarDraftPrompt(state.pendingCalendarDraft)
+        };
+    }
+
+    if (draft.stage === 'awaiting_reminder') {
+        const reminder = parseCalendarReminderChoice(lower);
+        if (!reminder) {
+            return {
+                needsScheduleInfo: true,
+                message: formatPendingCalendarDraftPrompt(draft)
+            };
+        }
+        state.pendingCalendarDraft = null;
+        return {
+            event_details: {
+                title: draft.title || 'Event',
+                start: draft.start,
+                end: draft.end,
+                reminderMinutes: reminder.minutes
+            },
+            completionMessage: reminder.reply
+        };
+    }
+
+    const explicitDateTime = parseVoiceDateFromText(lower);
+    if (explicitDateTime) {
+        const endDate = new Date(explicitDateTime.getTime() + (draft.durationMs || 60 * 60 * 1000));
+        if (isGenericCalendarDraftTitle(draft.title)) {
+            state.pendingCalendarDraft = {
+                ...draft,
+                anchorDate: startOfCalendarDay(explicitDateTime).toISOString(),
+                start: explicitDateTime.toISOString(),
+                end: endDate.toISOString(),
+                stage: 'awaiting_title'
+            };
+            return {
+                needsScheduleInfo: true,
+                focusDayNumber: explicitDateTime.getDate(),
+                focusAnchorDate: explicitDateTime.toISOString(),
+                message: formatPendingCalendarDraftPrompt(state.pendingCalendarDraft)
+            };
+        }
+        state.pendingCalendarDraft = {
+            ...draft,
+            anchorDate: startOfCalendarDay(explicitDateTime).toISOString(),
+            start: explicitDateTime.toISOString(),
+            end: endDate.toISOString(),
+            stage: 'awaiting_reminder'
+        };
+        return {
+            needsScheduleInfo: true,
+            focusDayNumber: explicitDateTime.getDate(),
+            focusAnchorDate: explicitDateTime.toISOString(),
+            message: formatPendingCalendarDraftPrompt(state.pendingCalendarDraft)
+        };
+    }
+
+    const explicitDate = getCalendarDateFromCommand(lower, draft.anchorDate ? { anchorDate: draft.anchorDate } : (state.activeCalendarViewRequest || { anchorDate: state.calendarAnchorDate }));
+    const timeOnly = parseVoiceTimeFromText(lower);
+    const anchorDate = explicitDate ? startOfCalendarDay(explicitDate) : (draft.anchorDate ? startOfCalendarDay(draft.anchorDate) : null);
+
+    if (anchorDate && timeOnly) {
+        const start = new Date(anchorDate);
+        start.setHours(timeOnly.hours, timeOnly.minutes, 0, 0);
+        const end = new Date(start.getTime() + (draft.durationMs || 60 * 60 * 1000));
+        if (isGenericCalendarDraftTitle(draft.title)) {
+            state.pendingCalendarDraft = {
+                ...draft,
+                anchorDate: startOfCalendarDay(start).toISOString(),
+                start: start.toISOString(),
+                end: end.toISOString(),
+                stage: 'awaiting_title'
+            };
+            return {
+                needsScheduleInfo: true,
+                focusDayNumber: start.getDate(),
+                focusAnchorDate: start.toISOString(),
+                message: formatPendingCalendarDraftPrompt(state.pendingCalendarDraft)
+            };
+        }
+        state.pendingCalendarDraft = {
+            ...draft,
+            anchorDate: startOfCalendarDay(start).toISOString(),
+            start: start.toISOString(),
+            end: end.toISOString(),
+            stage: 'awaiting_reminder'
+        };
+        return {
+            needsScheduleInfo: true,
+            focusDayNumber: start.getDate(),
+            focusAnchorDate: start.toISOString(),
+            message: formatPendingCalendarDraftPrompt(state.pendingCalendarDraft)
+        };
+    }
+
+    if (explicitDate && !timeOnly) {
+        state.pendingCalendarDraft = {
+            ...draft,
+            anchorDate: startOfCalendarDay(explicitDate).toISOString(),
+            stage: 'awaiting_time'
+        };
+        return {
+            needsScheduleInfo: true,
+            focusDayNumber: explicitDate.getDate(),
+            focusAnchorDate: explicitDate.toISOString(),
+            message: formatPendingCalendarDraftPrompt(state.pendingCalendarDraft)
+        };
+    }
+
+    if (!explicitDate && timeOnly && !draft.anchorDate) {
+        return {
+            needsScheduleInfo: true,
+            message: `I have the time. ${formatPendingCalendarDraftPrompt(draft)}`
+        };
+    }
+
+    return null;
+}
+
+function getDirectCalendarVoiceRequest(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (!/\b(calendar|schedule|event|meeting|appointment|reminder|remind me)\b/.test(lower)) return null;
+    if (/^(?:can you\s+)?(?:please\s+)?(?:show|open|display|view|list|tell me|give me|check|see|what(?:'s| is))\b/.test(lower) ||
+        /\b(?:my\s+schedule|my\s+calendar|my\s+events|agenda)\b/.test(lower)) {
+        return null;
+    }
+    if (!/^(?:please\s+)?(?:add|create|make|schedule|set|put|book|save)\b/.test(lower) &&
+        !/\bremind\s+me\s+to\b/.test(lower)) {
+        return null;
+    }
+
+    const startDate = parseVoiceDateFromText(lower);
+    if (!startDate) {
+        const focusDayNumber = parseCalendarDayNumberFromText(lower);
+        const explicitMonthDay = parseMonthDayReferenceFromText(lower);
+        const selectedDate = getSelectedCalendarDate(state.activeCalendarViewRequest || {});
+        const resolvedAnchorDate = explicitMonthDay
+            || (focusDayNumber ? resolveCalendarSelectedDate(focusDayNumber, state.activeCalendarViewRequest || { anchorDate: state.calendarAnchorDate }) : null)
+            || selectedDate
+            || null;
+        const promptDayNumber = resolvedAnchorDate?.getDate() || explicitMonthDay?.getDate() || focusDayNumber || null;
+        const draftTitle = buildCalendarEventTitleFromText(lower);
+        const pendingDraft = {
+            title: draftTitle,
+            anchorDate: resolvedAnchorDate ? startOfCalendarDay(resolvedAnchorDate).toISOString() : '',
+            durationMs: 60 * 60 * 1000,
+            stage: isGenericCalendarDraftTitle(draftTitle) ? 'awaiting_title' : 'awaiting_time'
+        };
+        return {
+            needsScheduleInfo: true,
+            focusDayNumber: promptDayNumber,
+            focusAnchorDate: resolvedAnchorDate?.toISOString() || '',
+            pendingDraft,
+            message: formatPendingCalendarDraftPrompt(pendingDraft)
+        };
+    }
+
+    let durationMs = 60 * 60 * 1000;
+    const durationMatch = lower.match(/\bfor\s+(\d{1,3})\s*(minutes?|mins?|hours?|hrs?)\b/);
+    if (durationMatch) {
+        const amount = Number(durationMatch[1]);
+        const unit = durationMatch[2];
+        if (Number.isFinite(amount) && amount > 0) {
+            durationMs = /hour|hr/.test(unit) ? amount * 60 * 60 * 1000 : amount * 60 * 1000;
+        }
+    }
+    const endDate = new Date(startDate.getTime() + durationMs);
+
+    const title = buildCalendarEventTitleFromText(lower);
+    if (isGenericCalendarDraftTitle(title)) {
+        const pendingDraft = {
+            title,
+            anchorDate: startOfCalendarDay(startDate).toISOString(),
+            start: startDate.toISOString(),
+            end: endDate.toISOString(),
+            durationMs,
+            stage: 'awaiting_title'
+        };
+        return {
+            needsScheduleInfo: true,
+            focusDayNumber: startDate.getDate(),
+            focusAnchorDate: startDate.toISOString(),
+            pendingDraft,
+            message: formatPendingCalendarDraftPrompt(pendingDraft)
+        };
+    }
+
+    const displayTime = startDate.toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+
+    return {
+        event_details: {
+            title,
+            start: startDate.toISOString(),
+            end: endDate.toISOString()
+        },
+        displayTime
+    };
+}
+
+function isOpenGoogleCalendarVoiceRequest(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = sanitizeVoiceQuery(normalizeVoiceTokens(cmd));
+    return /^(?:can you\s+)?(?:please\s+)?(?:open|show|display|launch|view|go to|bring up|take me to)\s+(?:my\s+)?google\s+calendar(?:\s+(?:app|page))?$/.test(lower) ||
+        /^(?:google\s+calendar)(?:\s+(?:app|page))?$/.test(lower);
+}
+
+function openGoogleCalendarHome() {
+    const url = 'https://calendar.google.com/calendar/u/0/r';
+    try {
+        window.open(url, '_blank', 'noopener');
+    } catch (_) {
+        // Ignore popup failures; the user still gets the link in Blip's reply.
+    }
+    addToHub('link', '📅 Google Calendar', { url });
+    return url;
+}
+
+function getCalendarAgendaVoiceRequest(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = sanitizeVoiceQuery(normalizeVoiceTokens(cmd));
+    // "Open item N" / "show first item" etc. = creations panel, not calendar.
+    if (/\b(?:open|show|view)\s+item\s+\d{1,3}\b/.test(lower)) return null;
+    if (/\b(?:open|show|view)\s+(?:the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+item\b/.test(lower)) return null;
+    // Any "item"/"items" phrase without explicit calendar words belongs to creations/cart flows, not calendar.
+    if (/\bitems?\b/.test(lower) && !/\b(calendar|schedule|events?|agenda)\b/.test(lower)) return null;
+    const hasCalendarIntent = /\b(calendar|schedule|events?|agenda)\b/.test(lower);
+    const directCalendarOpenIntent = /^(?:can you\s+)?(?:please\s+)?open\s+(?:(?:my|the)\s+)?(?:calendar|schedule|agenda|events?)$/.test(lower);
+    const conversationalCalendarOpenIntent = /\b(?:open|show|view|check)\b[\s\w]{0,24}\b(?:calendar|schedule|agenda|events?)\b/.test(lower);
+    const explicitViewMatch = lower.match(/\b(day|week|month)\s+view\b/);
     const navToDateCue = /\b(?:show|display|view|go\s+to|jump\s+to|navigate\s+to|take\s+me\s+to|head\s+to)\b/;
     const directDateOpenIntent = navToDateCue.test(lower) && (
         Boolean(parseCalendarDayNumberFromText(lower))
@@ -9969,6 +14382,22 @@ function parseVoiceDateFromText(text, options = {}) {
     dayAfterTomorrowStart.setDate(dayAfterTomorrowStart.getDate() + 1);
     const monthEnd = new Date(todayStart);
     monthEnd.setDate(monthEnd.getDate() + 30);
+    const monthNav = parseNavigateToMonthAnchor(lower);
+    if (monthNav?.monthOnly) {
+        const anchor = monthNav.anchor;
+        return {
+            label: anchor.toLocaleDateString('en-US', { month: 'long' }),
+            view: 'month',
+            anchorDate: anchor.toISOString(),
+            timeMin: todayStart.toISOString(),
+            timeMax: monthEnd.toISOString(),
+            maxResults: 60
+        };
+    }
+    const requestedView = explicitViewMatch?.[1] || (/\bmonth\b/.test(lower) ? 'month' : /\bday\b/.test(lower) ? 'day' : /\bweek\b/.test(lower) ? 'week' : '');
+    const requestedDay = parseDayOnlyRange(lower);
+    const explicitCommandDate = getCalendarDateFromCommand(lower, state.activeCalendarViewRequest || { anchorDate: state.calendarAnchorDate });
+
     if (!explicitViewMatch && explicitCommandDate && navToDateCue.test(lower) && !(/\bweek\b|\bmonth\b/.test(lower))) {
         const anchor = startOfCalendarDay(explicitCommandDate);
         const nextDay = new Date(anchor);
@@ -10505,6 +14934,238 @@ function parseMonthDayReferenceFromText(text) {
     return date;
 }
 
+/** "Jump to April" / "go to September" (month name only, no day). */
+function parseNavigateToMonthAnchor(lower) {
+    const normalized = typeof lower === 'string' ? normalizeVoiceTokens(lower) : lower;
+    if (!/\b(?:go\s+to|jump\s+to|navigate\s+to|take\s+me\s+to|head\s+to)\b/.test(normalized)) return null;
+    if (parseMonthDayReferenceFromText(normalized)) return null;
+    const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    const monthMatch = normalized.match(new RegExp(`\\b(${months.join('|')})\\b`));
+    if (!monthMatch) return null;
+    const monthIndex = months.indexOf(monthMatch[1]);
+    if (monthIndex < 0) return null;
+    const now = new Date();
+    const todayStart = startOfCalendarDay(now);
+    let year = now.getFullYear();
+    const endOfMonth = new Date(year, monthIndex + 1, 0);
+    if (endOfMonth < todayStart) {
+        year += 1;
+    }
+    const anchor = startOfCalendarDay(new Date(year, monthIndex, 1));
+    return { anchor, monthOnly: true };
+}
+
+function createEmptyLastContext() {
+    return {
+        lastUserQuery: '',
+        lastChartTitle: '',
+        lastChartData: null,
+        lastYoutubeUrl: null,
+        lastYoutubeEmbedUrl: null,
+        lastYoutubeVideoId: null,
+        lastYoutubeSearchResults: null,
+        lastYoutubeQuery: null,
+        lastYoutubeSearchIndex: 0,
+        lastLocation: '',
+        lastSearchTopic: '',
+        lastIntentActions: [],
+        lastProductLinks: [],
+        lastProductPreviewDataUrl: '',
+        lastProductRetailer: '',
+        lastRecipeQuery: '',
+        lastRecipeText: '',
+        lastDesignDataUrl: '',
+        lastDesignPrompt: '',
+        lastWeather: null,
+        lastWeatherLocation: ''
+    };
+}
+
+function resetBlipConversationMemory() {
+    state.history = [];
+    state.lastContext = createEmptyLastContext();
+    state.pendingCalendarDraft = null;
+    contextAgent.reset();
+    try { localStorage.removeItem(HISTORY_STORAGE_KEY); } catch (e) { }
+}
+
+async function focusCalendarDaySelection(dayNumber, options = {}) {
+    const baseRequest = state.activeCalendarViewRequest || {
+        label: 'month',
+        view: 'month',
+        anchorDate: state.calendarAnchorDate
+    };
+    const selectionRequest = options.anchorDate ? { ...baseRequest, anchorDate: options.anchorDate } : baseRequest;
+    const selectedDate = resolveCalendarSelectedDate(dayNumber, selectionRequest);
+    if (!selectedDate) {
+        return { ok: false, text: `Day ${dayNumber} is not available in this month.` };
+    }
+
+    const selectedKey = formatCalendarDateKey(selectedDate);
+    const shouldToggle = options.toggle === true;
+    const nextSelectedDate = shouldToggle && baseRequest.selectedDate === selectedKey ? '' : selectedKey;
+    const nextRequest = {
+        ...selectionRequest,
+        view: 'month',
+        anchorDate: selectedDate.toISOString(),
+        selectedDate: nextSelectedDate,
+        selectedHour: ''
+    };
+
+    await showCalendarOverview(nextRequest);
+    return {
+        ok: true,
+        text: nextSelectedDate
+            ? `Focused day ${dayNumber} in your calendar.`
+            : `Collapsed day ${dayNumber}.`
+    };
+}
+
+async function focusCalendarHourSelection(hour, options = {}) {
+    const normalizedHour = Number(hour);
+    if (!Number.isInteger(normalizedHour) || normalizedHour < 0 || normalizedHour > 23) {
+        return { ok: false, text: 'That time slot is not available.' };
+    }
+    const baseRequest = state.activeCalendarViewRequest || {
+        label: 'month',
+        view: 'month',
+        anchorDate: state.calendarAnchorDate || new Date().toISOString()
+    };
+    const selectedDate = getSelectedCalendarDate(baseRequest) || startOfCalendarDay(baseRequest.anchorDate || new Date());
+    const nextRequest = {
+        ...baseRequest,
+        view: 'month',
+        anchorDate: selectedDate.toISOString(),
+        selectedDate: formatCalendarDateKey(selectedDate),
+        selectedHour: normalizedHour
+    };
+    await showCalendarOverview(nextRequest);
+    return {
+        ok: true,
+        text: `Focused ${new Date(2000, 0, 1, normalizedHour).toLocaleTimeString('en-US', { hour: 'numeric' })} on ${selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}.`
+    };
+}
+
+function getEventsForCalendarDay(events, dayDate) {
+    return (Array.isArray(events) ? events : [])
+        .filter((event) => {
+            const start = parseCalendarEventValue(event?.start?.dateTime || event?.start?.date || event?.start);
+            return !Number.isNaN(start.getTime()) && isSameCalendarDay(start, dayDate);
+        })
+        .sort((left, right) => parseCalendarEventValue(left?.start?.dateTime || left?.start?.date || left?.start).getTime() - parseCalendarEventValue(right?.start?.dateTime || right?.start?.date || right?.start).getTime());
+}
+
+function buildCalendarEventPill(event, compact = false) {
+    const sourceLabel = event?.source === 'pending' ? 'Pending' : 'Synced';
+    return `<div class="blip-calendar-event${compact ? ' compact' : ''}" data-calendar-event-id="${escapeHtml(String(event?.id || ''))}">
+        <button type="button" class="blip-calendar-event-delete" data-calendar-delete-event="${escapeHtml(String(event?.id || ''))}" aria-label="Delete ${escapeHtml(event?.summary || 'calendar event')}" title="Delete event">×</button>
+        <div class="blip-calendar-event-time">${escapeHtml(formatCalendarEventTimeRange(event))}</div>
+        <div class="blip-calendar-event-title">${escapeHtml(event?.summary || 'Untitled')}</div>
+        <div class="blip-calendar-event-meta">${escapeHtml(sourceLabel)}</div>
+    </div>`;
+}
+
+function buildExpandedCalendarDayHtml(day, dayEvents) {
+    return `<div class="blip-calendar-day-expanded">
+        <div class="blip-calendar-day-expanded-head">
+            <div class="blip-calendar-day-expanded-title">${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+            <div class="blip-calendar-day-expanded-copy">${dayEvents.length ? `${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}` : 'No events on this day'}</div>
+        </div>
+        <div class="blip-calendar-day-expanded-list">
+            ${dayEvents.length
+                ? dayEvents.map((event) => buildCalendarEventPill(event)).join('')
+                : '<div class="blip-calendar-empty">No events</div>'}
+        </div>
+    </div>`;
+}
+
+function buildCalendarSelectedDayTimelineHtml(events, panelState, selectedDay, selectedHour = null) {
+    const dayEvents = getEventsForCalendarDay(events, selectedDay);
+    const allDayEvents = dayEvents.filter((event) => {
+        const startRaw = event?.start?.dateTime || event?.start?.date || event?.start;
+        return typeof startRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startRaw);
+    });
+    const timedEvents = dayEvents.filter((event) => !allDayEvents.includes(event));
+    const hourRows = Array.from({ length: 24 }, (_, hour) => {
+        const eventsAtHour = timedEvents.filter((event) => {
+            const start = parseCalendarEventValue(event?.start?.dateTime || event?.start?.date || event?.start);
+            return start.getHours() === hour;
+        });
+        const hourLabel = new Date(2000, 0, 1, hour).toLocaleTimeString('en-US', {
+            hour: 'numeric'
+        });
+        const isSelectedHour = Number.isInteger(selectedHour) && selectedHour === hour;
+        return `<div class="blip-calendar-hour-row${isSelectedHour ? ' is-selected' : ''}" data-calendar-hour="${hour}">
+            <div class="blip-calendar-hour-label">${hourLabel}</div>
+            <div class="blip-calendar-hour-content">
+                ${eventsAtHour.length
+                    ? eventsAtHour.map((event) => buildCalendarEventPill(event)).join('')
+                    : '<div class="blip-calendar-hour-empty"></div>'}
+            </div>
+        </div>`;
+    }).join('');
+    return `
+        <div class="blip-calendar-day-view">
+            <div class="blip-calendar-day-banner">
+                <div class="blip-calendar-day-banner-title">${selectedDay.toLocaleDateString('en-US', { weekday: 'long' })}</div>
+                <div class="blip-calendar-day-banner-date">${selectedDay.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</div>
+            </div>
+            ${allDayEvents.length ? `<div class="blip-calendar-all-day">
+                <div class="blip-calendar-all-day-title">All day</div>
+                <div class="blip-calendar-day-list">${allDayEvents.map((event) => buildCalendarEventPill(event)).join('')}</div>
+            </div>` : ''}
+            <div class="blip-calendar-day-hours">
+                ${hourRows}
+            </div>
+        </div>
+    `;
+}
+
+function buildCalendarMonthHtml(events, panelState) {
+    const days = Array.from({ length: 42 }, (_, index) => addCalendarDays(panelState.visibleStart, index));
+    const selectedDay = getSelectedCalendarDate(state.activeCalendarViewRequest || {}, panelState);
+    const selectedHour = Number.isInteger(state.activeCalendarViewRequest?.selectedHour)
+        ? state.activeCalendarViewRequest.selectedHour
+        : null;
+    return `
+        <div class="blip-calendar-weekdays">
+            ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => `<div class="blip-calendar-weekday-label">${label}</div>`).join('')}
+        </div>
+        <div class="blip-calendar-month-grid">
+            ${days.map((day) => {
+                const dayEvents = getEventsForCalendarDay(events, day);
+                const isCurrentMonth = day.getMonth() === panelState.anchorDate.getMonth();
+                const isToday = isSameCalendarDay(day, new Date());
+                const isSelected = selectedDay ? isSameCalendarDay(day, selectedDay) : false;
+                const visibleEvents = dayEvents.slice(0, 3);
+                const overflowCount = Math.max(0, dayEvents.length - visibleEvents.length);
+                return `<section class="blip-calendar-month-cell${isCurrentMonth ? '' : ' is-muted'}${isToday ? ' is-today' : ''}${isSelected ? ' is-selected' : ''}" data-calendar-select-day="${formatCalendarDateKey(day)}">
+                    <div class="blip-calendar-month-date">${day.getDate()}</div>
+                    <div class="blip-calendar-month-events">
+                        ${visibleEvents.map((event) => buildCalendarEventPill(event, true)).join('') || '<div class="blip-calendar-empty small">No events</div>'}
+                        ${overflowCount ? `<div class="blip-calendar-more">+${overflowCount} more</div>` : ''}
+                    </div>
+                </section>`;
+            }).join('')}
+        </div>
+        ${selectedDay ? buildCalendarSelectedDayTimelineHtml(events, panelState, selectedDay, selectedHour) : ''}
+    `;
+}
+
+function buildCalendarAgendaHtml(events, calendarUrl, request = {}) {
+    const pendingCount = (state.pendingCalendarEvents || []).length;
+    const pendingDeleteCount = (state.pendingCalendarDeletes || []).length;
+    const authState = getGoogleCalendarAuthState();
+    const panelState = getCalendarPanelState(request);
+    const eventList = Array.isArray(events) ? events : [];
+    const bodyHtml = buildCalendarMonthHtml(eventList, panelState);
+    const statusBits = [
+        authState.connected ? 'Google sync active.' : 'Local mode active.',
+        pendingCount ? `${pendingCount} pending add${pendingCount === 1 ? '' : 's'}.` : '',
+        pendingDeleteCount ? `${pendingDeleteCount} pending delete${pendingDeleteCount === 1 ? '' : 's'}.` : ''
+    ].filter(Boolean).join(' ');
+
+    return `
         <div class="blip-calendar-mirror-shell" data-calendar-view-mode="${panelState.view}">
             <div class="blip-calendar-mirror-header">
                 <div class="blip-calendar-mirror-heading">
@@ -10909,6 +15570,132 @@ async function showCalendarOverview(request = { label: 'upcoming' }) {
     setCalendarDisplayMode(panelState.view);
     setCalendarAnchorDate(panelState.anchorDate);
     const calendarUrl = 'https://calendar.google.com/calendar/u/0/r';
+    const bootHtml = buildCalendarAgendaHtml(getCachedCalendarEvents(panelRequest), calendarUrl, panelRequest)
+        || '<div class="blip-calendar-shell"><p class="blip-calendar-status">Opening calendar…</p></div>';
+    renderActionInSidePanel({
+        action: 'calendarAgenda',
+        tool_params: {
+            title: 'Blip Calendar',
+            html: bootHtml
+        },
+        text: 'Blip Calendar open.'
+    });
+    const initiallyConnected = await ensureGoogleCalendarConnected({ silent: true });
+    const authState = getGoogleCalendarAuthState();
+
+    if (!initiallyConnected || !authState.connected) {
+        const cachedEvents = getCachedCalendarEvents(panelRequest);
+        const pendingCount = (state.pendingCalendarEvents || []).length;
+        const cachedHtml = buildCalendarAgendaHtml(cachedEvents, calendarUrl, panelRequest);
+        const cachedMessage = cachedEvents.length
+            ? 'Blip Calendar open.'
+            : `Blip Calendar open.${pendingCount ? ` ${pendingCount} pending event${pendingCount === 1 ? '' : 's'} waiting to sync.` : ''}`;
+        renderActionInSidePanel({
+            action: 'calendarAgenda',
+            tool_params: {
+                title: 'Blip Calendar',
+                html: cachedHtml
+            },
+            text: cachedMessage
+        });
+        return {
+            text: cachedMessage,
+            extraHtml: `<br>${cachedHtml}`
+        };
+    }
+
+    try {
+        await syncPendingCalendarDeletes();
+        await syncPendingCalendarEvents();
+        const events = await listGoogleCalendarEvents(panelRequest);
+        mergeCalendarCache(events.map((event) => ({
+            id: event.id,
+            summary: event.summary,
+            start: event?.start?.dateTime || event?.start?.date,
+            end: event?.end?.dateTime || event?.end?.date,
+            htmlLink: event.htmlLink,
+            source: 'google'
+        })));
+        let visibleEvents = getCachedCalendarEvents(panelRequest);
+        if (!visibleEvents.length) {
+            const extendedStart = new Date(panelState.fetchStart);
+            extendedStart.setDate(extendedStart.getDate() - 30);
+            const extendedEnd = new Date(panelState.fetchEnd);
+            extendedEnd.setDate(extendedEnd.getDate() + 180);
+            await syncGoogleCalendarIntoBlip({
+                timeMin: extendedStart.toISOString(),
+                timeMax: extendedEnd.toISOString(),
+                maxResults: 240
+            }).catch((syncError) => {
+                console.warn('Extended Google Calendar import failed:', syncError?.message || syncError);
+            });
+            visibleEvents = getCachedCalendarEvents(panelRequest);
+        }
+        if (!visibleEvents.length && panelState.view !== 'day' && request.autoJump !== false) {
+            const nextEvent = getNextUpcomingCalendarEvent(panelState.fetchStart);
+            if (nextEvent) {
+                return showCalendarOverview({
+                    ...panelRequest,
+                    anchorDate: nextEvent.start,
+                    autoJump: false
+                });
+            }
+        }
+        const summary = 'Blip Calendar open.';
+        renderActionInSidePanel({
+            action: 'calendarAgenda',
+            tool_params: {
+                title: `Blip Calendar`,
+                html: buildCalendarAgendaHtml(visibleEvents, calendarUrl, panelRequest)
+            },
+            text: summary
+        });
+        return {
+            text: summary,
+            extraHtml: `<br>${buildCalendarAgendaHtml(visibleEvents, calendarUrl, panelRequest)}`
+        };
+    } catch (error) {
+        if (error?.code === 'calendar_auth_required') {
+            const reconnected = await ensureGoogleCalendarConnected({ silent: true });
+            if (reconnected) {
+                await syncPendingCalendarDeletes();
+                await syncPendingCalendarEvents();
+                const events = await listGoogleCalendarEvents(panelRequest);
+                mergeCalendarCache(events.map((event) => ({
+                    id: event.id,
+                    summary: event.summary,
+                    start: event?.start?.dateTime || event?.start?.date,
+                    end: event?.end?.dateTime || event?.end?.date,
+                    htmlLink: event.htmlLink,
+                    source: 'google'
+                })));
+                let visibleEvents = getCachedCalendarEvents(panelRequest);
+                if (!visibleEvents.length) {
+                    const extendedStart = new Date(panelState.fetchStart);
+                    extendedStart.setDate(extendedStart.getDate() - 30);
+                    const extendedEnd = new Date(panelState.fetchEnd);
+                    extendedEnd.setDate(extendedEnd.getDate() + 180);
+                    await syncGoogleCalendarIntoBlip({
+                        timeMin: extendedStart.toISOString(),
+                        timeMax: extendedEnd.toISOString(),
+                        maxResults: 240
+                    }).catch((syncError) => {
+                        console.warn('Extended Google Calendar import failed:', syncError?.message || syncError);
+                    });
+                    visibleEvents = getCachedCalendarEvents(panelRequest);
+                }
+                if (!visibleEvents.length && panelState.view !== 'day' && request.autoJump !== false) {
+                    const nextEvent = getNextUpcomingCalendarEvent(panelState.fetchStart);
+                    if (nextEvent) {
+                        return showCalendarOverview({
+                            ...panelRequest,
+                            anchorDate: nextEvent.start,
+                            autoJump: false
+                        });
+                    }
+                }
+                const summary = 'Blip Calendar open.';
+                renderActionInSidePanel({
                     action: 'calendaragenda',
                     tool_params: {
                         title: `Blip Calendar`,
@@ -11409,6 +16196,563 @@ function getSystemVoiceCommand(cmd) {
         /^(?:scroll|move|go|page)\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?down(?:\s+please)?$/.test(stripped);
     const wantsScrollUp =
         /\bscroll\b[\s\w]{0,28}\bup\b/.test(trimmed) ||
+        /\b(?:scroll(?:ed|ing)?|scrolled|scrolling)\s+up\b/.test(trimmed) ||
+        /\b(?:go|move|page)\s+up\b/.test(trimmed) ||
+        /\bscroll\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?(?:higher|above)\b/.test(trimmed) ||
+        /^(?:up|higher)\s+please$/.test(stripped) ||
+        /^(?:scroll|move|go|page)\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?up(?:\s+please)?$/.test(stripped);
+    const wakeIntent = /^(?:wake(?:\s+up)?)(?:\s+blip)?$/.test(stripped) ||
+        /^(?:wake(?:\s+up)?)(?:\s+blip)?$/.test(systemCandidate) ||
+        /^(?:blip\s+)?wake(?:\s+up)?$/.test(lower) ||
+        /^(?:hey|hi|okay|ok)\s+blip\s+wake(?:\s+up)?$/.test(lower);
+    const sleepIntent = new RegExp(`^(?:${sleepPhrase})(?:\\s+blip)?$`).test(stripped) ||
+        new RegExp(`^(?:${sleepPhrase})(?:\\s+blip)?$`).test(systemCandidate) ||
+        /^(?:go\s+to\s+sleep\s+blip|go\s+back\s+to\s+sleep\s+blip)$/.test(condensedSleep);
+    const sleepPromptIntent = /\byou(?:'re|\s+are)\s+not\s+(?:sleeping|asleep)\b/.test(trimmed) ||
+        /\bwhy\s+are\s+you\s+not\s+(?:sleeping|asleep)\b/.test(trimmed);
+    const politeSleepIntent = new RegExp(`\\b(?:can|could|would|will)\\s+(?:you|blip|it)\\b[\\s\\w]{0,20}\\b${sleepPhrase}\\b`).test(trimmed) ||
+        new RegExp(`\\b(?:you|blip|it)\\b[\\s\\w]{0,12}\\b(?:can|could|would|will)\\b[\\s\\w]{0,12}\\b${sleepPhrase}\\b`).test(trimmed);
+    const embeddedSleepIntent = new RegExp(`\\b${sleepPhrase}\\b`).test(trimmed) && !/\b(?:wake|awake|waking)\b/.test(trimmed);
+    const stopScrollIntent = /\b(stop|pause|enough|halt|cancel)\s+(the\s+)?scroll(?:ing)?\b/.test(trimmed) ||
+        /\bstop\s+going\s+(up|down)\b/.test(trimmed) ||
+        /\bstop\s+moving\b/.test(trimmed);
+    const closeAlertIntent = /\b(close|hide|dismiss|exit|stop|silence|turn\s+off|shut\s+off|cancel)\s+(the\s+)?(alarm|alert|reminder|timer)(?:\s+(page|screen|panel|window|sound|ring(?:ing)?))?\b/.test(trimmed) ||
+        /\b(alarm|alert|reminder|timer)\s+(off|stop|close|silent|silence)\b/.test(stripped) ||
+        /\bturn\s+(the\s+)?(alarm|alert|reminder|timer)\s+off\b/.test(trimmed) ||
+        /\bshut\s+(the\s+)?(alarm|alert|reminder|timer)\s+off\b/.test(trimmed) ||
+        /\bstop\s+(the\s+)?ring(?:ing)?\b/.test(trimmed) ||
+        ((!!state.activeAlert || !!state.alertDisplay) && /^(?:stop(?:\s+it)?|turn\s+it\s+off|shut\s+it\s+off|silence(?:\s+it)?|make\s+it\s+stop|enough|quiet)$/i.test(stripped));
+    const anythingOpen = !!(
+        mediaLightbox?.classList.contains('active') ||
+        state.isMediaStripOpen ||
+        state.pendingImage ||
+        isSidePanelVisible() ||
+        isSettingsPanelOpen() ||
+        state.currentMode !== 'core'
+    );
+
+    if (/\b(close|hide|exit|dismiss)\s+(everything|all(?:\s+panels?)?|all\s+windows?)\b/.test(trimmed) && /\b(go to sleep|sleep(?:\s+mode)?)\b/.test(trimmed)) return 'closeAllSleep';
+    if (/\b(close|hide|exit|dismiss)\s+(?:them\s+)?(?:it\s+)?(?:everything|all(?:\s+panels?)?|all\s+windows?)\b/.test(trimmed)) return 'closeAll';
+    if (anythingOpen && /^(?:everything|all|all\s+of\s+it|them\s+all)$/i.test(stripped)) return 'closeAll';
+    if (closeAlertIntent) return 'closeAlert';
+    if (stopScrollIntent) return 'stopScroll';
+    if (wakeIntent) return 'wake';
+    if (/^(?:sleep|sleep\s+blip|blip\s+sleep)$/.test(stripped)) return 'sleepHelp';
+    if (sleepIntent || sleepPromptIntent || politeSleepIntent || embeddedSleepIntent) return 'sleep';
+    if (wantsScrollDown && !wantsScrollUp) return 'scrollDown';
+    if (wantsScrollUp && !wantsScrollDown) return 'scrollUp';
+    if (/^(?:make|set)\s+(?:you|your)?\s*size\s+(?:bigger|larger|big|up)\b|^(?:size\s+(?:up|bigger|larger)|grow|be\s+bigger|bigger|larger)\b/.test(trimmed)) return 'sizeUp';
+    if (/^(?:make|set)\s+(?:you|your)?\s*size\s+(?:smaller|small|down)\b|^(?:size\s+(?:down|smaller)|shrink|be\s+smaller|smaller)\b/.test(trimmed)) return 'sizeDown';
+    if (/^(?:reset|normal(?:ize)?)\s+(?:you|your)?\s*size\b|^(?:size\s+(?:normal|default)|default\s+size)\b/.test(trimmed)) return 'sizeReset';
+
+    return null;
+}
+
+/** Voice command parser for camera controls. */
+function getCameraVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    const photoIntentRe = /\b(snap|snapshot|capture|take)\s+(a\s+)?(photo|picture|pic|image|shot|snapshot)\b|\btake\s+(the\s+)?(photo|picture|pic)\b|\bcapture\s+(this|that|it)\b/;
+    const recordIntentRe = /\b(record|film|shoot|capture|take|make|start|begin)\b[\s\w]{0,24}\b(video|clip|recording)\b|\b(start|begin)\s+(the\s+)?(recording|filming)\b|\b(record|film|shoot)\s+(this|that|it)\b|\brecord\s+(this\s+)?(recipe|cake|lesson|tutorial)\b|\btake\s+(a\s+)?video\b/;
+    const stopRecordIntentRe = /\b(stop|end|finish|save)\s+(the\s+)?(recording|clip|camera\s+video|filming)\b|\bstop\s+(recording|filming)\b|\b(done|finished)\s+(recording|filming)\b|\bsave\s+(this\s+)?(recording|clip)\b/;
+    if (/\b(recipe|meal)\b/.test(lower) && /\b(snapshot|snap|capture|save|store|keep)\b/.test(lower)) return null;
+    if (/\b(open|start|enable|show|turn on|activate|activa|activar)\s+(the\s+)?(camera|camara|vision|eyes?)\b/.test(lower) ||
+        /\b(turn|switch)\s+(the\s+)?(camera|camara|vision)\s+on\b/.test(lower) ||
+        /^camera\s+on$/.test(lower) ||
+        /^camara\s+on$/.test(lower) ||
+        /^activate\s+(the\s+)?(camera|camara)$/.test(lower) ||
+        /\bopen\s+(my\s+)?eyes\b/.test(lower)) return 'open';
+    if (/\b(close|stop|disable|hide|turn off|deactivate)\s+(the\s+)?(camera|camara|vision|eyes?)\b/.test(lower) ||
+        /\b(turn|switch)\s+(the\s+)?(camera|camara|vision)\s+off\b/.test(lower) ||
+        /^camera\s+off$/.test(lower) ||
+        /^camara\s+off$/.test(lower) ||
+        /^deactivate\s+(the\s+)?(camera|camara)$/.test(lower) ||
+        /\bclose\s+(my\s+)?eyes\b/.test(lower)) return 'close';
+    if (photoIntentRe.test(lower) ||
+        /^snap$/.test(lower) ||
+        /^snapshot$/.test(lower) ||
+        /\btake\s+photo\b/.test(lower) ||
+        /\btake\s+picture\b/.test(lower) ||
+        /\btake\s+pic\b/.test(lower) ||
+        /\btake\s+(a\s+)?snapshot\b/.test(lower) ||
+        /\bcapture\s+(a\s+)?snapshot\b/.test(lower)) return 'snap';
+    if (recordIntentRe.test(lower)) return 'videoStart';
+    if (stopRecordIntentRe.test(lower)) return 'videoStop';
+    if (/\b(save|store|keep)\s+(this\s+)?(photo|picture|pic|image|shot|snapshot)\b/.test(lower)) return 'save';
+    return null;
+}
+
+function getSettingsVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (/\b(open|show|display|launch|view)\s+(?:the\s+|my\s+)?settings\b/.test(lower)) return 'open';
+    if (/\b(close|hide|dismiss|exit)\s+(?:the\s+|my\s+)?settings\b/.test(lower)) return 'close';
+    return null;
+}
+
+function getChatVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (/\b(open|show|display|launch|view|bring\s+up)\s+(?:the\s+|my\s+)?chat\b/.test(lower) ||
+        /\bopen\s+(?:the\s+)?chat\s+box\b/.test(lower)) return 'open';
+    if (/\b(close|hide|dismiss|exit)\s+(?:the\s+|my\s+)?chat\b/.test(lower) ||
+        /\bclose\s+(?:the\s+)?chat\s+box\b/.test(lower)) return 'close';
+    return null;
+}
+
+function getLearningGamesVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    const simpleAnswerRe = /^(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})$/;
+    const wantsMathGame = /\b(math|number|numbers)\b/.test(lower) && /\b(game|games)\b/.test(lower);
+    const answerWords = {
+        zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5,
+        six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11,
+        twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16,
+        seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20
+    };
+    const parseAnswerValue = (value) => {
+        const cleaned = sanitizeVoiceQuery(String(value || '')).toLowerCase();
+        if (!cleaned) return null;
+        if (/^\d{1,2}$/.test(cleaned)) {
+            const n = Number(cleaned);
+            return Number.isFinite(n) ? n : null;
+        }
+        return Number.isFinite(answerWords[cleaned]) ? answerWords[cleaned] : null;
+    };
+    const gamesNoun = '(?:learning\\s+games|learning\\s+game|kids\\s+games|math\\s+games|games|game\\s+panel)';
+    // If games is already open, bare "game/games" often means close (verb dropped).
+    if (state.currentMode === 'games' && /^(?:game|games|learning\s+game|learning\s+games|math\s+game|math\s+games)$/.test(lower)) {
+        return { action: 'close' };
+    }
+    if (/^(?:the\s+)?(?:learning\s+games|learning\s+game|kids\s+games|math\s+games|games)$/.test(lower)) return { action: 'open' };
+    if ((wantsMathGame && /\b(start|play|open|launch|begin|do)\b/.test(lower)) ||
+        /\b(start|play|open|launch|begin)\s+(?:the\s+)?math\s+games?\b/.test(lower) ||
+        /^(?:math\s+games?|play\s+math|do\s+math)$/.test(lower) ||
+        (state.currentMode === 'games' && /\b(start|play|begin)\b/.test(lower) && /\bmath\b/.test(lower))) return { action: 'startMath' };
+    // Accept "close game" too (singular).
+    if (/\b(close|hide|dismiss|exit)\s+(?:the\s+|my\s+)?game\b/.test(lower)) return { action: 'close' };
+    if (new RegExp(`\\b(close|hide|dismiss|exit)\\s+(?:the\\s+|my\\s+)?${gamesNoun}\\b`).test(lower)) return { action: 'close' };
+    if (new RegExp(`\\b(open|show|display|launch|view|bring\\s+up|play|start)\\s+(?:the\\s+|my\\s+)?${gamesNoun}\\b`).test(lower)) return { action: 'open' };
+    if ((/^(?:next|another)$/.test(lower) || /\b(next|another)\s+(?:question|one|round|game)?\b/.test(lower)) &&
+        state.currentMode === 'games' && state.mathGame.started) return { action: 'nextMath' };
+    if (state.currentMode === 'games' && state.mathGame.started && !state.mathGame.answered) {
+        const answerMatch = lower.match(/\b(?:guess|my\s+guess\s+is|my\s+answer\s+is|the\s+answer\s+is|answer\s+(?:to\s+the\s+quiz\s+)?is|i\s+think\s+it(?:'s| is)?|it(?:'s| is)|i\s+say|i\s+choose|choose|pick|option)\s+(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d{1,2})\b/);
+        const answerValue = parseAnswerValue(answerMatch?.[1] || '');
+        if (Number.isFinite(answerValue)) return { action: 'answerMath', value: answerValue };
+        if (simpleAnswerRe.test(lower)) {
+            const simpleValue = parseAnswerValue(lower);
+            if (Number.isFinite(simpleValue)) return { action: 'answerMath', value: simpleValue };
+        }
+    }
+    return null;
+}
+
+/** Voice command parser for saved creations (graphs/designs/drawings). */
+function getCreationGalleryVoiceCommand(cmd) {
+    if (!CREATIONS_TOOL_ENABLED) return null;
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    const creationSurfaceActive = isCreationsPanelOpen()
+        || canOpenCurrentCreationFromPanel()
+        || (mediaLightbox?.classList.contains?.('active') && state.activeMediaBucket === MEDIA_BUCKET_CREATED);
+    if (/\b(?:photos?|fotos?|pictures?|shots?|snapshots?)\b/.test(lower) && !/\bcreations?\b/.test(lower)) return null;
+    const namedOpenMatch = lower.match(/^(?:open|show|view)\s+(.+)$/);
+    if (namedOpenMatch) {
+        const query = normalizeCreationVoiceLabel(
+            namedOpenMatch[1]
+                .replace(/\b(?:the|my|saved)\b/g, ' ')
+                .replace(/\b(?:creation|creations|design|designs|drawing|drawings|graph|graphs|chart|charts|art|image|images|picture|pictures|item|items|link|links)\b/g, ' ')
+                .replace(/\b(?:inside|from|in)\s+creations?\b/g, ' ')
+        );
+        if (query && !/^\d{1,3}$/.test(query) && !/^(?:latest|last|newest|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)$/.test(query)) {
+            const match = findCreationMatchByQuery(query);
+            if (match?.id) {
+                return {
+                    action: 'openMatch',
+                    id: match.id,
+                    title: match.title || normalizeCreationTitle(query, 'Creation')
+                };
+            }
+        }
+    }
+    // Explicit "open/show item N" → open creation by index (avoid calendar taking it).
+    const openItemNum = lower.match(/\b(?:open|show|view)\s+item\s+(\d{1,3})\b/);
+    if (openItemNum) {
+        const n = Number(openItemNum[1]);
+        if (Number.isFinite(n) && n > 0) return { action: 'openIndex', index: n };
+    }
+    // "Open (the) first/second/... item" → open creation by index (calendar uses "first" = day 1 otherwise).
+    const ordinalToNum = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, eleventh: 11, twelfth: 12 };
+    const openOrdinalItem = lower.match(/\b(?:open|show|view)\s+(?:the\s+)?(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\s+item\b/);
+    if (openOrdinalItem) {
+        const n = ordinalToNum[openOrdinalItem[1]];
+        if (Number.isFinite(n) && n > 0) return { action: 'openIndex', index: n };
+    }
+    const createdNouns = '(?:creation|design|drawing|graph|chart|art|item)';
+    const createdGalleryNouns = '(creations?|creation|past\\s+creations|saved\\s+designs?|saved\\s+drawings?|saved\\s+graphs?|past\\s+designs?|old\\s+designs?|design\\s+gallery|drawing\\s+gallery|graph\\s+gallery|creative\\s+gallery)';
+    const openVerbAnyRe = /\b(open|show|display|launch|view|go\s+to|bring\s+up)\b/;
+    const closeVerbAnyRe = /\b(close|hide|exit|dismiss)\b/;
+    const deleteVerbAnyRe = /\b(delete|remove|erase|trash|clear)\b/;
+    const openIndexDigitRe = new RegExp(`\\b(open|show|view|expand|zoom)\\s+(?:me\\s+)?(?:the\\s+)?${createdNouns}\\s*(?:number|#)?\\s*(\\d{1,3})\\b`);
+    const openIndexWordRe = new RegExp(`\\b(open|show|view|expand|zoom)\\s+(?:me\\s+)?(?:the\\s+)?${createdNouns}\\s*(?:number\\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b`);
+    const openLatestRe = new RegExp(`\\b(open|show|view|expand|zoom)\\s+(?:the\\s+)?last\\s+${createdNouns}\\b`);
+    const deleteIndexDigitRe = new RegExp(`\\b(delete|remove|erase|trash|clear)\\s+(?:me\\s+)?(?:the\\s+)?${createdNouns}\\s*(?:number|#)?\\s*(\\d{1,3})\\b`);
+    const deleteIndexWordRe = new RegExp(`\\b(delete|remove|erase|trash|clear)\\s+(?:me\\s+)?(?:the\\s+)?${createdNouns}\\s*(?:number\\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b`);
+    const deleteLatestRe = new RegExp(`\\b(delete|remove|erase|trash)\\s+(?:the\\s+)?(?:last|latest)\\s+${createdNouns}\\b`);
+    const deleteCurrentRe = new RegExp(`\\b(delete|remove|erase|trash)\\s+(?:the\\s+)?(?:current|this)\\s+${createdNouns}\\b`);
+        const clearCreationsRe = new RegExp(`\\b(delete|remove|erase|trash|clear)\\b[\\s\\w]{0,16}\\b(?:all|every|entire|whole)\\s+${createdGalleryNouns}\\b`);
+        const saveRecipeRe = /\b(?:save|store|keep)\s+(?:this\s+|the\s+)?(?:recipe|meal)\b|\b(?:snapshot|snap|capture)\s+(?:(?:this|the)\s+)?(?:recipe|meal)\b|\b(?:take|make)\s+(?:a\s+)?(?:snapshot|snap|capture)\s+of\s+(?:this\s+|the\s+)?(?:recipe|meal)\b/;
+        const saveMapRe = /\b(?:save|store|keep|remember)\b[\s\w]{0,28}\b(?:map|location|place)\b|\b(?:snapshot|snap|capture)\s+(?:of\s+)?(?:the\s+)?map\b/;
+        const saveToCreationsRe = /\b(save|store|keep)\b[\s\w]{0,24}\b(to|in)\s+creations?\b/;
+        const saveRe = new RegExp(`\\b(save|store|keep)\\s+(?:this\\s+)?${createdNouns}\\b|\\bsave\\s+(?:the\\s+)?${createdNouns}\\b`);
+
+    const wordToNum = {
+        one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+        seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12
+    };
+
+    if (saveRecipeRe.test(lower)) return 'saveRecipe';
+    if (saveMapRe.test(lower)) return 'saveMap';
+    if (saveToCreationsRe.test(lower)) return 'saveCurrent';
+    if (saveRe.test(lower)) return 'saveCurrent';
+    const digitMatch = lower.match(openIndexDigitRe);
+    if (digitMatch) {
+        const n = Number(digitMatch[2]);
+        if (Number.isFinite(n) && n > 0) return { action: 'openIndex', index: n };
+    }
+    const wordMatch = lower.match(openIndexWordRe);
+    if (wordMatch) {
+        const n = wordToNum[wordMatch[2]];
+        if (Number.isFinite(n) && n > 0) return { action: 'openIndex', index: n };
+    }
+    const deleteDigitMatch = lower.match(deleteIndexDigitRe);
+    if (deleteDigitMatch) {
+        const n = Number(deleteDigitMatch[2]);
+        if (Number.isFinite(n) && n > 0) return { action: 'deleteIndex', index: n };
+    }
+    const deleteWordMatch = lower.match(deleteIndexWordRe);
+    if (deleteWordMatch) {
+        const n = wordToNum[deleteWordMatch[2]];
+        if (Number.isFinite(n) && n > 0) return { action: 'deleteIndex', index: n };
+    }
+    if (openLatestRe.test(lower)) return 'expandLatest';
+    if (deleteLatestRe.test(lower)) return 'deleteLatest';
+    if (deleteCurrentRe.test(lower)) return 'deleteCurrent';
+    if (clearCreationsRe.test(lower) && deleteVerbAnyRe.test(lower)) return 'clear';
+    // Bare "creations" toggles the creations lane. STT often drops the verb.
+    if (/^(?:creations?)$/.test(lower)) {
+        return isCreationsPanelOpen() ? 'close' : 'open';
+    }
+
+    if ((openVerbAnyRe.test(lower) && new RegExp(`\\b${createdGalleryNouns}\\b`).test(lower)) ||
+        /\b(open|show|view)\b[\s\w]{0,24}\bcreations?\b/.test(lower) ||
+        /^open\s+creations?$/.test(lower) ||
+        /^show\s+creations?$/.test(lower) ||
+        /^can\s+you\s+open\s+my\s+creations?$/.test(lower) ||
+        /^show\s+past\s+creations$/.test(lower)) return 'open';
+    if ((closeVerbAnyRe.test(lower) && new RegExp(`\\b${createdGalleryNouns}\\b`).test(lower)) ||
+        /\b(close|hide|exit|dismiss)\b[\s\w]{0,24}\bcreations?\b/.test(lower) ||
+        /^(?:hey\s+blip\s+)?(?:(?:please|can|could|would|will)\s+you\s+)?(?:close|hide|dismiss|exit)\s+(?:my\s+|the\s+)?(?:creations|design\s+gallery|drawing\s+gallery|graph\s+gallery)(?:\s+please)?$/.test(lower) ||
+        /^close\s+creations?$/.test(lower) ||
+        /^hide\s+creations?$/.test(lower) ||
+        /^(?:please\s+)?close\s+(?:the\s+)?creation\s*$/.test(lower) ||
+        /^(?:please\s+)?hide\s+(?:the\s+)?creation\s*$/.test(lower)) return 'close';
+    if (creationSurfaceActive && /^(?:please\s+)?(?:close|hide|dismiss|exit)(?:\s+(?:it|this|that|this\s+one))?(?:\s+please)?$/.test(lower)) return 'close';
+    return null;
+}
+
+function getMediaUndoVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string' || !state.lastMediaUndo) return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (/^(?:please\s+)?(?:undo|undo\s+delete|undo\s+that|undo\s+last\s+delete|restore|restore\s+it|restore\s+that|bring\s+(?:it|that)\s+back)(?:\s+please)?$/.test(lower)) {
+        return 'undoDelete';
+    }
+    if (/\b(?:undo|restore)\b[\s\w]{0,12}\b(?:delete|removal)\b/.test(lower)) return 'undoDelete';
+    return null;
+}
+
+function getUnnamedMediaReferenceVoiceReply(cmd) {
+    if (!cmd || typeof cmd !== 'string') return '';
+    const lower = normalizeVoiceTokens(cmd);
+    const inMediaContext = state.isMediaStripOpen || isYouTubeLibraryVoiceContextOpen() || mediaLightbox?.classList.contains?.('active');
+    if (!inMediaContext) return '';
+    if (!/^(?:(?:it|this|that)(?:\s+one)?\s+(?:does\s+not|doesnt|doesn't)\s+have\s+(?:a\s+)?name|(?:it|this|that)(?:\s+one)?\s+has\s+no\s+name|no\s+name|without\s+(?:a\s+)?name)(?:\s+please)?$/.test(lower)) {
+        return '';
+    }
+
+    const lane = normalizeMediaLane(state.mediaStripLane);
+    if (lane === 'music' || lane === 'videos' || isYouTubeLibraryVoiceContextOpen()) {
+        const view = getActiveSavedYouTubeViewForVoice();
+        const items = getSavedYouTubeItemsByView(view);
+        const currentIndex = items.length ? normalizeYouTubeLibraryBrowseIndex(state.youtubeLibraryBrowseIndex, items) + 1 : 1;
+        return `Use the number tag. Say "delete ${currentIndex}" or "delete this".`;
+    }
+    if (lane === 'created') {
+        return 'Use the number tag. Say "delete 1" or "delete this creation".';
+    }
+    return 'Use the number tag. Say "delete 1" or "delete this photo".';
+}
+
+function extractVoiceNumberList(text = '') {
+    const lower = normalizeVoiceTokens(text)
+        .replace(/\btoo\b/g, ' two ')
+        .replace(/\bto\b/g, ' two ')
+        .replace(/\bfor\b/g, ' four ');
+    const words = {
+        one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+        seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12
+    };
+    const matches = [];
+    lower.replace(/\b(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g, (_, token) => {
+        const numeric = /^\d+$/.test(token) ? Number(token) : words[token];
+        if (Number.isFinite(numeric) && numeric > 0) matches.push(numeric);
+        return _;
+    });
+    return [...new Set(matches)];
+}
+
+function getMultiIndexDeleteVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (!/\b(delete|remove|erase|trash|clear)\b/.test(lower)) return null;
+    if (!/\b(?:numbers?|tags?|photos?|fotos?|pictures?|shots?|snapshots?|songs?|tracks?|music|videos?|creations?)\b/.test(lower)) return null;
+    const indexes = extractVoiceNumberList(lower);
+    if (indexes.length < 2) return null;
+    return indexes;
+}
+
+/** Voice command parser for media gallery controls. */
+function getMediaGalleryVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (resolveYouTubeLibraryViewFromVoice(lower)) return null;
+    const inPhotosContext = state.isMediaStripOpen && normalizeMediaLane(state.mediaStripLane) === 'shots';
+    const photoWordsRe = /\b(?:photos?|fotos?|pictures?|shots?|snapshots?|images?)\b/;
+    const ordinalWordsRe = /^(?:latest|last|newest|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)$/;
+    const namedPhotoOpenMatch = lower.match(/^(?:open|show|view)\s+(.+)$/);
+    if (namedPhotoOpenMatch && (photoWordsRe.test(lower) || inPhotosContext)) {
+        const query = normalizePhotoVoiceLabel(
+            namedPhotoOpenMatch[1]
+                .replace(/\b(?:the|my|saved)\b/g, ' ')
+                .replace(/\b(?:photo|photos|foto|fotos|picture|pictures|shot|shots|snapshot|snapshots|image|images|item|items)\b/g, ' ')
+                .replace(/\b(?:inside|from|in)\s+(?:photos?|fotos?)\b/g, ' ')
+                .replace(/^(?:called|named|titled)\s+/, ' ')
+        );
+        if (query && !/^\d{1,3}$/.test(query) && !ordinalWordsRe.test(query)) {
+            const match = findPhotoMatchByQuery(query);
+            if (match?.id) {
+                return {
+                    action: 'openMatch',
+                    id: match.id,
+                    title: normalizePhotoTitle(match.title || '', match)
+                };
+            }
+        }
+    }
+    const namedPhotoDeleteMatch = lower.match(/^(?:delete|remove|erase|trash|clear)\s+(.+)$/);
+    if (namedPhotoDeleteMatch && (photoWordsRe.test(lower) || inPhotosContext)) {
+        const query = normalizePhotoVoiceLabel(
+            namedPhotoDeleteMatch[1]
+                .replace(/\b(?:the|my|saved)\b/g, ' ')
+                .replace(/\b(?:photo|photos|foto|fotos|picture|pictures|shot|shots|snapshot|snapshots|image|images|item|items)\b/g, ' ')
+                .replace(/\b(?:inside|from|in)\s+(?:photos?|fotos?)\b/g, ' ')
+                .replace(/^(?:called|named|titled)\s+/, ' ')
+        );
+        if (query && !/^\d{1,3}$/.test(query) && !ordinalWordsRe.test(query)) {
+            const match = findPhotoMatchByQuery(query);
+            if (match?.id) {
+                return {
+                    action: 'deleteMatch',
+                    id: match.id,
+                    title: normalizePhotoTitle(match.title || '', match)
+                };
+            }
+        }
+    }
+    // User preference: avoid the standalone word "gallery" (it collides/confuses with other “galleries”).
+    // Keep "media" as the primary noun; still accept "media gallery" but not bare "gallery".
+    const mediaWordRe = /\b(media\s+gallery|media|photos?|fotos?|pictures?|snapshots?|shots?)\b/;
+    const recordingsWordRe = /\b(recordings?|video\s+clips?|clips?)\b/;
+    const politePrefixRe = /^(?:hey\s+blip\s+)?(?:(?:please|can|could|would|will)\s+you\s+)?(?:please\s+)?/;
+    const openVerbStartRe = new RegExp(`${politePrefixRe.source}(open|show|display|launch|view|browse|go\\s+to|bring\\s+up|pull\\s+up|take\\s+me\\s+to)\\b`);
+    const closeVerbStartRe = new RegExp(`${politePrefixRe.source}(close|hide|exit|dismiss)\\b`);
+    const deleteVerbAnyRe = /\b(delete|remove|erase|trash|clear)\b/;
+    const mediaDeleteNouns = '(media|item|file|photo|foto|picture|image|snapshot|shot|video|clip|recording|song|track|music)';
+    const expandRe = /\b(expand|enlarge|zoom|maximize|open)\s+(it|this|photo|picture|image|snapshot|(?:the\s+)?last\s+(photo|picture|image|snapshot|shot))\b/;
+    const expandLastImageRe = /\b(expand|enlarge|zoom|maximize|open)\s+(?:the\s+)?(?:last|latest)\s+(photo|picture|image|snapshot|shot)\b/;
+    const makeLastImageBigRe = /\b(?:make|show|open|view)\s+(?:me\s+)?(?:the\s+)?(?:last|latest)\s+(photo|picture|image|snapshot|shot)\s+(big|bigger|large|larger)\b/;
+    const openLastRe = /\b(open|show|view)\s+(?:me\s+)?(?:the\s+)?(?:last|latest)\s+(photo|picture|image|snapshot|shot)\b/;
+    const openVideoRe = /\b(open|show|view|play)\s+(?:me\s+)?(?:the\s+)?(?:last|latest|my)\s+(video|clip)\b/;
+    const makeLastVideoBigRe = /\b(?:make|show|open|view|play)\s+(?:me\s+)?(?:the\s+)?(?:last|latest|my)\s+(video|clip)\s+(big|bigger|large|larger)\b/;
+    const rotateRightRe = /\b(?:correct|fix|rotate|turn)\s+(?:the\s+)?(?:last|latest|current)?\s*(photo|picture|image|snapshot|shot)\s*(?:to\s+the\s+)?(?:right|clockwise)?\b|^(?:rotate|turn)(?:\s+(?:it|this))?(?:\s+(?:right|clockwise))?$|^(?:correct|fix)(?:\s+(?:it|this))?$/;
+    const rotateLeftRe = /\b(?:rotate|turn)\s+(?:the\s+)?(?:last|latest|current)?\s*(photo|picture|image|snapshot|shot)\s*(?:to\s+the\s+)?left\b|\brotate\s+left\b|^(?:rotate|turn)(?:\s+(?:it|this))?\s+left$/;
+    const rotateAgainRe = /\b(?:rotate|turn)\s+(?:it\s+)?again\b|\bone\s+more\s+rotation\b|\brotate\s+(?:it\s+)?one\s+more\s+time\b|\bturn\s+(?:it\s+)?one\s+more\s+time\b/;
+    const brightenAgainRe = /\b(?:brighten|brightness)\s+(?:it\s+)?again\b|\bone\s+more\s+brightness\b|\bmake\s+(?:it\s+)?brighter\s+again\b/;
+    const brightenRe = /\b(?:brighten|brightness\s+up|more\s+brightness|lighter|make\s+(?:it|the\s+photo|the\s+picture|the\s+image)\s+brighter)\b|^(?:brighten|brighter|lighter|brightness)$/;
+    const darkenRe = /\b(?:darken|less\s+brightness|lower\s+brightness|dimmer|make\s+(?:it|the\s+photo|the\s+picture|the\s+image)\s+darker)\b|^(?:darken|darker|dimmer)$/;
+    const undoEditsRe = /\b(?:undo|revert)\s+(?:the\s+)?(?:last\s+)?(?:edit|edits|change|changes)\b|^(?:undo|revert)(?:\s+it)?$/;
+    const resetPhotoRe = /\b(?:reset|restore)\s+(?:the\s+)?(?:photo|picture|image|snapshot|shot)(?:\s+edits)?\b|\bgo\s+back\s+to\s+(?:the\s+)?original\b|\boriginal\s+photo\b/;
+    const cropRe = /\b(?:crop|trim)\s+(?:the\s+)?(?:photo|picture|image|snapshot|shot|it)\b/;
+    const sharePhotoRe = /^(?:please\s+)?(?:share|send|copy)\s+(?:this|the|current|open)?\s*(?:photo|foto|picture|image|snapshot|shot|it)?(?:\s+please)?$/;
+    const downloadPhotoRe = /^(?:please\s+)?(?:download|export)\s+(?:this|the|current|open)?\s*(?:photo|foto|picture|image|snapshot|shot|it)?(?:\s+please)?$/;
+    const wallpaperPhotoRe = /^(?:please\s+)?(?:set|make|use)\s+(?:this|the|current|open)?\s*(?:photo|foto|picture|image|snapshot|shot|it)\s+(?:as\s+)?(?:my\s+)?wallpaper(?:\s+please)?$/;
+    const openLatestMediaRe = /\b(open|show|view)\s+(?:me\s+)?(?:the\s+)?(?:last|latest)\s+(media|item|file)\b/;
+    const openRecordingRe = /\b(open|show|view|play)\s+(?:me\s+)?(?:the\s+)?(?:last|latest)\s+(recording|recorded\s+video|video\s+recording)\b/;
+    const openIndexDigitRe = /\b(open|show|view|expand|zoom)\s+(?:me\s+)?(?:the\s+)?(?:shot|photo|foto|picture|image|snapshot)?\s*(?:number|#)\s*(\d{1,3})\b|\b(open|show|view|expand|zoom)\s+(?:me\s+)?(?:the\s+)?(?:shot|photo|foto|picture|image|snapshot)\s+(\d{1,3})\b/;
+    const openIndexWordRe = /\b(open|show|view|expand|zoom)\s+(?:me\s+)?(?:the\s+)?(?:shot|photo|foto|picture|image|snapshot)?\s*(?:number\s+)?(one|two|to|too|three|four|for|five|six|seven|eight|nine|ten|eleven|twelve)\b/;
+    const deleteIndexDigitRe = new RegExp(`\\b(delete|remove|erase|trash|clear)\\s+(?:me\\s+)?(?:the\\s+)?${mediaDeleteNouns}\\s*(?:number|#)?\\s*(\\d{1,3})\\b`);
+    const deleteIndexWordRe = new RegExp(`\\b(delete|remove|erase|trash|clear)\\s+(?:me\\s+)?(?:the\\s+)?${mediaDeleteNouns}\\s*(?:number\\s+)?(one|two|to|too|three|four|for|five|six|seven|eight|nine|ten|eleven|twelve)\\b`);
+    const deleteLatestRe = new RegExp(`\\b(delete|remove|erase|trash)\\s+(?:the\\s+)?(?:last|latest)\\s+${mediaDeleteNouns}\\b`);
+    const deleteCurrentRe = new RegExp(`\\b(delete|remove|erase|trash|clear)\\s+(?:the\\s+)?(?:(?:current|this|that)(?:\\s+one|\\s+item)?(?:\\s+${mediaDeleteNouns})?|(?:current|this|that)\\s+${mediaDeleteNouns})\\b`);
+    const clearMediaRe = /\b(delete|remove|erase|trash|clear)\b[\s\w]{0,16}\b(?:all|every|entire|whole)\s+(media|gallery|photos?|fotos?|pictures?|snapshots?|shots?|videos?|clips?)\b/;
+    const showThemRe = /\b(show|open|view)\s+(them|those|pictures?|photos?|fotos?|snapshots?|shots)\b/;
+    const showCollectionRe = /\b(show|open|view|display)\b(?:\s+me)?(?:\s+the)?(?:\s+(all|any|my|these|those|last))?(?:\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))?\s+(photos?|fotos?|pictures?|snapshots?|shots?|gallery)\b/;
+    const showRecordingsCollectionRe = /\b(show|open|view|display)\b(?:\s+me)?(?:\s+the)?(?:\s+(all|any|my|these|those|last|latest))?\s+(recordings?|video\s+clips?|clips?)\b/;
+
+    const wordToNum = {
+        one: 1, two: 2, to: 2, too: 2, three: 3, four: 4, for: 4, five: 5, six: 6,
+        seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12
+    };
+    const openIndexDigitMatch = lower.match(openIndexDigitRe);
+    if (openIndexDigitMatch) {
+        const n = Number(openIndexDigitMatch[2] || openIndexDigitMatch[4]);
+        if (Number.isFinite(n) && n > 0) return { action: 'openIndex', index: n };
+    }
+    const openIndexWordMatch = lower.match(openIndexWordRe);
+    if (openIndexWordMatch) {
+        const n = wordToNum[openIndexWordMatch[2]];
+        if (Number.isFinite(n) && n > 0) return { action: 'openIndex', index: n };
+    }
+    const deleteIndexDigitMatch = lower.match(deleteIndexDigitRe);
+    if (deleteIndexDigitMatch) {
+        const n = Number(deleteIndexDigitMatch[2]);
+        if (Number.isFinite(n) && n > 0) return { action: 'deleteIndex', index: n };
+    }
+    const deleteIndexWordMatch = lower.match(deleteIndexWordRe);
+    if (deleteIndexWordMatch) {
+        const n = wordToNum[deleteIndexWordMatch[2]];
+        if (Number.isFinite(n) && n > 0) return { action: 'deleteIndex', index: n };
+    }
+    if (expandLastImageRe.test(lower) || makeLastImageBigRe.test(lower) || openLastRe.test(lower)) return { action: 'openLatestImage' };
+    if (expandRe.test(lower)) return 'expandLatest';
+    if (showRecordingsCollectionRe.test(lower)) return { action: 'openRecordings' };
+    if (openLatestMediaRe.test(lower)) return { action: 'openLatestMedia' };
+    if (makeLastVideoBigRe.test(lower)) return { action: 'openLatestVideo' };
+    if (openRecordingRe.test(lower)) return { action: 'openLatestVideo' };
+    if (openVideoRe.test(lower)) return { action: 'openLatestVideo' };
+    if (rotateLeftRe.test(lower)) return { action: 'rotateCurrentImage', delta: -90 };
+    if (rotateAgainRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
+    if (rotateRightRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
+    if (brightenAgainRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
+    if (brightenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
+    if (darkenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: -0.35 };
+    if (undoEditsRe.test(lower)) return { action: 'undoCurrentImageEdits' };
+    if (resetPhotoRe.test(lower)) return { action: 'resetCurrentImageEdits' };
+    if (cropRe.test(lower)) return { action: 'cropCurrentImageUnsupported' };
+    if (sharePhotoRe.test(lower)) return { action: 'shareCurrentImage' };
+    if (downloadPhotoRe.test(lower)) return { action: 'downloadCurrentImage' };
+    if (wallpaperPhotoRe.test(lower)) return { action: 'wallpaperCurrentImage' };
+    if (deleteLatestRe.test(lower)) return 'deleteLatest';
+    if (deleteCurrentRe.test(lower)) return 'deleteCurrent';
+    if (clearMediaRe.test(lower) && deleteVerbAnyRe.test(lower)) return 'clear';
+    if (showThemRe.test(lower)) return 'open';
+    if (showCollectionRe.test(lower)) return 'open';
+
+    // If the gallery/lightbox is already open, bare nouns like "media" / "gallery" / "photos"
+    // are treated as a close intent (STT often drops the verb).
+    if ((state.isMediaStripOpen || mediaLightbox?.classList.contains?.('active')) &&
+        /^(?:media(?:\s+gallery)?|photos?|fotos?|pictures?|shots?|snapshots?)$/.test(lower)) {
+        return 'close';
+    }
+    if (openVerbStartRe.test(lower) && recordingsWordRe.test(lower)) return { action: 'openRecordings' };
+
+    if ((openVerbStartRe.test(lower) && mediaWordRe.test(lower)) ||
+        /^(?:hey\s+blip\s+)?(?:(?:please|can|could|would|will)\s+you\s+)?(?:let\s+me\s+see|show\s+me)\s+(?:the\s+)?(media\s+gallery|gallery|media|photos?|fotos?|pictures?|snapshots?|shots?)$/.test(lower) ||
+        /^(?:hey\s+blip\s+)?(?:(?:please|can|could|would|will)\s+you\s+)?(?:open|show|display|browse|pull\s+up)\s+(?:the\s+)?media\s+gallery$/.test(lower) ||
+        /^(?:hey\s+blip\s+)?(?:(?:please|can|could|would|will)\s+you\s+)?open\s+my\s+(media|gallery|photos?|fotos?|pictures?|snapshots?|shots?)$/.test(lower) ||
+        /^(?:hey\s+blip\s+)?(?:(?:please|can|could|would|will)\s+you\s+)?show\s+me\s+my\s+(media|gallery|photos?|fotos?|pictures?|snapshots?|shots?)$/.test(lower) ||
+        // No bare "open gallery" matcher (media is the canonical term).
+        /^show\s+my\s+(photos?|fotos?|pictures?|snapshots?)$/.test(lower)) return 'open';
+    // Close the current lightbox item (singular). If user says plural ("photos", "pictures", "shots"),
+    // they almost always mean the gallery/strip, not the single lightbox.
+    const wantsCloseVerb = closeVerbStartRe.test(lower) || /\b(close|hide|exit|dismiss)\b/.test(lower);
+    const mentionsGallery = /\b(?:gallery|media)\b/.test(lower);
+    const mentionsPluralCollection = /\b(?:photos|fotos|pictures|shots|snapshots)\b/.test(lower);
+    const mentionsSingularItem = /\b(?:photo|foto|picture|image|shot|snapshot)\b/.test(lower);
+    if (wantsCloseVerb && mentionsSingularItem && !mentionsGallery && !mentionsPluralCollection) return { action: 'mediaCloseImage' };
+
+    if ((wantsCloseVerb && (mediaWordRe.test(lower) || recordingsWordRe.test(lower) || mentionsPluralCollection || mentionsGallery)) ||
+        /^close\s+media$/.test(lower) ||
+        /^close\s+(?:photos?|fotos?)$/.test(lower) ||
+        /^hide\s+media$/.test(lower)) return 'close';
+    return null;
+}
+
+/** Voice command parser for panel navigation across media/video/graph/map. */
+function getPanelNavigationVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    // Let dedicated quick-open handlers own indexed item commands like "open photo 1".
+    if (/\b(?:open|show|view|play)\s+(?:the\s+)?(?:photo|foto|picture|shot|snapshot)\s+(?:number\s+|#\s*)?(?:\d{1,3}|one|two|to|too|three|four|for|five|six|seven|eight|nine|ten|eleven|twelve)\b/.test(lower)) {
+        return null;
+    }
+    // Never treat "open/show creation(s)" as calendar — creations panel wins.
+    if (/\b(?:open|show|view)\b[\s\w]{0,24}\bcreations?\b/.test(lower)) return null;
+    // In gallery/lightbox, bare "next" / "previous" / "change" advance without needing to say "item" or "picture".
+    if (state.isMediaStripOpen || (mediaLightbox?.classList.contains?.('active'))) {
+        if (/^(?:next|forward)(?:\s+one)?\s*$/.test(lower)) return 'mediaNext';
+        if (/^(?:previous|prev|back)(?:\s+one)?\s*$/.test(lower)) return 'mediaPrev';
+        if (/\bchange\s+(?:to\s+)?(?:next|the\s+next\s+one)\b/.test(lower) || /^change\s+(?:photo|picture|image|video|clip)\s*$/.test(lower)) return 'mediaNext';
+        if (/\bchange\s+(?:to\s+)?(?:previous|prev|the\s+previous\s+one)\b/.test(lower)) return 'mediaPrev';
+    }
+    const closeLikeVerb = '(?:close|hide|exit|dismiss|clear|remove|delete)';
+    const mediaNouns = '(picture|photo|image|shot|snapshot|design|drawing|creation|graph|chart|item|one)s?';
+    const mediaExpandImageRe = /\b(make|show|open|view|expand|enlarge|zoom|maximize|blow\s+up)\s+(?:me\s+)?(?:the\s+)?(?:it|this|this\s+one|that|picture|photo|image|shot|snapshot)\s*(?:big|bigger|large|larger|full(?:\s+screen)?)?\b|\b(?:big|bigger|large|larger|full(?:\s+screen)?)\s+(?:picture|photo|image|shot|snapshot)\b|\bmake\s+(?:the\s+)?(?:picture|photo|image|shot|snapshot|it)\s+full(?:\s+screen)?\b/;
+    const creationExpandImageRe = /\b(make|show|open|view|expand|enlarge|zoom|maximize)\s+(?:me\s+)?(?:the\s+)?(?:it|this|this\s+one|that|creation|design|drawing|art)\s*(?:big|bigger|large|larger)?\b|\b(?:big|bigger|large|larger)\s+(?:creation|design|drawing|art)\b/;
+    const mediaExpandVideoRe = /\b(make|show|open|view|expand|enlarge|zoom|maximize)\s+(?:me\s+)?(?:the\s+)?(?:it|this|this\s+one|that|video|clip|recording)\s*(?:big|bigger|large|larger)?\b|\b(?:big|bigger|large|larger)\s+(?:video|clip|recording)\b/;
+
+    if (new RegExp(`\\b(next|forward)\\s+${mediaNouns}\\b`).test(lower)) return 'mediaNext';
+    if (new RegExp(`\\b(previous|prev|back|last)\\s+${mediaNouns}\\b`).test(lower)) return 'mediaPrev';
+    if (canOpenCurrentCreationFromPanel() && creationExpandImageRe.test(lower)) return 'mediaOpenCurrentImage';
+    if ((mediaLightbox?.classList.contains('active') || state.isMediaStripOpen) && mediaExpandVideoRe.test(lower)) return 'mediaOpenCurrentVideo';
+    if ((mediaLightbox?.classList.contains('active') || state.isMediaStripOpen) && mediaExpandImageRe.test(lower)) return 'mediaOpenCurrentImage';
+    if (new RegExp(`\\b${closeLikeVerb}\\s+(the\\s+)?${mediaNouns}\\b`).test(lower)) return 'mediaCloseImage';
+    if ((mediaLightbox?.classList.contains('active') || state.isMediaStripOpen) &&
+        new RegExp(`\\b${closeLikeVerb}\\s+(the\\s+)?(it|this\\s+one)\\b`).test(lower)) return 'mediaCloseImage';
+    if (/\b(back|return)\s+(to\s+)?(gallery|media)\b/.test(lower)) return 'mediaBack';
+
+    if (/^(?:please\s+)?(open|show|view|resume)\s+(the\s+)?(video|youtube)(?:\s+please)?\s*$/.test(lower)) return 'openVideo';
+    if (/^(?:please\s+)?(close|hide|exit|dismiss|clear|remove|delete)\s+(the\s+)?(video|youtube)(?:\s+please)?\s*$/.test(lower)) return 'closeVideo';
+    if (/^(?:please\s+)?(open|show|view)\s+(the\s+)?(graph|chart|design)(?:\s+please)?\s*$/.test(lower)) return 'openChart';
+    if (/^(?:please\s+)?(close|hide|exit|dismiss|clear|remove|delete)\s+(the\s+)?(graph|chart|design)(?:\s+please)?\s*$/.test(lower)) return 'closeChart';
+    if (/^(?:please\s+)?(open|show|view)\s+(the\s+)?map(?:\s+please)?\s*$/.test(lower)) return 'openMap';
+    if (/^(?:please\s+)?(close|hide|exit|dismiss|clear|remove|delete)\s+(the\s+)?map(?:\s+please)?\s*$/.test(lower)) return 'closeMap';
+    if (/^(?:please\s+)?(open|show|view)\s+(?:(?:the|my)\s+)?(calendar|schedule|agenda|events?)(?:\s+please)?\s*$/.test(lower) ||
+        /\b(?:open|show|view)\b[\s\w]{0,24}\b(?:calendar|schedule|agenda|events?)\b/.test(lower)) return 'openCalendar';
+    if (/^(?:please\s+)?(close|hide|exit|dismiss|clear|remove|delete)\s+(?:(?:the|my)\s+)?(calendar|schedule|agenda)(?:\s+please)?\s*$/.test(lower)) return 'closeCalendar';
+    if (/\b(close|hide|exit|dismiss|clear|remove|delete)\s+(the\s+)?(panel|window|display)\b/.test(lower)) return 'closePanel';
+
+    // Fallback: short close intents like "close", "close it", "dismiss this"
+    // should close the currently visible surface (lightbox → gallery → chart/map → panels).
+    const anythingClosable = !!(
+        mediaLightbox?.classList.contains?.('active') ||
+        state.isMediaStripOpen ||
+        state.currentMode !== 'core' ||
+        isSettingsPanelOpen?.() ||
+        isSidePanelVisible?.() ||
+        state.pendingImage
+    );
+    if (anythingClosable && /^(?:please\s+)?(?:close|hide|exit|dismiss)(?:\s+(?:it|this|that))?\s*$/.test(lower)) return 'closePanel';
+
+    return null;
+}
+
+/** True if the user is giving a YouTube panel control command (mute, close, pause, etc.). */
+function getYouTubeVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (/\bcalendar\b/.test(lower)) return null;
     // Saved shots / camera roll — keep on media gallery path, not YouTube saved lists.
     if (/\b(?:photos?|fotos?|pictures?|shots?|snapshots?)\b/.test(lower) && !/\b(?:youtube|yt)\b/.test(lower)) {
         return null;
@@ -11485,6 +16829,1054 @@ function getSystemVoiceCommand(cmd) {
 
 function getYouTubeLibraryBrowseVoiceCommand(cmd) {
     if (!cmd || typeof cmd !== 'string' || !isYouTubeLibraryVoiceContextOpen()) return null;
+    if (isCalendarPanelActuallyVisible()) return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (isYouTubeLibraryOnlyPanelOpen()) {
+        if (/^(?:please\s+)?(?:next|next\s+one|next\s+video|go\s+next|move\s+down)(?:\s+please)?$/.test(lower)) return 'next';
+        if (/^(?:please\s+)?(?:previous|prev|back|last|previous\s+one|go\s+back|move\s+up)(?:\s+please)?$/.test(lower)) return 'previous';
+    }
+    if (/^(?:please\s+)?(?:scroll|move|go|browse)\s+down(?:\s+please)?$/.test(lower) ||
+        /^(?:please\s+)?(?:scroll|browse)\s+(?:the\s+)?(?:youtube\s+)?(?:list|library)\s+down(?:\s+please)?$/.test(lower)) return 'next';
+    if (/^(?:please\s+)?(?:scroll|move|go|browse)\s+up(?:\s+please)?$/.test(lower) ||
+        /^(?:please\s+)?(?:scroll|browse)\s+(?:the\s+)?(?:youtube\s+)?(?:list|library)\s+up(?:\s+please)?$/.test(lower)) return 'previous';
+    return null;
+}
+
+function getYouTubeLibraryDeleteVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string' || !isYouTubeLibraryVoiceContextOpen()) return null;
+    return extractYouTubeLibraryDeleteTargetFromVoice(cmd);
+}
+
+/** Blip speech volume voice command: 'volume down' (25% down) or 'volume up' (5% up). */
+function getVolumeVoiceCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    if (/\b(volume\s+down|vol\.?\s*down|turn\s+down\s+(the\s+)?volume|quieter|lower\s+(the\s+)?volume)\b/.test(lower)) return 'down';
+    if (/\b(volume\s+up|vol\.?\s*up|turn\s+up\s+(the\s+)?volume|louder|higher\s+(the\s+)?volume)\b/.test(lower)) return 'up';
+    if (/\b(download|down\s*load|decrease|reduce)\s+(the\s+)?volume\b/.test(lower)) return 'down';
+    if (/\b(upload|up\s*load|increase|raise)\s+(the\s+)?volume\b/.test(lower)) return 'up';
+    if (/^volumedown\s*$/.test(lower) || /^vol\s*down\s*$/i.test(lower)) return 'down';
+    if (/^volumeup\s*$/.test(lower) || /^vol\s*up\s*$/i.test(lower)) return 'up';
+    // Natural short forms users say while watching a video.
+    if (/^(please\s+)?(lower|lower it|turn it down|quieter|softer)(\s+please)?$/.test(lower)) return 'down';
+    if (/^(please\s+)?(louder|higher|raise it|turn it up)(\s+please)?$/.test(lower)) return 'up';
+    return null;
+}
+
+/** Call callback when YouTube IFrame API is ready. Uses script already loaded from index.html. */
+function ensureYouTubeAPI(callback) {
+    if (typeof window.YT !== 'undefined' && window.YT.Player) {
+        callback();
+        return;
+    }
+    window.blipYtReadyCallbacks = window.blipYtReadyCallbacks || [];
+    window.blipYtReadyCallbacks.push(callback);
+    if (typeof window.onYouTubeIframeAPIReady !== 'function') {
+        window.onYouTubeIframeAPIReady = function () {
+            const callbacks = Array.isArray(window.blipYtReadyCallbacks) ? [...window.blipYtReadyCallbacks] : [];
+            window.blipYtReadyCallbacks = [];
+            callbacks.forEach((cb) => {
+                try { cb(); } catch (error) { console.warn('YouTube ready callback failed:', error?.message || error); }
+            });
+        };
+    }
+}
+
+function renderYouTubeIframeFallback(videoId) {
+    const fallback = document.getElementById('blip-yt-player');
+    if (!fallback || !videoId) return;
+    const wantsSoundOn = state.pendingYouTubeAction === 'unmute' || state.pendingYouTubeAction === 'play';
+    fallback.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=${wantsSoundOn ? '0' : '1'}&playsinline=1&rel=0" width="100%" height="200" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="border:none;border-radius:12px;"></iframe>`;
+    if (wantsSoundOn) state.pendingYouTubeAction = null;
+}
+
+function mountYouTubePlayer(videoId) {
+    if (!videoId) return;
+    ensureYouTubeAPI(() => {
+        const mountNode = document.getElementById('blip-yt-player');
+        if (!mountNode) return;
+        try {
+            blipYtPlayer = new window.YT.Player('blip-yt-player', {
+                videoId,
+                playerVars: {
+                    autoplay: 1,
+                    mute: 1,
+                    playsinline: 1,
+                    enablejsapi: 1,
+                    rel: 0,
+                    modestbranding: 1,
+                    origin: window.location.origin
+                },
+                events: {
+                    onReady: (e) => {
+                        try { e.target.playVideo(); } catch (_) {}
+                        if (state.pendingYouTubeAction) {
+                            const pending = state.pendingYouTubeAction;
+                            state.pendingYouTubeAction = null;
+                            setTimeout(() => {
+                                runYouTubeAction(pending);
+                            }, 140);
+                        }
+                    },
+                    onError: (event) => {
+                        console.warn('YouTube player error:', event?.data);
+                        renderYouTubeIframeFallback(videoId);
+                    }
+                }
+            });
+        } catch (error) {
+            console.warn('YT.Player failed, using fallback iframe:', error?.message || error);
+            renderYouTubeIframeFallback(videoId);
+        }
+    });
+}
+
+// Mount a controllable YouTube player without a Data API key by using the
+// IFrame API "search playlist" mode. This enables voice commands like unmute/mute/pause/play.
+function mountYouTubeSearchPlayer(query = '') {
+    const q = String(query || '').trim();
+    if (!q) return;
+    ensureYouTubeAPI(() => {
+        const mountNode = document.getElementById('blip-yt-player');
+        if (!mountNode) return;
+        try {
+            blipYtPlayer = new window.YT.Player('blip-yt-player', {
+                playerVars: {
+                    listType: 'search',
+                    list: q,
+                    autoplay: 1,
+                    mute: 1,
+                    playsinline: 1,
+                    enablejsapi: 1,
+                    rel: 0,
+                    modestbranding: 1,
+                    origin: window.location.origin
+                },
+                events: {
+                    onReady: (e) => {
+                        try { e.target.playVideo(); } catch (_) {}
+                        if (state.pendingYouTubeAction) {
+                            const pending = state.pendingYouTubeAction;
+                            state.pendingYouTubeAction = null;
+                            setTimeout(() => {
+                                runYouTubeAction(pending);
+                            }, 140);
+                        }
+                    },
+                    onError: (event) => {
+                        console.warn('YouTube player error:', event?.data);
+                        // Fall back to a plain iframe search embed (still playable, but no JS control).
+                        const fallback = document.getElementById('blip-yt-player');
+                        if (!fallback) return;
+                        const wantsSoundOn = state.pendingYouTubeAction === 'unmute' || state.pendingYouTubeAction === 'play';
+                        const src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(q)}&autoplay=1&mute=${wantsSoundOn ? '0' : '1'}&playsinline=1&rel=0`;
+                        fallback.innerHTML = `<iframe src="${src}" width="100%" height="200" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="border:none;border-radius:12px;"></iframe>`;
+                        if (wantsSoundOn) state.pendingYouTubeAction = null;
+                    }
+                }
+            });
+        } catch (error) {
+            console.warn('YT.Player search mode failed:', error?.message || error);
+            const fallback = document.getElementById('blip-yt-player');
+            if (!fallback) return;
+            const wantsSoundOn = state.pendingYouTubeAction === 'unmute' || state.pendingYouTubeAction === 'play';
+            const src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(q)}&autoplay=1&mute=${wantsSoundOn ? '0' : '1'}&playsinline=1&rel=0`;
+            fallback.innerHTML = `<iframe src="${src}" width="100%" height="200" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="border:none;border-radius:12px;"></iframe>`;
+            if (wantsSoundOn) state.pendingYouTubeAction = null;
+        }
+    });
+}
+
+/** True when the user is asking to see the last video again (e.g. "show me the video", "play the video"). */
+function wantsToSeeLastVideo(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = normalizeVoiceTokens(cmd);
+    return /\b(show|play|open)\s+(me\s+)?(the\s+)?video\b/.test(lower) ||
+        /\b(show|play)\s+it\s+again\b/.test(lower) ||
+        /\b(show|play)\s+(the\s+)?video\s+again\b/.test(lower) ||
+        /\bwhere'?s?\s+(the\s+)?video\b/.test(lower) ||
+        /\bopen\s+(the\s+)?video\b/.test(lower);
+}
+
+/** True when the user is asking to see the graph again (e.g. "I don't see the graph", "show it again"). */
+function wantsToSeeLastGraph(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = normalizeVoiceTokens(cmd);
+    return /\b(don't|do not|can't|cannot)\s+see\s+(the\s+)?graph\b/.test(lower) ||
+        /\b(show|send)\s+(me\s+)?(the\s+)?graph\s+again\b/.test(lower) ||
+        /\b(show|send)\s+it\s+again\b/.test(lower) ||
+        /\bwhere'?s?\s+(the\s+)?graph\b/.test(lower) ||
+        /\bwhere\s+is\s+(the\s+)?graph\b/.test(lower) ||
+        /\b(graph|it)\s+didn't\s+show\b/.test(lower) ||
+        /\b(graph|it)\s+did\s+not\s+show\b/.test(lower) ||
+        /\b(graph\s+is\s+)?(missing|not\s+there)\b/.test(lower);
+}
+
+/** True when user asks to re-open media because they can't see it. */
+function wantsToSeeMediaAgain(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = normalizeVoiceTokens(cmd);
+    if (/\b(video|youtube|graph|chart|map|calendar)\b/.test(lower)) return false;
+    return /\b(where\b.*\b(open|show|put)\b.*\b(it|them|those)\b)/.test(lower) ||
+        /\b(can't|cannot|don't|do not)\s+see\s+(the\s+)?gallery\b/.test(lower) ||
+        /\b(can't|cannot|don't|do not)\s+see\s+(it|them|those|pictures?|photos?|snapshots?|shots?)\b/.test(lower) ||
+        /\b(show|open)\s+(it|them|those)\b/.test(lower) ||
+        /\bshow\s+(me\s+)?(any|some)\s+(photo|picture|snapshot|shot)s?\b/.test(lower) ||
+        /^show\s+(me\s+)?(the\s+)?(pictures?|photos?|snapshots?|shots?|gallery)\b/.test(lower) ||
+        /\bshow\s+them\s+to\s+me\b/.test(lower) ||
+        /\bshow\s+me\s+.*\b(display|screen)\b/.test(lower);
+}
+
+/** Build a short "memory" block from lastContext + recent history for better continuity. */
+function getContextBlock() {
+    const c = state.lastContext;
+    const parts = [];
+    if (c.lastUserQuery) parts.push(`Last user question: "${c.lastUserQuery}"`);
+    if (c.lastChartTitle) parts.push(`Last chart shown: ${c.lastChartTitle}`);
+    if (c.lastLocation) parts.push(`Last location/map: ${c.lastLocation}`);
+    if (c.lastSearchTopic) parts.push(`Last search topic: ${c.lastSearchTopic}`);
+    if (state.history.length > 0) {
+        const recent = state.history.slice(-3).map(h => `User: ${h.user.slice(0, 60)}${h.user.length > 60 ? '…' : ''} → Blip replied.`).join(' | ');
+        parts.push(`Recent turns: ${recent}`);
+    }
+    if (parts.length === 0) return '';
+    return `[Context from this session — use it when the user says "that", "another graph", "there", "same place", etc.]\n${parts.join('\n')}\n\n`;
+}
+
+function extractJSON(text) {
+    if (!text) return null;
+    try {
+        // Try direct parse first
+        return JSON.parse(text);
+    } catch (e) {
+        // Find first { and last }
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+            const jsonStr = text.substring(start, end + 1);
+            try {
+                return JSON.parse(jsonStr);
+            } catch (e2) {
+                console.warn("Regex JSON parse failed:", e2.message);
+                return null;
+            }
+        }
+    }
+    return null;
+}
+
+function toCompactReply(text, maxWords = BLIP_REPLY_MAX_WORDS) {
+    if (!text || typeof text !== 'string') return '';
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    if (!normalized) return '';
+    let first = normalized.split(/(?<=[.!?])\s+/)[0]?.trim() || normalized;
+    const words = first.split(' ').filter(Boolean);
+    if (words.length > maxWords) first = words.slice(0, maxWords).join(' ');
+    if (!/[.!?]$/.test(first)) first += '.';
+    return first;
+}
+
+function toSpokenReply(text, maxWords = 22) {
+    if (!text || typeof text !== 'string') return '';
+    const cleaned = sanitizeBlipReplyText(String(text)
+        .replace(/https?:\/\/\S+/gi, '')
+        .replace(/\[[^\]]+\]\([^)]+\)/g, '')
+        .replace(/[*_`#>]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim());
+    if (!cleaned) return '';
+    let spoken = cleaned
+        .split(/(?<=[.!?])\s+/)
+        .slice(0, 2)
+        .join(' ')
+        .trim();
+    const words = spoken.split(' ').filter(Boolean);
+    if (words.length > maxWords) {
+        spoken = words.slice(0, maxWords).join(' ');
+    }
+    spoken = spoken.replace(/\s+,/g, ',').replace(/\s+\./g, '.').trim();
+    if (!/[.!?]$/.test(spoken)) spoken += '.';
+    return spoken;
+}
+
+function sanitizeBlipReplyText(text = '') {
+    return String(text || '')
+        .replace(/^(?:happy|curious|serious|sad|angry|confident|gentle|playful|sleepy|surprised)\s+(?=[A-Z]|okay\b|ok\b|alright\b|i\b|let\b)/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function speak(text, emotion = 'serious') {
+    if (state.isListening) stopListening();
+    setEmotion(emotion);
+    const cfg = {
+        happy: { pitch: 1.1, rate: 1.05 },
+        sad: { pitch: 0.85, rate: 0.9 },
+        angry: { pitch: 1, rate: 1.1 },
+        curious: { pitch: 1.05, rate: 1 },
+        surprised: { pitch: 1.1, rate: 1.05 },
+        serious: { pitch: 1, rate: 1 }
+    }[emotion] || { pitch: 1, rate: 1 };
+
+    if (state.voiceEngine === 'gemini') {
+        if (!state.geminiKey || !state.geminiKey.trim()) {
+            if (!isGitHub) {
+                console.warn('Gemini key missing for cloud voice, falling back to browser');
+                transcriptText.innerHTML += `<br><small style="color:#f59e0b">⚠️ Use the <strong>Gemini API Key</strong> (first field in Settings) for voice — not the YouTube key.</small>`;
+            }
+            return speech.speak(text, { ...cfg, onBoundary: animateMouth, volume: state.speechVolume });
+        }
+        try {
+            console.log('☁️ Using Gemini Cloud Voice (Kore)');
+            const voiceName = 'Kore';
+            const audioData = await generateSpeech(text, state.geminiKey, voiceName);
+            return speech.playBase64Audio(audioData, { onBoundary: animateMouth, volume: state.speechVolume });
+        } catch (e) {
+            console.warn('Gemini voice failed, falling back:', e.message);
+            if (isGeminiQuotaError(e)) {
+                switchAwayFromGeminiVoice('auto-quota');
+            }
+            const fallbackVoice = state.selectedVoice || speech.getPreferredVoice?.();
+            return speech.speak(text, { ...cfg, voice: fallbackVoice, onBoundary: animateMouth, volume: state.speechVolume });
+        }
+    }
+
+    const voice = state.selectedVoice || speech.getPreferredVoice?.();
+    return speech.speak(text, {
+        voice,
+        ...cfg,
+        onBoundary: (level) => animateMouth(level),
+        volume: state.speechVolume
+    });
+}
+
+async function speakWithGuard(text, emotion = 'serious') {
+    state.lastSpeechStartedAt = Date.now();
+    state.lastSpokenText = String(text || '').trim();
+    syncScenerySuppression();
+    try {
+        await speak(text, emotion);
+    } catch (e) {
+        console.warn('Speech guard fallback:', e.message);
+        speech.isSpeaking = false;
+        speech.stopSpeaking?.();
+        animateMouth(0);
+    } finally {
+        state.lastSpeechStartedAt = 0;
+        state.lastSpokenFinishedAt = Date.now();
+        syncScenerySuppression();
+    }
+}
+
+/**
+ * 🎨 Universal Persona System
+ * Updates emoji, label, color, and face in one call.
+ */
+function setPersona(key) {
+    const p = PERSONAS[key] || PERSONAS.idle;
+    state.currentPersona = key;
+    state.currentEmotion = p.emotion;
+
+    // Update UI Elements
+    const emojiEl = document.getElementById('persona-emoji');
+    const labelEl = document.getElementById('persona-label');
+
+    if (emojiEl) {
+        emojiEl.innerText = p.emoji;
+        emojiEl.style.filter = `drop-shadow(0 0 10px ${p.color})`;
+    }
+    if (labelEl) {
+        labelEl.innerText = p.label;
+        labelEl.style.color = p.color;
+    }
+    if (blipStage) {
+        blipStage.setAttribute('data-emotion', p.emotion || 'serious');
+    }
+    if (faceContainer) {
+        faceContainer.setAttribute('data-emotion', p.emotion || 'serious');
+    }
+
+    // Update Global Accent Color for CSS
+    document.documentElement.style.setProperty('--accent', p.color);
+    document.documentElement.style.setProperty('--face-glow', `${p.color}44`); // 44 is ~25% alpha
+
+    // Sync Face (ensure we never leave face with a missing/invisible state)
+    if (state.idleBehavior) {
+        face.classList.remove(state.idleBehavior);
+        state.idleBehavior = null;
+    }
+    setBlipEmotion(p.emotion || 'serious');
+    face.classList.add('blip-face');
+    if (state.idleBehavior) face.classList.add(state.idleBehavior);
+    face.style.visibility = 'visible';
+    face.style.opacity = '';
+    syncScenerySuppression();
+}
+
+/**
+ * Apply one of the 10 face-container animations, or clear it.
+ * @param {string|null} name - One of FACE_ANIMATIONS (e.g. 'face-anim-wiggle'), or null to clear.
+ */
+function setFaceAnimation(name) {
+    if (!faceContainer) return;
+    FACE_ANIMATIONS.forEach(c => faceContainer.classList.remove(c));
+    if (name && FACE_ANIMATIONS.includes(name)) faceContainer.classList.add(name);
+}
+
+function getReplyPersonaKey(emotion = 'happy') {
+    if (emotion === 'sleepy') return 'sleepy';
+    return Object.prototype.hasOwnProperty.call(PERSONAS, emotion) ? emotion : 'happy';
+}
+
+function resumeListeningAfterEmotionShowcase(delay = 0) {
+    if (emotionShowcaseResumeTimer) {
+        clearTimeout(emotionShowcaseResumeTimer);
+        emotionShowcaseResumeTimer = null;
+    }
+    emotionShowcaseResumeTimer = setTimeout(() => {
+        if (state.emotionShowcaseActive || speech.isSpeaking || state.isThinking) {
+            resumeListeningAfterEmotionShowcase(180);
+            return;
+        }
+        emotionShowcaseResumeTimer = null;
+        if (!state.isActive || state.softSleepMode || state.activeAlert) return;
+        setRestingEyes(false);
+        setPersona('listening');
+        talkBtn.classList.add('active');
+        talkBtn.classList.remove('thinking');
+        talkBtn.innerText = 'Ask Blip';
+        startListeningLoop();
+    }, delay);
+}
+
+function resumeListeningAfterWake(delay = 0) {
+    if (emotionShowcaseResumeTimer) {
+        clearTimeout(emotionShowcaseResumeTimer);
+        emotionShowcaseResumeTimer = null;
+    }
+    emotionShowcaseResumeTimer = setTimeout(() => {
+        if (speech.isSpeaking || state.isThinking) {
+            resumeListeningAfterWake(180);
+            return;
+        }
+        emotionShowcaseResumeTimer = null;
+        if (!state.isActive || state.softSleepMode || state.activeAlert) return;
+        setRestingEyes(false);
+        setPersona('listening');
+        talkBtn.classList.add('active');
+        talkBtn.classList.remove('thinking');
+        talkBtn.innerText = 'Ask Blip';
+        startListeningLoop();
+    }, delay);
+}
+
+function spawnHappyBirds(count = 5) {
+    const container = document.getElementById('floating-symbols');
+    if (!container) return;
+    for (let i = 0; i < count; i++) {
+        const bird = document.createElement('div');
+        bird.className = 'blip-bird';
+        bird.textContent = '🕊';
+        bird.style.left = `${18 + Math.random() * 58}%`;
+        bird.style.top = `${18 + Math.random() * 28}%`;
+        bird.style.animationDelay = `${i * 0.12}s`;
+        bird.style.animationDuration = `${2.6 + Math.random() * 0.8}s`;
+        container.appendChild(bird);
+        setTimeout(() => bird.remove(), 4200);
+    }
+}
+
+function triggerEmotionShowcase(emotion) {
+    if (!faceContainer || !blipStage) return;
+    if (emotionShowcaseTimer) {
+        clearTimeout(emotionShowcaseTimer);
+        emotionShowcaseTimer = null;
+    }
+    state.emotionShowcaseActive = true;
+    blipStage.removeAttribute('data-emotion-showcase');
+    faceContainer.removeAttribute('data-emotion-showcase');
+    void faceContainer.offsetWidth;
+    blipStage.setAttribute('data-emotion-showcase', emotion);
+    faceContainer.setAttribute('data-emotion-showcase', emotion);
+    if (emotion === 'happy') {
+        triggerWakeRainbowBurst();
+        spawnHappyBirds(6);
+    } else if (emotion === 'angry') {
+        setFaceAnimation('face-anim-shake');
+    } else if (emotion === 'sad') {
+        setFaceAnimation('face-anim-float');
+    } else if (emotion === 'serious') {
+        setFaceAnimation('face-anim-glow');
+    }
+    emotionShowcaseTimer = setTimeout(() => {
+        blipStage?.removeAttribute('data-emotion-showcase');
+        if (faceContainer) faceContainer.removeAttribute('data-emotion-showcase');
+        setFaceAnimation(null);
+        state.emotionShowcaseActive = false;
+        resumeListeningAfterEmotionShowcase(80);
+        emotionShowcaseTimer = null;
+    }, 4200);
+}
+
+function getEmotionShowcaseCommand(cmd) {
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    const emotionMap = {
+        happy: 'happy',
+        happiness: 'happy',
+        sad: 'sad',
+        sadness: 'sad',
+        angry: 'angry',
+        mad: 'angry',
+        serious: 'serious'
+    };
+    const match = lower.match(/\b(?:show|be|look|go|turn)\s+(?:me\s+)?(?:your\s+)?(happy|happiness|sad|sadness|angry|mad|serious)\b|\b(?:show\s+me\s+)?(?:your\s+)?(happy|happiness|sad|sadness|angry|mad|serious)\s+(?:mode|face|emotion)\b/);
+    const raw = match?.[1] || match?.[2] || '';
+    return emotionMap[raw] || null;
+}
+
+function triggerWakeRainbowBurst() {
+    if (!faceFrame) return;
+    if (wakeRainbowTimer) clearTimeout(wakeRainbowTimer);
+    faceFrame.classList.remove('wake-rainbow');
+    void faceFrame.offsetWidth;
+    faceFrame.classList.add('wake-rainbow');
+    playWakeChime();
+    wakeRainbowTimer = setTimeout(() => {
+        faceFrame?.classList.remove('wake-rainbow');
+        wakeRainbowTimer = null;
+    }, 2500);
+}
+
+function setRestingEyes(isResting) {
+    if (!face) return;
+    face.classList.toggle('resting-eyes', !!isResting);
+    if (isResting) {
+        // Remove blink inline styles so sleep CSS stays stable.
+        face.querySelectorAll('.eye').forEach((eye) => {
+            eye.style.height = '';
+            eye.style.top = '';
+        });
+        startDreamThoughts();
+    } else {
+        stopDreamThoughts();
+    }
+}
+
+function spawnDreamThought() {
+    if (!dreamThoughts || !face?.classList.contains('resting-eyes')) return;
+    const text = SLEEP_DREAM_QUOTES[Math.floor(Math.random() * SLEEP_DREAM_QUOTES.length)];
+    const chip = document.createElement('span');
+    chip.className = 'dream-thought';
+    chip.textContent = text;
+    const delay = Math.random() * 0.28;
+    const duration = 15 + Math.random() * 3.2;
+    const driftX = Math.floor(Math.random() * 44) - 22;
+    const driftY = -(178 + Math.floor(Math.random() * 38));
+    const faceRect = face?.getBoundingClientRect?.();
+    const stageRect = dreamThoughts.getBoundingClientRect();
+    let startLeft = stageRect.width * 0.5;
+    let startTop = stageRect.height * 0.26;
+    if (faceRect && stageRect.width > 0 && stageRect.height > 0) {
+        startLeft = (faceRect.left - stageRect.left) + (faceRect.width * 0.36);
+        startTop = (faceRect.top - stageRect.top) + (faceRect.height * 0.27);
+    }
+    startLeft += Math.floor(Math.random() * 34) - 17;
+    startTop += Math.floor(Math.random() * 16) - 8;
+    chip.style.left = `${startLeft}px`;
+    chip.style.top = `${startTop}px`;
+    chip.style.setProperty('--dream-drift-x', `${driftX}px`);
+    chip.style.setProperty('--dream-drift-y', `${driftY}px`);
+    chip.style.setProperty('--dream-delay', `${delay}s`);
+    chip.style.setProperty('--dream-dur', `${duration.toFixed(2)}s`);
+    dreamThoughts.appendChild(chip);
+    setTimeout(() => chip.remove(), Math.ceil(duration * 1000) + 500);
+}
+
+function startDreamThoughts() {
+    if (!dreamThoughts) return;
+    stopDreamThoughts();
+    spawnDreamThought();
+    state.sleepDreamInterval = setInterval(() => {
+        if (!face?.classList.contains('resting-eyes')) {
+            stopDreamThoughts();
+            return;
+        }
+        spawnDreamThought();
+    }, 8000);
+}
+
+function stopDreamThoughts() {
+    if (state.sleepDreamInterval) {
+        clearInterval(state.sleepDreamInterval);
+        state.sleepDreamInterval = null;
+    }
+    if (dreamThoughts) dreamThoughts.innerHTML = '';
+}
+
+// Deprecated: Alias for backward compatibility
+function setEmotion(e) {
+    // Find a persona that matches this emotion or fallback to idle
+    const found = Object.keys(PERSONAS).find(k => PERSONAS[k].emotion === e);
+    setPersona(found || 'idle');
+}
+
+function triggerRandomIdle() {
+    // Only idle if app is active but NOT thinking, NOT speaking, and NOT already emotional
+    if (!state.isActive || state.softSleepMode || face?.classList.contains('resting-eyes') || state.isThinking || speech.isSpeaking || state.currentEmotion !== 'serious') return;
+
+    const behaviors = ['dreamer', 'observer', 'squinter', 'bouncer', 'pulsar'];
+    const pick = behaviors[Math.floor(Math.random() * behaviors.length)];
+
+    state.idleBehavior = pick;
+    face.classList.add(pick);
+
+    // Spawn a matching symbol for the mood
+    const moodSymbols = {
+        'dreamer': '💤',
+        'observer': '👁️',
+        'squinter': '🤨',
+        'bouncer': '✨',
+        'pulsar': '💗'
+    };
+    if (Math.random() > 0.5) spawnSymbol(moodSymbols[pick]);
+
+    console.log(`🎭 Blip is now: ${pick}`);
+
+    // Revert to normal after 4-6 seconds
+    setTimeout(() => {
+        if (state.idleBehavior === pick) {
+            face.classList.remove(pick);
+            state.idleBehavior = null;
+        }
+    }, 5000);
+}
+
+function registerExtraSceneryObjects() {
+    const layer = document.querySelector('.scenery-layer');
+    const faceArea = document.getElementById('face-area');
+    if (!layer || !faceArea) return;
+    let outerLayer = faceArea.querySelector('.outer-scenery-layer');
+    if (!outerLayer) {
+        outerLayer = document.createElement('div');
+        outerLayer.className = 'outer-scenery-layer';
+        faceArea.appendChild(outerLayer);
+    }
+
+    layer.querySelectorAll('.scenery-object').forEach((obj) => obj.remove());
+    outerLayer.querySelectorAll('.scenery-object').forEach((obj) => obj.remove());
+    CAPABILITY_SCENERY_OBJECTS.forEach((item, index) => {
+        const obj = document.createElement('div');
+        obj.id = item.id;
+        obj.className = 'scenery-object';
+        obj.textContent = item.emoji;
+        obj.dataset.capability = item.label;
+        obj.dataset.orbitSize = item.size;
+        obj.dataset.orbitOrder = String(index);
+        layer.appendChild(obj);
+    });
+    DECORATIVE_SCENERY_OBJECTS.forEach((item, index) => {
+        const obj = document.createElement('div');
+        obj.id = item.id;
+        obj.className = 'scenery-object scenery-object-decor';
+        if (item.emoji) obj.textContent = item.emoji;
+        obj.dataset.capability = item.label;
+        obj.dataset.sceneryKind = 'decor';
+        obj.dataset.decorType = item.decorType || '';
+        obj.dataset.orbitSize = item.size;
+        obj.dataset.radiusBoost = String(item.radiusBoost || 0);
+        obj.dataset.orbitDuration = String(item.duration || 0);
+        obj.dataset.orbitDirection = item.direction || 'normal';
+        obj.dataset.orbitDelay = item.delay || '0s';
+        obj.dataset.orbitPhase = String(item.phase ?? (300 + (index * 24)));
+        outerLayer.appendChild(obj);
+    });
+}
+
+/**
+ * 🪐 Capability Orbit: keeps Blip's feature artifacts rotating like planets.
+ */
+function startSceneryDirector() {
+    const objects = Array.from(document.querySelectorAll('.scenery-object'));
+    if (objects.length === 0) return;
+    const decorativeObjects = objects.filter((obj) => obj.dataset.sceneryKind === 'decor');
+    const capabilityObjects = objects.filter((obj) => obj.dataset.sceneryKind !== 'decor');
+    const outerLayer = document.querySelector('.outer-scenery-layer');
+    const faceArea = document.getElementById('face-area');
+    const core = face?.querySelector('.face-core');
+    const coreRect = core?.getBoundingClientRect();
+    const frameRect = faceFrame?.getBoundingClientRect();
+    const faceRect = face?.getBoundingClientRect();
+    if (outerLayer && faceArea && frameRect) {
+        const areaRect = faceArea.getBoundingClientRect();
+        const outerSize = Math.max(frameRect.width, frameRect.height, faceRect?.width || 0, faceRect?.height || 0) + 240;
+        outerLayer.style.width = `${outerSize}px`;
+        outerLayer.style.height = `${outerSize}px`;
+        outerLayer.style.left = `${(frameRect.left - areaRect.left) + (frameRect.width / 2)}px`;
+        outerLayer.style.top = `${(frameRect.top - areaRect.top) + (frameRect.height / 2)}px`;
+    }
+    const minOrbitRadius = coreRect
+        ? Math.max(CAPABILITY_MIN_ORBIT_RADIUS_PX, Math.round((coreRect.width / 2) + 14))
+        : CAPABILITY_MIN_ORBIT_RADIUS_PX;
+    const maxOrbitRadius = frameRect
+        ? Math.max(minOrbitRadius, Math.floor((Math.min(frameRect.width, frameRect.height) / 2) - CAPABILITY_ORBIT_PADDING_PX))
+        : minOrbitRadius + (CAPABILITY_MIN_RING_GAP_PX * Math.max(0, capabilityObjects.length - 1));
+    const maxCapabilityOrbitRadius = decorativeObjects.length
+        ? Math.max(minOrbitRadius, maxOrbitRadius - 26)
+        : maxOrbitRadius;
+    const sortedObjects = capabilityObjects.slice()
+        .sort((a, b) => Number.parseInt(a.dataset.orbitOrder || '0', 10) - Number.parseInt(b.dataset.orbitOrder || '0', 10));
+    const availableRange = Math.max(0, maxCapabilityOrbitRadius - minOrbitRadius);
+    const requiredRange = CAPABILITY_MIN_RING_GAP_PX * Math.max(0, sortedObjects.length - 1);
+    const ringGap = sortedObjects.length > 1
+        ? (availableRange >= requiredRange
+            ? CAPABILITY_MIN_RING_GAP_PX
+            : availableRange / (sortedObjects.length - 1))
+        : 0;
+    const orbitDuration = CAPABILITY_BASE_ORBIT_DURATION_SEC * CAPABILITY_ORBIT_SLOWDOWN;
+
+    sortedObjects.forEach((obj, index) => {
+        const customSize = obj.dataset.orbitSize;
+        if (customSize) obj.style.fontSize = customSize;
+        const radius = minOrbitRadius + (index * ringGap);
+        const phase = (360 / sortedObjects.length) * index;
+        obj.style.setProperty('--artifact-orbit-radius', `${radius}px`);
+        obj.style.setProperty('--artifact-phase', `${phase}deg`);
+        obj.style.animationDuration = `${orbitDuration}s`;
+        obj.style.animationDirection = 'normal';
+        obj.style.animationDelay = '0s';
+        obj.classList.add('active');
+    });
+
+    decorativeObjects.forEach((obj, index) => {
+        const customSize = obj.dataset.orbitSize;
+        if (customSize) obj.style.fontSize = customSize;
+        const requestedRadiusBoost = Number.parseFloat(obj.dataset.radiusBoost || '0') || 0;
+        const decorativeBaseRadius = frameRect
+            ? Math.round(Math.max(frameRect.width, frameRect.height) / 2) + 34
+            : maxCapabilityOrbitRadius + 34;
+        const radius = decorativeBaseRadius + requestedRadiusBoost + (index * 8);
+        const phase = Number.parseFloat(obj.dataset.orbitPhase || '0') || (312 + (index * 20));
+        const duration = Number.parseFloat(obj.dataset.orbitDuration || '0') || Math.max(orbitDuration * 2, orbitDuration + 20);
+        obj.style.setProperty('--artifact-orbit-radius', `${radius}px`);
+        obj.style.setProperty('--artifact-phase', `${phase}deg`);
+        obj.style.animationDuration = `${duration}s`;
+        obj.style.animationDirection = obj.dataset.orbitDirection || 'normal';
+        obj.style.animationDelay = obj.dataset.orbitDelay || '0s';
+        obj.classList.add('active');
+    });
+
+    syncScenerySuppression();
+}
+
+/**
+ * 🚲 Living Scenery: Multi-Object Eye Tracking Logic
+ * Makes Blip's pupils follow the closest moving capability artifact.
+ */
+function startSceneryTracking() {
+    const faceFrame = document.querySelector('.face-frame');
+    if (!faceFrame) return;
+
+    function update() {
+        if (document.body.classList.contains('scenery-suppressed')) {
+            document.documentElement.style.setProperty('--pupil-x', '0px');
+            document.documentElement.style.setProperty('--pupil-y', '0px');
+            requestAnimationFrame(update);
+            return;
+        }
+
+        // Only track if Blip is not busy talking or thinking
+        if (state.isThinking || speech.isSpeaking || state.currentEmotion !== 'serious') {
+            document.documentElement.style.setProperty('--pupil-x', '0px');
+            document.documentElement.style.setProperty('--pupil-y', '0px');
+            requestAnimationFrame(update);
+            return;
+        }
+
+        const objects = document.querySelectorAll('.scenery-object.active');
+        const frameRect = faceFrame.getBoundingClientRect();
+        const frameCenterX = frameRect.left + frameRect.width / 2;
+        const frameCenterY = frameRect.top + frameRect.height / 2;
+
+        let closestObj = null;
+        let minDistance = Infinity;
+
+        objects.forEach(obj => {
+            const rect = obj.getBoundingClientRect();
+            // Ignore objects far outside the frame to prevent erratic eye jumps
+            if (rect.right < frameRect.left - 50 || rect.left > frameRect.right + 50) return;
+
+            const objX = rect.left + rect.width / 2;
+            const objY = rect.top + rect.height / 2;
+
+            const dist = Math.sqrt(Math.pow(objX - frameCenterX, 2) + Math.pow(objY - frameCenterY, 2));
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestObj = { x: objX, y: objY };
+            }
+        });
+
+        if (closestObj) {
+            const dx = closestObj.x - frameCenterX;
+            const dy = closestObj.y - frameCenterY;
+            const totalDist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+            const maxDist = 5;
+            const moveX = (dx / totalDist) * Math.min(totalDist / 12, maxDist);
+            const moveY = (dy / totalDist) * Math.min(totalDist / 12, maxDist);
+
+            document.documentElement.style.setProperty('--pupil-x', `${moveX}px`);
+            document.documentElement.style.setProperty('--pupil-y', `${moveY}px`);
+        } else {
+            // Revert to center if no objects are visible
+            document.documentElement.style.setProperty('--pupil-x', '0px');
+            document.documentElement.style.setProperty('--pupil-y', '0px');
+        }
+
+        requestAnimationFrame(update);
+    }
+    update();
+}
+
+function spawnSymbol(typeOrEmoji) {
+    const container = document.getElementById('floating-symbols');
+    if (!container) return;
+
+    const symbol = document.createElement('div');
+    symbol.classList.add('symbol');
+
+    // Add type as class if it's potentially a word (for specific CSS)
+    if (typeOrEmoji.length > 3) symbol.classList.add(typeOrEmoji);
+
+    const randomX = Math.floor(Math.random() * 80) + 10;
+    symbol.style.left = `${randomX}%`;
+    symbol.style.bottom = '10%';
+
+    // Mapping for named types
+    const mapping = {
+        'question': '???',
+        'exclamation': '!!!',
+        'music': '♪',
+        'timer': '⏰',
+        'calendar': '📅',
+        'weather': '🌤️',
+        'currency': '💰',
+        'map': '🌍',
+        'reviews': '⭐',
+        'movies': '🎬',
+        'products': '🛒',
+        // AI Symbols from prompt mapping
+        'greeting': '👋',
+        'confirm': '👍',
+        'reject': '👎',
+        'thanks': '🙏',
+        'chat': '💬',
+        'idea': '💡',
+        'action': '⚡'
+    };
+
+    symbol.innerText = mapping[typeOrEmoji] || typeOrEmoji;
+
+    container.appendChild(symbol);
+    setTimeout(() => symbol.remove(), 2000);
+}
+
+/** True if the user message is praise (e.g. "good job", "well done", "thanks"). */
+function isPraise(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = cmd.toLowerCase().trim();
+    return /\b(good\s+job|great\s+job|nice\s+job|well\s+done|good\s+work|nice\s+work)\b/.test(lower) ||
+        /\b(thanks|thank\s+you|thx)\b/.test(lower) ||
+        /\b(awesome|amazing|excellent|fantastic|brilliant)\b/.test(lower) ||
+        /\b(you('re|\s+are)\s+the\s+best|love\s+you\s+blip)\b/.test(lower) ||
+        /^(good|great|nice|yes!?|perfect)\s*!?\s*$/.test(lower);
+}
+
+/** Short party animation when user praises Blip: face wiggle + confetti dots. */
+function triggerBlipParty() {
+    if (!faceContainer) return;
+    faceContainer.classList.add('blip-party');
+    setTimeout(() => faceContainer.classList.remove('blip-party'), 1000);
+
+    const container = document.getElementById('floating-symbols');
+    if (!container) return;
+    const colors = ['#f43f5e', '#8b5cf6', '#10b981', '#f59e0b', '#6366f1', '#ec4899'];
+    for (let i = 0; i < 12; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'blip-confetti';
+        dot.style.left = Math.random() * 100 + '%';
+        dot.style.top = (10 + Math.random() * 30) + '%';
+        dot.style.background = colors[i % colors.length];
+        container.appendChild(dot);
+        setTimeout(() => dot.remove(), 1200);
+    }
+}
+
+function animateMouth(level) {
+    if (state.currentEmotion === 'surprised') return;
+    mouth.style.height = `${6 + (level * 35)}px`;
+}
+
+function updateOllamaStatus(isOnline) {
+    ossStatus.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
+    ossText.innerText = `Ollama: ${isOnline ? 'Ready' : 'Not reachable'}`;
+}
+
+async function updateKokoroStatus() {
+    const online = await speech.checkKokoroStatus();
+    if (kokoroStatusDot) {
+        kokoroStatusDot.className = `status-dot ${online ? 'online' : 'offline'}`;
+        kokoroStatusDot.title = `Kokoro TTS: ${online ? 'Online ✅' : 'Offline — using browser voice'}`;
+    }
+    updateVoiceEngineStatus();
+}
+
+function setBlipTimer(text, ms, dueAt = null) {
+    const safeMs = Math.max(500, Number(ms) || 0);
+    const targetTime = Number.isFinite(dueAt) ? Number(dueAt) : (Date.now() + safeMs);
+    console.log(`⏰ Timer set for ${safeMs}ms: ${text}`);
+    const timerId = setTimeout(async () => {
+        // Wake up Blip if he's resting
+        if (!state.isActive) {
+            state.isActive = true;
+        }
+
+        const alertText = `Excuse me Pablo! I have a reminder for you: ${text}`;
+        stopListening();
+        dismissActiveAlert({ resumeListening: false, clearVisual: true });
+        const alertId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        executeTimerFire(state, { text, timerId, alertId }, { renderActionInSidePanel });
+        showAlertDisplay(text, 45000);
+        state.isThinking = false;
+        document.body.classList.remove('thinking-mode');
+        face.classList.remove('thinking', 'listening');
+        faceFrame?.classList.remove('listening-glow');
+        talkBtn.classList.remove('thinking', 'listening');
+        talkBtn.classList.add('active');
+        talkBtn.innerText = 'Alarm';
+        setPersona('warning');
+        setRestingEyes(false);
+        renderCountdownDisplay();
+        updateTimerCorner();
+        startAlarmSoundLoop();
+        try {
+            await speak(alertText, 'serious');
+        } finally {
+            state.timers = state.timers.filter(t => t.id !== timerId);
+            persistTimers();
+            if (state.activeAlert?.id === alertId) {
+                state.activeAlert.autoClearTimer = setTimeout(() => {
+                    if (state.activeAlert?.id === alertId) dismissActiveAlert({ resumeListening: false, clearVisual: true });
+                }, 45000);
+            }
+            if (state.isActive && !state.activeAlert) startListeningLoop();
+        }
+    }, safeMs);
+
+    const timerEntry = { id: timerId, text, time: targetTime };
+    state.timers.push(timerEntry);
+    persistTimers();
+    renderCountdownDisplay();
+    return timerEntry;
+}
+
+function scheduleCalendarEventReminder(details = {}) {
+    const reminderMinutes = Math.max(0, Number(details.reminderMinutes || 0) || 0);
+    if (!reminderMinutes) {
+        return { scheduled: false, reason: 'none' };
+    }
+    const startTime = new Date(details.start).getTime();
+    if (!Number.isFinite(startTime)) {
+        return { scheduled: false, reason: 'invalid_start' };
+    }
+    const dueAt = startTime - (reminderMinutes * 60 * 1000);
+    if (dueAt <= Date.now() + 5000) {
+        return { scheduled: false, reason: 'too_late' };
+    }
+    setBlipTimer(details.title || details.summary || 'Calendar event', dueAt - Date.now(), dueAt);
+    return { scheduled: true, dueAt, minutes: reminderMinutes };
+}
+
+function createGoogleCalendarUrl(details) {
+    // Google TEMPLATE expects YYYYMMDDTHHMMSSZ; normalize robustly from ISO-like inputs.
+    const toGoogleDateTime = (value) => {
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) {
+            return String(value || '').replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+        }
+        return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+    };
+    const start = toGoogleDateTime(details.start);
+    const end = toGoogleDateTime(details.end);
+    const title = encodeURIComponent(details.title || details.summary || 'Event');
+    return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}`;
+}
+
+function isCalendarDateLike(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return false;
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return true;
+    return /^\d{8}T\d{6}Z?$/.test(raw);
+}
+
+function renderChart(labels, data, title, type = 'line') {
+    if (activeChart) activeChart.destroy();
+
+    // Default chart.js settings for dark mode
+    Chart.defaults.color = '#a0a0b8';
+    Chart.defaults.font.family = 'Inter';
+
+    activeChart = new Chart(currencyChartCanvas, {
+        type: type, // 'line' or 'bar' etc.
+        data: {
+            labels: labels,
+            datasets: [{
+                label: title,
+                data: data,
+                borderColor: '#6366f1',
+                backgroundColor: type === 'line' ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.6)',
+                borderWidth: type === 'line' ? 3 : 1,
+                tension: 0.4,
+                fill: type === 'line',
+                pointBackgroundColor: '#fff',
+                pointRadius: type === 'line' ? 4 : 0,
+                borderRadius: type === 'bar' ? 4 : 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: type !== 'line' }, // Only show legend if it's not the simple currency line
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    padding: 10,
+                    cornerRadius: 8
+                }
+            },
+            scales: {
+                y: { grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+function downloadChart() {
+    if (!activeChart) return;
+    const link = document.createElement('a');
+    link.download = `blip-chart-${Date.now()}.png`;
+    link.href = activeChart.toBase64Image();
+    link.click();
+}
+
+/**
+ * Render action result in the side panel (chart, youtube, calendar, etc.).
+ * Call after parsing/synthesis when we have action + tool_params + text.
+ * @param {{ action: string, tool_params?: object, text?: string }} parsedResponse
+ */
+function bindCalendarPanelControls(sidePanel) {
     sidePanel.querySelector('.blip-calendar-mirror-close, .blip-calendar-orb-close')?.addEventListener('click', () => {
         closeCalendarPanel();
     });
@@ -11810,30 +18202,6 @@ function renderActionInSidePanel(parsedResponse) {
         sidePanelChart = null;
     }
 
-<<<<<<< HEAD
-    if (action === 'calendarAgenda') {
-        sidePanel.classList.add('blip-calendar-orb');
-        state.currentSidePanelVisualUrl = '';
-        sidePanel.style.width = 'min(980px, calc(100vw - 36px))';
-        sidePanel.style.height = 'min(760px, calc(100vh - 48px))';
-        sidePanel.style.padding = '0';
-        sidePanel.style.borderRadius = '32px';
-        sidePanel.style.overflow = 'hidden';
-        sidePanel.style.background = '';
-        sidePanel.style.border = '';
-        sidePanel.style.boxShadow = '';
-        sidePanel.innerHTML = `
-            <button type="button" aria-label="Close panel" class="blip-calendar-orb-close">×</button>
-            <div class="blip-calendar-orb-inner">
-                <div class="blip-calendar-orb-body">${tool_params.html || '<p style="margin:8px 0 0 0; color:#a0a0b8;">No calendar items ready yet.</p>'}</div>
-            </div>
-        `;
-        bindCalendarPanelControls(sidePanel);
-        sidePanel.style.display = 'block';
-        return;
-    }
-
-=======
     const title = (action && action.length) ? action.charAt(0).toUpperCase() + action.slice(1) : 'Panel';
     const summaryText = getSidePanelSummaryText(text);
     sidePanel.innerHTML = buildSidePanelHeaderHtml({

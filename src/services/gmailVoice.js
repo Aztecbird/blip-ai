@@ -349,6 +349,93 @@ export function getGmailVoiceCommand(command = '') {
         || /^(?:check\s+my\s+email|check\s+email)$/.test(lower)
         || /^(?:can\s+you\s+)?(?:please\s+)?(?:open|show|check|view)\s+(?:my\s+)?(?:gmail|email|mail|inbox)\b/.test(lower)
         || (/\b(?:open|show|check|view)\b/.test(lower) && /\b(?:gmail|email|mail|inbox|mail tool|email tool|mail client|email client)\b/.test(lower))
+        || /^(?:email|mail|inbox)$/.test(lower)
+    ) {
+        return { action: 'openInbox' };
+    }
+    if (
+        /^(?:open|show|check|read|view)\s+(?:my\s+)?sent(?:\s+mail|\s+emails?|\s+folder)?$/.test(lower)
+        || /^(?:can\s+you\s+)?(?:please\s+)?(?:open|show|check|view)\s+(?:my\s+)?sent(?:\s+mail|\s+emails?|\s+folder)?\b/.test(lower)
+    ) {
+        return { action: 'openSent' };
+    }
+    if (/^(?:close|hide|dismiss|exit)\s+(?:my\s+)?(?:gmail|email|mail|inbox)$/.test(lower)) {
+        return { action: 'close' };
+    }
+    if (/^(?:refresh|reload)\s+(?:my\s+)?(?:gmail|email|mail|inbox)$/.test(lower)) {
+        return { action: 'refreshInbox' };
+    }
+    if (/^(?:refresh|reload)\s+(?:my\s+)?sent(?:\s+mail|\s+emails?|\s+folder)?$/.test(lower)) {
+        return { action: 'refreshSent' };
+    }
+    const tail = '(?:\\s+(?:please|thanks|thank you|now|already|ok|okay))?';
+    if (
+        new RegExp(`^(?:compose|write)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
+        || new RegExp(`^(?:send)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
+        || new RegExp(`^(?:i\\s+want\\s+to|i\\s+need\\s+to|i\\s+would\\s+like\\s+to|help\\s+me)\\s+(?:send|write|compose)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
+        || new RegExp(`^(?:can\\s+you|could\\s+you|will\\s+you|please)\\s+(?:send|write|compose)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
+        || new RegExp(`^(?:can\\s+i|could\\s+i|may\\s+i)\\s+(?:to\\s+)?(?:send|write|compose)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
+    ) {
+        return { action: 'compose' };
+    }
+
+    const needToEmail = lower.match(/^(?:i\s+need\s+to|i\s+want\s+to)\s+email\s+(.+)$/);
+    if (needToEmail) {
+        const recipientQuery = extractRecipientReference(needToEmail[1] || '');
+        const to = extractSpokenEmailAddress(recipientQuery);
+        if (to || recipientQuery) {
+            return {
+                action: 'compose',
+                draft: {
+                    to: to,
+                    recipientQuery: to ? '' : recipientQuery,
+                    subject: '',
+                    text: ''
+                }
+            };
+        }
+    }
+
+    const listContacts = extractGmailListContactsRequest(lower);
+    if (listContacts) return listContacts;
+
+    const checkContact = extractGmailCheckContactRequest(lower);
+    if (checkContact?.alias) return checkContact;
+
+    const clearContacts = extractGmailClearContactsRequest(lower);
+    if (clearContacts?.action === 'clearContacts') return clearContacts;
+
+    const saveContact = extractGmailSaveContactRequest(lower);
+    if (saveContact?.alias) {
+        return { action: 'saveContact', ...saveContact };
+    }
+
+    const directSend = extractGmailDirectSendRequest(lower);
+    if (directSend?.to || directSend?.recipientQuery) {
+        if (directSend.subject || directSend.text) {
+            return { action: 'sendDirect', ...directSend };
+        }
+        return { action: 'compose', draft: directSend };
+    }
+
+    const shareRequest = extractGmailShareRecipientRequest(lower);
+    if (shareRequest && (shareRequest.recipient || shareRequest.recipientQuery || shareRequest.shareType || shareRequest.subject)) {
+        return { action: 'shareCurrent', ...shareRequest };
+    }
+
+    const subjectLineOnly = extractGmailSubjectLineOnly(lower);
+    if (subjectLineOnly?.subject) {
+        return { action: 'setSubject', subject: subjectLineOnly.subject };
+    }
+
+    const noteSubject = extractGmailNoteSubjectRequest(lower);
+    if (noteSubject?.subject) {
+        return { action: 'composeLatestNote', ...noteSubject };
+    }
+
+    const sendStatus = extractGmailSendStatusRequest(lower);
+    if (sendStatus) return sendStatus;
+
     // Short mailbox phrases (voice-first panel)
     if (/^(?:inbox|my inbox)$/.test(lower)) return { action: 'openInbox' };
     if (/^(?:sent|my sent|sent folder)$/.test(lower)) return { action: 'openSent' };

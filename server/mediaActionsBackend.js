@@ -65,7 +65,7 @@ async function setMacWallpaper(filePath) {
             end repeat
         end tell
     `;
-    await execFileAsync('osascript', ['-e', script]);
+    await execFileAsync('osascript', ['-e', script], { timeout: 10000 });
 }
 
 const server = http.createServer(async (request, response) => {

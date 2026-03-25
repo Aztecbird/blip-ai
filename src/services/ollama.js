@@ -1,9 +1,10 @@
-const OLLAMA_URL = 'http://127.0.0.1:11434/api/generate';
+const OLLAMA_BASE = 'http://127.0.0.1:11434';
+const OLLAMA_URL = `${OLLAMA_BASE}/api/generate`;
 let currentController = null;
 
 export async function checkOllamaStatus() {
     try {
-        const response = await fetch('http://127.0.0.1:11434/api/tags');
+        const response = await fetch(`${OLLAMA_BASE}/api/tags`);
         return response.ok;
     } catch (error) {
         return false;
