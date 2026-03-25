@@ -151,11 +151,7 @@ if [ "$BLIP_ENABLE_KOKORO" = "1" ]; then
 fi
 
 echo
-<<<<<<< HEAD
-echo -e "${GREEN}Frontend:${NC} https://localhost:5173"
-=======
 echo -e "${GREEN}Frontend:${NC} http://localhost:5173"
->>>>>>> ui-update-final
 echo -e "${GREEN}Logs:${NC} $LOG_DIR"
 echo
 

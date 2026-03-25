@@ -4,11 +4,6 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 export default defineConfig({
     // Set base to repo name for aztecbird.github.io/blip-ai/
     base: '/',
-<<<<<<< HEAD
-    plugins: [
-        basicSsl()
-    ],
-=======
 >>>>>>> ui-update-final
     build: {
         outDir: 'dist',
@@ -18,7 +13,6 @@ export default defineConfig({
 <<<<<<< HEAD
         https: true,
 =======
->>>>>>> ui-update-final
         cors: true,
         // Avoid stale UI when the browser caches dev responses aggressively.
         headers: { 'Cache-Control': 'no-store' },

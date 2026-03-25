@@ -1051,11 +1051,7 @@ export function createEmailFeature(env = {}) {
 
         return `
             <div class="blip-gmail-shell">
-<<<<<<< HEAD
-                <div class="blip-gmail-toolbar">
-=======
                 <div class="blip-gmail-toolbar blip-gmail-toolbar--voice">
->>>>>>> ui-update-final
                     <div class="blip-gmail-status${authState.connected ? ' connected' : ' warning'}">
                         ${escapeHtml(
                             authState.connected
@@ -1063,23 +1059,11 @@ export function createEmailFeature(env = {}) {
                                 : 'Connect Gmail in Settings first.'
                         )}
                     </div>
-<<<<<<< HEAD
-                    <div class="blip-gmail-toolbar-actions">
-                        <button type="button" class="action-link outline blip-gmail-mailbox-tab${mailbox === 'inbox' ? ' is-active' : ''}" data-gmail-mailbox="inbox">Inbox</button>
-                        <button type="button" class="action-link outline blip-gmail-mailbox-tab${mailbox === 'sent' ? ' is-active' : ''}" data-gmail-mailbox="sent">Sent</button>
-                        <button type="button" class="action-link outline" data-gmail-refresh>Refresh</button>
-                        <button type="button" class="action-link outline" data-gmail-compose-clear>New Email</button>
-                    </div>
-                </div>
-                <div class="blip-gmail-compose-simplified blip-panel-card">
-                    <div class="blip-gmail-compose-title">Simple Email</div>
-=======
                     <div class="blip-gmail-mailbox-badge" aria-live="polite">${escapeHtml(mailboxLabel)}</div>
                     <p class="blip-gmail-voice-cheatsheet">Say: <span class="blip-gmail-voice-kw">inbox</span> · <span class="blip-gmail-voice-kw">sent</span> · <span class="blip-gmail-voice-kw">refresh email</span> · <span class="blip-gmail-voice-kw">compose email</span> · <span class="blip-gmail-voice-kw">read email 1</span> · <span class="blip-gmail-voice-kw">scroll down</span></p>
                 </div>
                 <div class="blip-gmail-compose-simplified blip-panel-card">
                     <div class="blip-gmail-compose-title">Compose</div>
->>>>>>> ui-update-final
                     <div class="blip-gmail-draft-state">
                         <div class="blip-gmail-draft-state-label">${escapeHtml(stageTitle)}</div>
                         <div class="blip-gmail-draft-state-prompt">${escapeHtml(stagePrompt)}</div>
@@ -1090,13 +1074,8 @@ export function createEmailFeature(env = {}) {
                     </div>
                     ${latestSendText ? `<div class="blip-gmail-send-status${latestSend?.ok ? (latestSend.verified ? ' verified' : ' pending') : ' warning'}">${escapeHtml(latestSendText)}</div>` : ''}
                     ${contactEntries.length ? `
-<<<<<<< HEAD
-                        <div class="blip-gmail-contact-chips">
-                            ${contactEntries.map(([alias, email]) => `
-=======
                         <div class="blip-gmail-contact-chips blip-gmail-contact-chips--compact">
                             ${contactEntries.slice(0, 4).map(([alias, email]) => `
->>>>>>> ui-update-final
                                 <button type="button" class="blip-gmail-contact-chip" data-gmail-contact="${escapeHtml(String(email || ''))}">
                                     <span>${escapeHtml(getEmailContactLabel(alias))}</span>
                                     <small>${escapeHtml(String(email || ''))}</small>
@@ -1117,19 +1096,6 @@ export function createEmailFeature(env = {}) {
                         <textarea data-gmail-body class="blip-gmail-textarea" placeholder="${escapeHtml(getGmailPanelPlaceholder('message', panelStageKey))}">${escapeHtml(composeMessageValue)}</textarea>
                     </label>
                     ${attachmentCount ? `<div class="blip-gmail-send-status pending">${escapeHtml(attachmentCount === 1 ? '1 attachment ready' : `${attachmentCount} attachments ready`)}</div>` : ''}
-<<<<<<< HEAD
-                    <div class="blip-gmail-voice-hints" aria-label="Things you can say">
-                        ${pillsHtml}
-                    </div>
-                    <div class="blip-gmail-compose-actions">
-                        <button type="button" class="action-link outline" data-gmail-send>Send</button>
-                    </div>
-                </div>
-                <div class="blip-gmail-secondary">
-                    <div class="blip-gmail-secondary-header">
-                        <div class="blip-gmail-reader-kicker">${escapeHtml(mailboxLabel)}</div>
-                        <div class="blip-gmail-secondary-copy">Optional mailbox view while you draft.</div>
-=======
                     <div class="blip-gmail-voice-hints" aria-label="Things you can say for this step">
                         ${pillsHtml}
                     </div>
@@ -1138,7 +1104,6 @@ export function createEmailFeature(env = {}) {
                     <div class="blip-gmail-secondary-header blip-gmail-secondary-header--voice">
                         <div class="blip-gmail-secondary-title">${escapeHtml(mailboxLabel)}</div>
                         <p class="blip-gmail-voice-cheatsheet blip-gmail-voice-cheatsheet--sub">Say <span class="blip-gmail-voice-kw">show my email</span> or tap a row · <span class="blip-gmail-voice-kw">do you have … email</span> for saved contacts</p>
->>>>>>> ui-update-final
                     </div>
                     <div class="blip-gmail-layout blip-gmail-layout-secondary">
                         <div class="blip-gmail-list blip-panel-scroll">
@@ -1163,11 +1128,7 @@ export function createEmailFeature(env = {}) {
                                 <div class="blip-gmail-reader-subject">${escapeHtml(String(selectedMessage.subject || '(No subject)'))}</div>
                                 <div class="blip-gmail-reader-meta">${escapeHtml(String(selectedMessage.from || 'Unknown sender'))}${selectedMessage?.date ? ` · ${escapeHtml(String(selectedMessage.date))}` : ''}</div>
                                 <div class="blip-gmail-reader-body blip-panel-scroll">${escapeHtml(bodyText || 'No body text available.')}</div>
-<<<<<<< HEAD
-                            ` : '<div class="blip-panel-empty">Pick an email on the left, or say "read email 1".</div>'}
-=======
                             ` : '<div class="blip-panel-empty">Pick a message in the list or say “read email 1”.</div>'}
->>>>>>> ui-update-final
                         </div>
                     </div>
                 </div>
@@ -1317,22 +1278,6 @@ export function createEmailFeature(env = {}) {
             });
         });
 
-<<<<<<< HEAD
-        sidePanel.querySelectorAll('[data-gmail-mailbox]').forEach((button) => {
-            button.addEventListener('click', async () => {
-                const mailbox = normalizeGmailMailbox(button.getAttribute('data-gmail-mailbox') || 'inbox');
-                syncDraftFromInputs();
-                try {
-                    await openGmailInboxPanel({ mailbox, summary: `${getGmailMailboxLabel(mailbox)} open.` });
-                    if (transcriptText) transcriptText.innerText = `${getGmailMailboxLabel(mailbox)} open.`;
-                } catch (error) {
-                    console.warn('Open Gmail mailbox failed:', error?.message || error);
-                    if (transcriptText) transcriptText.innerText = error?.message || `Could not open ${mailbox}.`;
-                }
-            });
-        });
-
-=======
 >>>>>>> ui-update-final
         sidePanel.querySelectorAll('[data-gmail-open]').forEach((button) => {
             button.addEventListener('click', async () => {
@@ -1400,7 +1345,6 @@ export function createEmailFeature(env = {}) {
         });
 
 =======
->>>>>>> ui-update-final
         requestAnimationFrame(() => {
             const compose = sidePanel.querySelector('.blip-gmail-compose-simplified');
             const bodyEl = sidePanel.querySelector('[data-gmail-body]');

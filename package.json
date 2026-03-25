@@ -1,11 +1,7 @@
 {
     "name": "blip-ai",
     "private": true,
-<<<<<<< HEAD
-    "version": "5.1",
-=======
     "version": "6.6",
->>>>>>> ui-update-final
     "type": "module",
     "scripts": {
         "dev": "bash ./start-dev.sh",

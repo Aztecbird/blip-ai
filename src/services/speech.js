@@ -161,71 +161,7 @@ class SpeechService {
         this.isSpeaking = false;
     }
 
-<<<<<<< HEAD
-=======
-    /** Master cleanup: stops speaking and listening, clears all active handles. */
-    stopAll() {
-        this.stopSpeaking();
-        this.stopListening();
-    }
-
->>>>>>> ui-update-final
-    // ── KOKORO TTS ─────────────────────────────────────────────────────────────
-    async _speakKokoro(text, options = {}) {
-        const timeout = createTimeoutSignal(90000);
-        let res;
-        try {
-            res = await fetch(`${KOKORO_URL}/tts`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text,
-                    voice: this.kokoroVoice,
-                    speed: options.rate || 1.0
-                }),
-                signal: timeout.signal // 90s — first call loads the model
-            });
-        } finally {
-            timeout.clear();
-        }
-
-        if (!res.ok) throw new Error(`Kokoro error ${res.status}`);
-
-        const arrayBuffer = await res.arrayBuffer();
-
-        // Play via AudioContext (resume after async fetch — required or output is silent)
-        const audioCtx = await this.ensureAudioReady();
-        if (!audioCtx) throw new Error('Audio playback is unavailable in this browser.');
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-        const volume = Math.min(1, Math.max(0, options.volume ?? 1));
-        const gainNode = audioCtx.createGain();
-        gainNode.gain.value = volume;
-        gainNode.connect(audioCtx.destination);
-
-        return new Promise((resolve) => {
-            const source = audioCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(gainNode);
-
-            // Animate mouth while speaking
-            const interval = setInterval(() => {
-                if (options.onBoundary) options.onBoundary(0.3 + Math.random() * 0.6);
-            }, 70);
-
-            let settled = false;
-            const finalize = () => {
-                if (settled) return;
-                settled = true;
-                clearInterval(interval);
-                if (options.onBoundary) options.onBoundary(0);
-                if (this._activeAudioSource === source) {
-                    this._activeAudioSource = null;
-<<<<<<< HEAD
-                    this._activeCleanup = null;
-=======
                     if (this._activeCleanup === cleanup) this._activeCleanup = null;
->>>>>>> ui-update-final
                 }
                 this.isSpeaking = false;
                 resolve();
@@ -287,11 +223,7 @@ class SpeechService {
                 if (options.onBoundary) options.onBoundary(0);
                 if (this._activeUtterance === utter) {
                     this._activeUtterance = null;
-<<<<<<< HEAD
-                    this._activeCleanup = null;
-=======
                     if (this._activeCleanup === cleanup) this._activeCleanup = null;
->>>>>>> ui-update-final
                 }
                 resolve();
             };
