@@ -38,6 +38,16 @@ test('resolveYouTubeLibraryViewFromVoice understands menu phrasing for videos an
     assert.equal(resolveYouTubeLibraryViewFromVoice('switch videos to music'), 'Music');
 });
 
+<<<<<<< HEAD
+=======
+test('resolveYouTubeLibraryViewFromVoice does not map bare "video" to the saved Videos library', () => {
+    assert.equal(resolveYouTubeLibraryViewFromVoice('open video'), null);
+    assert.equal(resolveYouTubeLibraryViewFromVoice('open photos'), null);
+    assert.equal(resolveYouTubeLibraryViewFromVoice('open videos'), 'Videos');
+    assert.equal(resolveYouTubeLibraryViewFromVoice('open youtube video'), 'Videos');
+});
+
+>>>>>>> ui-update-final
 test('extractYouTubeLibraryDeleteTargetFromVoice pulls out saved item titles', () => {
     assert.equal(extractYouTubeLibraryDeleteTargetFromVoice('delete blinding lights'), 'blinding lights');
     assert.equal(extractYouTubeLibraryDeleteTargetFromVoice('please remove the song called espresso'), 'espresso');

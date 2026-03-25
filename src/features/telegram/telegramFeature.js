@@ -129,11 +129,18 @@ export function createTelegramFeature(env = {}) {
         const authState = toolParams.authState || getTelegramAuthState();
         const draft = toolParams.draft || state.telegramDraft || { chatId: '', text: '' };
         const lastStatusText = buildLastTelegramStatusText();
+<<<<<<< HEAD
         const readyForSend = !!String(draft?.text || '').trim();
         const customChatId = normalizeTelegramChatId(draft?.chatId);
         return `
             <div class="blip-telegram-shell">
                 <div class="blip-telegram-toolbar">
+=======
+        const customChatId = normalizeTelegramChatId(draft?.chatId);
+        return `
+            <div class="blip-telegram-shell">
+                <div class="blip-telegram-toolbar blip-telegram-toolbar--voice">
+>>>>>>> ui-update-final
                     <div class="blip-telegram-status${authState.backendConfigured ? ' connected' : ' warning'}">
                         ${escapeHtml(
                             authState.backendConfigured
@@ -141,6 +148,7 @@ export function createTelegramFeature(env = {}) {
                                 : 'Telegram backend not ready yet.'
                         )}
                     </div>
+<<<<<<< HEAD
                     <div class="blip-telegram-toolbar-actions">
                         <button type="button" class="action-link outline" data-telegram-send-test>Send Test</button>
                         <button type="button" class="action-link outline" data-telegram-clear>Clear</button>
@@ -150,22 +158,39 @@ export function createTelegramFeature(env = {}) {
                     <div class="blip-telegram-title">Simple Telegram</div>
                     <div class="blip-telegram-chat-row">
                         <span class="blip-telegram-chat-label">Current Target</span>
+=======
+                    <p class="blip-telegram-voice-cheatsheet">Say: <span class="blip-telegram-voice-kw">send</span> · <span class="blip-telegram-voice-kw">send photo</span> · <span class="blip-telegram-voice-kw">clear</span> · <span class="blip-telegram-voice-kw">telegram test</span> · <span class="blip-telegram-voice-kw">scroll down</span></p>
+                </div>
+                <div class="blip-telegram-card blip-panel-card">
+                    <div class="blip-telegram-title">Message</div>
+                    <div class="blip-telegram-chat-row blip-telegram-chat-row--compact">
+                        <span class="blip-telegram-chat-label">To</span>
+>>>>>>> ui-update-final
                         <span class="blip-telegram-chat-value">${escapeHtml(getTelegramTargetLabel(customChatId, authState))}</span>
                     </div>
                     ${lastStatusText ? `<div class="blip-telegram-send-status">${escapeHtml(lastStatusText)}</div>` : ''}
                     <label class="blip-telegram-slot">
+<<<<<<< HEAD
                         <span class="blip-telegram-slot-label">Chat ID Override</span>
+=======
+                        <span class="blip-telegram-slot-label">Chat id or alias</span>
+>>>>>>> ui-update-final
                         <input
                             data-telegram-chat-id
                             class="blip-telegram-input"
                             type="text"
+<<<<<<< HEAD
                             placeholder="Chat id or alias like joy"
+=======
+                            placeholder="e.g. joy or numeric id — or leave default"
+>>>>>>> ui-update-final
                             value="${escapeHtml(customChatId)}"
                         >
                         <span class="blip-telegram-slot-help">${escapeHtml(buildTelegramAliasHelp(authState))}</span>
                     </label>
                     <label class="blip-telegram-slot">
                         <span class="blip-telegram-slot-label">Message</span>
+<<<<<<< HEAD
                         <textarea data-telegram-text class="blip-telegram-textarea" placeholder="Type or dictate the message...">${escapeHtml(String(draft?.text || ''))}</textarea>
                     </label>
                     <div class="blip-telegram-photo-note">
@@ -181,6 +206,14 @@ export function createTelegramFeature(env = {}) {
                     <div class="blip-telegram-actions">
                         <button type="button" class="action-link outline" data-telegram-send-text${readyForSend ? '' : ' disabled'}>Send Message</button>
                         <button type="button" class="action-link outline" data-telegram-send-photo>Send Latest Photo</button>
+=======
+                        <textarea data-telegram-text class="blip-telegram-textarea" placeholder="Dictate or type…">${escapeHtml(String(draft?.text || ''))}</textarea>
+                    </label>
+                    <p class="blip-telegram-photo-note blip-telegram-photo-note--compact">Optional caption above applies to <strong>send photo</strong> (uses latest Media photo).</p>
+                    <div class="blip-telegram-hints" aria-label="Example phrases">
+                        <span class="blip-telegram-hint">tell Joy I’m outside</span>
+                        <span class="blip-telegram-hint">message Joy on telegram</span>
+>>>>>>> ui-update-final
                     </div>
                 </div>
             </div>
@@ -261,6 +294,7 @@ export function createTelegramFeature(env = {}) {
     }
 
     function bindTelegramPanelControls(sidePanel) {
+<<<<<<< HEAD
         const updateSendButtonState = () => {
             const sendButton = sidePanel.querySelector('[data-telegram-send-text]');
             if (!sendButton) return;
@@ -268,6 +302,8 @@ export function createTelegramFeature(env = {}) {
             sendButton.disabled = !hasText;
         };
 
+=======
+>>>>>>> ui-update-final
         const syncDraftFromInputs = () => {
             const chatIdInput = sidePanel.querySelector('[data-telegram-chat-id]');
             const textInput = sidePanel.querySelector('[data-telegram-text]');
@@ -275,13 +311,17 @@ export function createTelegramFeature(env = {}) {
                 chatId: chatIdInput?.value || '',
                 text: textInput?.value || ''
             });
+<<<<<<< HEAD
             updateSendButtonState();
+=======
+>>>>>>> ui-update-final
         };
 
         sidePanel.querySelector('[data-telegram-chat-id]')?.addEventListener('input', syncDraftFromInputs);
         sidePanel.querySelector('[data-telegram-chat-id]')?.addEventListener('change', syncDraftFromInputs);
         sidePanel.querySelector('[data-telegram-text]')?.addEventListener('input', syncDraftFromInputs);
         sidePanel.querySelector('[data-telegram-text]')?.addEventListener('change', syncDraftFromInputs);
+<<<<<<< HEAD
         updateSendButtonState();
 
         sidePanel.querySelector('[data-telegram-clear]')?.addEventListener('click', async () => {
@@ -325,6 +365,8 @@ export function createTelegramFeature(env = {}) {
                 if (transcriptText) transcriptText.innerText = error?.message || 'Could not send Telegram photo.';
             }
         });
+=======
+>>>>>>> ui-update-final
     }
 
     function parseTelegramFollowUp(command = '') {
@@ -409,7 +451,11 @@ export function createTelegramFeature(env = {}) {
 
             await openTelegramPanel({ summary: 'Telegram photo ready.' });
             state.pendingTelegramReview = true;
+<<<<<<< HEAD
             await quickReply('Telegram is open. Add an optional caption, then say send photo or press Send Latest Photo.', 'happy');
+=======
+            await quickReply('Telegram is open. Add an optional caption, then say send photo.', 'happy');
+>>>>>>> ui-update-final
             return;
         }
 

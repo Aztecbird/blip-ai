@@ -1,5 +1,10 @@
 import './style.css'
+<<<<<<< HEAD
 import { askOllama, checkOllamaStatus, warmUpModel, cancelCurrentRequest } from './services/ollama'
+=======
+import './features/earTraining/earTrainingPanel.css'
+import { askOllama, checkOllamaStatus, warmUpModel, cancelCurrentRequest, generateWithOllama } from './services/ollama'
+>>>>>>> ui-update-final
 import { askGemini, generateWithPrompt } from './services/geminiText'
 import { generateSpeech } from './services/geminiTts'
 import { generateImage } from './services/imageProvider'
@@ -69,7 +74,24 @@ import {
 } from './services/youtubeLibrary.js'
 import { createEmailFeature } from './features/email/emailFeature.js'
 import { createTelegramFeature } from './features/telegram/telegramFeature.js'
+<<<<<<< HEAD
 
+=======
+import { mountEarTrainingGame } from './features/earTraining/earTrainingUi.js'
+import {
+    mountCalendarAgendaPanel,
+    closeCalendarAgendaPanelUi,
+    isCalendarAgendaDomVisible
+} from './features/calendar/calendarPanelUi.js'
+import {
+    isPriorityOpenLocalPhotosIntentFromLower,
+    clearVoiceToolFollowUpLock,
+    setVoiceToolFollowUpLock
+} from './voice/voiceToolIntent.js'
+
+import { getBlipQaAnswer } from './services/blipQa.js'
+
+>>>>>>> ui-update-final
 // ── UI: DOM ELEMENTS ─────────────────────────────────────────────────────────
 const face = document.getElementById('blip-face');
 const faceContainer = document.getElementById('face-container');
@@ -103,6 +125,7 @@ const kokoroStatusDot = document.getElementById('kokoro-status');
 
 // Vision Elements
 const cameraBtn = document.getElementById('cameraBtn');
+const closeCameraBtn = document.getElementById('closeCameraBtn');
 const watchBtn = document.getElementById('watchBtn');
 const uploadBtn = document.getElementById('uploadBtn');
 const fileInput = document.getElementById('fileInput');
@@ -229,7 +252,12 @@ const countdownDisplay = document.getElementById('countdown-display');
 const isGitHub = window.location.hostname.includes('github.io');
 
 /** Single source of truth for app version — update here (and package.json) when releasing. */
+<<<<<<< HEAD
 const BLIP_VERSION = '5.1';
+=======
+const BLIP_VERSION = '6.6';
+console.log('--- BLIP_VERSION 6.6 ACTIVE ---');
+>>>>>>> ui-update-final
 const WAKE_GREETING_ENABLED = true;
 
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
@@ -373,9 +401,19 @@ body {
 }
 
 /* Gmail / Telegram: panel fixed on BODY (sibling of #app). Reserve space + stop 100vw children ignoring #app padding. */
+<<<<<<< HEAD
 body.blip-gmail-panel-open #app,
 body.blip-telegram-panel-open #app {
   padding-right: calc(min(240px, 48vw) + 12px) !important;
+=======
+body.blip-gmail-panel-open #app {
+  padding-right: calc(min(400px, calc(100vw - 24px)) + 12px) !important;
+  padding-left: 0 !important;
+  box-sizing: border-box !important;
+}
+body.blip-telegram-panel-open #app {
+  padding-right: calc(min(380px, calc(100vw - 24px)) + 12px) !important;
+>>>>>>> ui-update-final
   padding-left: 0 !important;
   box-sizing: border-box !important;
 }
@@ -412,9 +450,17 @@ body.blip-telegram-panel-open #transcript-area {
   max-width: 100% !important;
 }
 @media (max-width: 520px) {
+<<<<<<< HEAD
   body.blip-gmail-panel-open #app,
   body.blip-telegram-panel-open #app {
     padding-right: calc(min(200px, 48vw) + 8px) !important;
+=======
+  body.blip-gmail-panel-open #app {
+    padding-right: calc(min(400px, calc(100vw - 16px)) + 8px) !important;
+  }
+  body.blip-telegram-panel-open #app {
+    padding-right: calc(min(380px, calc(100vw - 16px)) + 8px) !important;
+>>>>>>> ui-update-final
   }
   body.blip-gmail-panel-open #blip-face.blip-face,
   body.blip-telegram-panel-open #blip-face.blip-face {
@@ -422,7 +468,11 @@ body.blip-telegram-panel-open #transcript-area {
     height: clamp(130px, 42vw, 180px) !important;
   }
 }
+<<<<<<< HEAD
 /* Bottom-right dock: keeps center column (face) clear; below face z-index so overlap shows Blip on top */
+=======
+/* Bottom-right dock: keeps center column (face) clear; Gmail dock is larger so inbox + body fit */
+>>>>>>> ui-update-final
 body.blip-gmail-panel-open #blip-side-panel.blip-gmail-dock,
 body.blip-telegram-panel-open #blip-side-panel.blip-telegram-dock {
   position: fixed !important;
@@ -432,16 +482,42 @@ body.blip-telegram-panel-open #blip-side-panel.blip-telegram-dock {
   top: auto !important;
   bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
   transform: none !important;
+<<<<<<< HEAD
   width: min(240px, 48vw) !important;
   max-width: min(240px, 48vw) !important;
   height: min(32vh, 400px) !important;
   max-height: min(32vh, 400px) !important;
+=======
+>>>>>>> ui-update-final
   box-sizing: border-box !important;
   background: rgba(4, 10, 26, 0.72) !important;
   backdrop-filter: blur(24px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
   border: 1px solid rgba(255, 255, 255, 0.15) !important;
 }
+<<<<<<< HEAD
+=======
+body.blip-telegram-panel-open #blip-side-panel.blip-telegram-dock {
+  width: min(380px, calc(100vw - 24px)) !important;
+  max-width: min(380px, calc(100vw - 24px)) !important;
+  height: min(72vh, 720px) !important;
+  max-height: min(72vh, 720px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: 10px 12px !important;
+}
+body.blip-gmail-panel-open #blip-side-panel.blip-gmail-dock {
+  width: min(400px, calc(100vw - 24px)) !important;
+  max-width: min(400px, calc(100vw - 24px)) !important;
+  height: min(78vh, 820px) !important;
+  max-height: min(78vh, 820px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: 10px 12px !important;
+}
+>>>>>>> ui-update-final
 `;
 
 const SCENERY_SUPPRESSION_CSS = `
@@ -615,8 +691,13 @@ function getNaturalPlayQuery(cmd = '') {
         .replace(/\s+(?:please|now)\s*$/, '')
         .trim();
     if (!query) return '';
+<<<<<<< HEAD
     if (/^(?:it|this|that|the video|video|music|youtube|yt|gmail|email|telegram|calendar|map|chart|settings|chat|games|camera|cart|notes|hub)$/.test(query)) return '';
     if (/\b(?:email|gmail|telegram|calendar|map|chart|settings|chat|games|camera|cart|notes|hub)\b/.test(query)) return '';
+=======
+    if (/^(?:it|this|that|the video|video|music|youtube|yt|gmail|email|telegram|calendar|map|chart|settings|chat|games|camera|cart|notes|hub|photos?|fotos?|pictures?|shots?|snapshots?)$/.test(query)) return '';
+    if (/\b(?:email|gmail|telegram|calendar|map|chart|settings|chat|games|camera|cart|notes|hub|photos?|fotos?|pictures?|shots?|snapshots?)\b/.test(query)) return '';
+>>>>>>> ui-update-final
     if (/^(?:the\s+)?(?:video|music)\s+(?:big|bigger|small|smaller|full(?:\s+screen)?)$/.test(query)) return '';
     return query;
 }
@@ -822,6 +903,11 @@ const state = {
     gmailVoiceMergeBuffer: '',
     gmailVoiceMergeTimer: null,
     gmailVoiceMergeWindowUntil: 0,
+<<<<<<< HEAD
+=======
+    listeningRestartTimer: null,
+    listeningRestartSuppressedUntil: 0,
+>>>>>>> ui-update-final
     gmailDraftUndoStack: [],
     pendingNaturalConversation: null,
     pendingCalendarDraft: null,
@@ -3263,6 +3349,16 @@ async function init() {
             };
         }
         if (stopCameraBtn) stopCameraBtn.onclick = () => exitVisionMode();
+<<<<<<< HEAD
+=======
+        if (closeCameraBtn) {
+            closeCameraBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                exitVisionMode();
+            };
+        }
+>>>>>>> ui-update-final
         if (watchBtn) watchBtn.onclick = toggleLiveWatch;
         if (uploadBtn && fileInput) {
             uploadBtn.onclick = () => fileInput.click();
@@ -3298,7 +3394,17 @@ async function init() {
             });
         }
         if (closeMediaBtn) closeMediaBtn.onclick = () => toggleMediaGallery(false);
+<<<<<<< HEAD
         if (closeMediaLightboxBtn) closeMediaLightboxBtn.onclick = closeMediaLightbox;
+=======
+        if (closeMediaLightboxBtn) {
+            closeMediaLightboxBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                closeMediaLightbox();
+            };
+        }
+>>>>>>> ui-update-final
         if (shareMediaLightboxBtn) {
             shareMediaLightboxBtn.onclick = async () => {
                 const result = await shareActiveMediaImage();
@@ -3388,9 +3494,19 @@ async function init() {
             };
         }
         if (calendarBtn) {
+<<<<<<< HEAD
             calendarBtn.onclick = async () => {
                 if (closeCalendarPanel()) {
                     if (transcriptText) transcriptText.innerText = 'Calendar closed.';
+=======
+            calendarBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isCalendarPanelActuallyVisible()) {
+                    if (closeCalendarPanel()) {
+                        if (transcriptText) transcriptText.innerText = 'Calendar closed.';
+                    }
+>>>>>>> ui-update-final
                     return;
                 }
                 try {
@@ -3400,7 +3516,11 @@ async function init() {
                     console.warn('Calendar button failed:', error?.message || error);
                     if (transcriptText) transcriptText.innerText = error?.message || 'Could not open Blip Calendar.';
                 }
+<<<<<<< HEAD
             };
+=======
+            });
+>>>>>>> ui-update-final
         }
 
         // Scenery Orbit (V4.3.1)
@@ -3460,6 +3580,10 @@ function setMode(mode) {
     if (cartContainer) cartContainer.style.display = 'none';
     if (mediaContainer) mediaContainer.style.display = 'none';
     if (cameraControls) cameraControls.style.display = 'none';
+<<<<<<< HEAD
+=======
+    if (closeCameraBtn) closeCameraBtn.style.display = 'none';
+>>>>>>> ui-update-final
 
     // Show specific panel based on mode
     switch (mode) {
@@ -3488,17 +3612,28 @@ function setMode(mode) {
             setTimeout(() => mapContainer?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
             break;
         case 'settings': underTheHood.classList.add('active'); break;
-        case 'vision': cameraControls.style.display = 'flex'; break;
+        case 'vision':
+            cameraControls.style.display = 'flex';
+            if (closeCameraBtn) closeCameraBtn.style.display = 'flex';
+            break;
         default:
             // Core mode
             if (cameraControls) cameraControls.style.display = 'none';
+<<<<<<< HEAD
+=======
+            if (closeCameraBtn) closeCameraBtn.style.display = 'none';
+>>>>>>> ui-update-final
             stopCamera({ keepTranscript: true });
             break;
     }
 
     // Full-browser layout uses fixed-height container. Enable scroll only when a panel needs vertical room.
     if (appContainer) {
+<<<<<<< HEAD
         const allowPanelScroll = mode === 'map' || mode === 'chart' || mode === 'settings' || mode === 'hub' || mode === 'games' || mode === 'media' || state.isMediaStripOpen;
+=======
+        const allowPanelScroll = mode === 'map' || mode === 'chart' || mode === 'settings' || mode === 'hub' || mode === 'games' || mode === 'media' || mode === 'cart' || state.isMediaStripOpen;
+>>>>>>> ui-update-final
         appContainer.style.overflowY = allowPanelScroll ? 'auto' : 'hidden';
         appContainer.style.overflowX = 'hidden';
     }
@@ -3658,6 +3793,10 @@ function stopCamera(options = {}) {
         webcamVideo.style.display = 'none';
     }
     if (cameraControls) cameraControls.style.display = 'none';
+<<<<<<< HEAD
+=======
+    if (closeCameraBtn) closeCameraBtn.style.display = 'none';
+>>>>>>> ui-update-final
     if (cameraBtn) cameraBtn.style.display = 'block';
     if (visionPreviewContainer) visionPreviewContainer.style.display = state.pendingImage ? 'block' : 'none';
     updateRecordButtonUI();
@@ -3852,11 +3991,59 @@ function cancelInteraction() {
     startListeningLoop();
 }
 
+/** 
+ * Centralized resource cleanup: clears all active intervals and timeouts stored in state 
+ * or common globals to prevent memory leaks and "hanging" background tasks. 
+ */
+function cleanupAllSystemTimers() {
+    console.log('🧹 Cleaning up all system timers...');
+    
+    // 1. Clear speech (mouth animations, safety timeouts)
+    if (speech && typeof speech.stopAll === 'function') {
+        speech.stopAll();
+    }
+
+    // 2. Clear known state-tracked timers
+    const timerKeys = [
+        'alarmLoopTimer', 'timerCornerTicker', 'timerPanelTicker', 
+        'weatherDisplayTicker', 'alertDisplayClearTimer', 'passiveWakeLoopTimer', 
+        'autoScrollTimer', 'idleAmbientFxTimer', 'gmailVoiceMergeTimer', 
+        'listeningRestartTimer', 'recordingAutoStopTimer', 'liveInterval', 
+        'weatherSceneShowcaseTimer', 'idleWeatherRefreshTimer', 'sleepDreamInterval'
+    ];
+    
+    timerKeys.forEach(key => {
+        if (state[key]) {
+            clearInterval(state[key]);
+            clearTimeout(state[key]);
+            state[key] = null;
+        }
+    });
+
+    // 3. Clear global (non-state) timers
+    if (typeof emotionShowcaseResumeTimer !== 'undefined' && emotionShowcaseResumeTimer) {
+        clearTimeout(emotionShowcaseResumeTimer);
+        emotionShowcaseResumeTimer = null;
+    }
+    if (typeof emotionShowcaseTimer !== 'undefined' && emotionShowcaseTimer) {
+        clearTimeout(emotionShowcaseTimer);
+        emotionShowcaseTimer = null;
+    }
+    if (typeof wakeRainbowTimer !== 'undefined' && wakeRainbowTimer) {
+        clearTimeout(wakeRainbowTimer);
+        wakeRainbowTimer = null;
+    }
+}
+
 function stopApp() {
+<<<<<<< HEAD
     if (emotionShowcaseResumeTimer) {
         clearTimeout(emotionShowcaseResumeTimer);
         emotionShowcaseResumeTimer = null;
     }
+=======
+    cleanupAllSystemTimers();
+>>>>>>> ui-update-final
     state.isActive = false;
     state.softSleepMode = false;
     state.isListening = false;
@@ -3865,8 +4052,11 @@ function stopApp() {
     document.body.classList.remove('reduce-motion');
     clearPendingImage();
     stopCamera();
+<<<<<<< HEAD
     speech.stopListening();
     speech.stopSpeaking?.();
+=======
+>>>>>>> ui-update-final
 
     talkBtn.classList.remove('active');
     chatEntry.classList.add('hidden'); // Hide chat entry on sleep
@@ -3997,11 +4187,48 @@ function scheduleGmailVoiceMerge(cmdRaw, onVoiceError) {
             handleCommand(full).catch((error) => onVoiceError?.(error));
         }
     }, GMAIL_VOICE_MERGE_FLUSH_MS);
+<<<<<<< HEAD
+=======
+}
+
+function clearListeningRestartTimer() {
+    if (state.listeningRestartTimer) {
+        clearTimeout(state.listeningRestartTimer);
+        state.listeningRestartTimer = null;
+    }
+}
+
+function suppressListeningRestart(durationMs = 900) {
+    state.listeningRestartSuppressedUntil = Date.now() + Math.max(0, Number(durationMs) || 0);
+}
+
+function canAutoRestartListening() {
+    if (!state.isActive) return false;
+    if (state.isThinking) return false;
+    if (speech.isSpeaking) return false;
+    if (state.emotionShowcaseActive) return false;
+    if (Date.now() < (Number(state.listeningRestartSuppressedUntil) || 0)) return false;
+    return true;
+}
+
+function scheduleListeningRestart(delayMs = 300) {
+    clearListeningRestartTimer();
+    const delay = Math.max(0, Number(delayMs) || 0);
+    state.listeningRestartTimer = setTimeout(() => {
+        state.listeningRestartTimer = null;
+        if (!canAutoRestartListening()) return;
+        startListeningLoop();
+    }, delay);
+>>>>>>> ui-update-final
 }
 
 function startListeningLoop() {
     if (!state.isActive || state.isThinking || state.emotionShowcaseActive) return;
     stopPassiveWakeLoop();
+<<<<<<< HEAD
+=======
+    clearListeningRestartTimer();
+>>>>>>> ui-update-final
     if (speech.isSpeaking && state.lastSpeechStartedAt && (Date.now() - state.lastSpeechStartedAt > 45000)) {
         console.warn('⚠️ Stale speaking state detected. Resetting speech flags.');
         speech.isSpeaking = false;
@@ -4035,12 +4262,20 @@ function startListeningLoop() {
     const listeningStarted = speech.startListening(
         // On Result
         (result) => {
+            // Always show the recognized transcript immediately.
+            // Even if we then stop listening (e.g. because speech playback is active),
+            // the student should still see what the mic heard.
+            if (state.softSleepMode && !result.isFinal) return;
+            transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${result.text}</i>`;
             if (speech.isSpeaking) {
                 stopListening();
                 return;
             }
+<<<<<<< HEAD
             if (state.softSleepMode && !result.isFinal) return;
             transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${result.text}</i>`;
+=======
+>>>>>>> ui-update-final
             if (result.isFinal) {
                 const normalizedHeard = normalizeVoiceTokens(result.text);
                 const normalizedLastSpoken = normalizeVoiceTokens(state.lastSpokenText || '');
@@ -4104,9 +4339,13 @@ function startListeningLoop() {
             state.isListening = false;
             syncScenerySuppression();
             syncWakeReadinessUI();
+<<<<<<< HEAD
             if (state.isActive && !state.isThinking && !speech.isSpeaking) {
                 setTimeout(startListeningLoop, 300);
             }
+=======
+            if (canAutoRestartListening()) scheduleListeningRestart(300);
+>>>>>>> ui-update-final
         },
         // On Error
         (err) => {
@@ -4118,13 +4357,17 @@ function startListeningLoop() {
                 stopApp();
                 transcriptText.innerText = '⚠️ Microphone blocked.';
                 return;
+<<<<<<< HEAD
             }
             if (state.isActive && !state.isThinking && !speech.isSpeaking) {
                 setTimeout(() => {
                     if (!state.isActive || state.isThinking || speech.isSpeaking) return;
                     startListeningLoop();
                 }, err?.error === 'no-speech' ? 250 : 700);
+=======
+>>>>>>> ui-update-final
             }
+            if (canAutoRestartListening()) scheduleListeningRestart(err?.error === 'no-speech' ? 250 : 700);
         }
     );
     if (listeningStarted) {
@@ -4139,6 +4382,7 @@ function startListeningLoop() {
         transcriptText.innerText = 'Voice recognition is not supported in this browser. Try Chrome or Edge over HTTPS.';
         return;
     }
+<<<<<<< HEAD
     if (state.isActive && !state.isThinking && !speech.isSpeaking) {
         setTimeout(() => {
             if (state.isActive && !state.isThinking && !speech.isSpeaking) {
@@ -4146,10 +4390,15 @@ function startListeningLoop() {
             }
         }, 450);
     }
+=======
+    if (canAutoRestartListening()) scheduleListeningRestart(450);
+>>>>>>> ui-update-final
 }
 
 function stopListening() {
     state.isListening = false;
+    suppressListeningRestart(900);
+    clearListeningRestartTimer();
     speech.stopListening();
     syncScenerySuppression();
     syncWakeReadinessUI();
@@ -4270,7 +4519,15 @@ function scrollActiveSurface(direction = 'down') {
     const delta = direction === 'up' ? -320 : 320;
     const sidePanel = document.getElementById('blip-side-panel');
     const appContainer = document.querySelector('.container');
+<<<<<<< HEAD
     const calendarOrbBody = sidePanel?.querySelector('.blip-calendar-orb-body') || document.querySelector('.blip-calendar-orb-body');
+=======
+    // Month mirror scrolls `.blip-calendar-mirror-content`; legacy/orb paths use mirror-body / orb-body.
+    const calendarMirrorContent = sidePanel?.querySelector('.blip-calendar-mirror-content')
+        || document.querySelector('.blip-calendar-mirror-content');
+    const calendarOrbBody = sidePanel?.querySelector('.blip-calendar-mirror-body, .blip-calendar-orb-body')
+        || document.querySelector('.blip-calendar-mirror-body, .blip-calendar-orb-body');
+>>>>>>> ui-update-final
     const calendarBody = sidePanel?.querySelector('.blip-calendar-body') || document.querySelector('.blip-calendar-body');
     const youtubeLibraryList = sidePanel?.dataset.youtubeLibraryOnly === '1'
         ? sidePanel.querySelector('.blip-yt-recent-list')
@@ -4280,6 +4537,10 @@ function scrollActiveSurface(direction = 'down') {
         : [];
     const settingsPanelContent = underTheHood?.querySelector('.panel-content');
     const candidates = [
+<<<<<<< HEAD
+=======
+        calendarMirrorContent,
+>>>>>>> ui-update-final
         calendarOrbBody,
         calendarBody,
         youtubeLibraryList,
@@ -4312,6 +4573,13 @@ function scrollActiveSurface(direction = 'down') {
             return true;
         }
     }
+<<<<<<< HEAD
+=======
+    // Calendar is fixed; scrolling the page/window reads as "the panel went away" — do not fall back.
+    if (isCalendarPanelActuallyVisible()) {
+        return false;
+    }
+>>>>>>> ui-update-final
     if (typeof window.scrollBy === 'function') {
         window.scrollBy({ top: delta, behavior: 'smooth' });
         return true;
@@ -4321,8 +4589,13 @@ function scrollActiveSurface(direction = 'down') {
 
 function isCalendarScrollContextActive() {
     const sidePanel = document.getElementById('blip-side-panel');
+<<<<<<< HEAD
     const calendarBody = sidePanel?.querySelector('.blip-calendar-orb-body, .blip-calendar-body')
         || document.querySelector('.blip-calendar-orb-body, .blip-calendar-body');
+=======
+    const calendarBody = sidePanel?.querySelector('.blip-calendar-mirror-content, .blip-calendar-mirror-body, .blip-calendar-orb-body, .blip-calendar-body')
+        || document.querySelector('.blip-calendar-mirror-content, .blip-calendar-mirror-body, .blip-calendar-orb-body, .blip-calendar-body');
+>>>>>>> ui-update-final
     if (!calendarBody) return false;
     const style = window.getComputedStyle(calendarBody);
     return style.display !== 'none' && style.visibility !== 'hidden';
@@ -5209,6 +5482,34 @@ const actionHandlers = {
         const query = res.tool_params?.query || 'food nutrition';
         const result = await web.search(query + " calories macros nutrition facts");
         return { text: result.text };
+    },
+
+    gmail: async (res) => {
+        if (state.currentSidePanelAction === 'gmail' && isSidePanelVisible()) {
+            closeSidePanel();
+            return { text: 'Email closed.' };
+        }
+        try {
+            await emailFeature.openInboxPanel({ summary: 'Email open.' });
+            return { text: 'Email open.' };
+        } catch (error) {
+            console.warn('Action handler: gmail failed:', error?.message || error);
+            return { text: error?.message || 'Connect Gmail in Settings first.' };
+        }
+    },
+
+    telegram: async (res) => {
+        if (state.currentSidePanelAction === 'telegram' && isSidePanelVisible()) {
+            closeSidePanel();
+            return { text: 'Telegram closed.' };
+        }
+        try {
+            await telegramFeature.openPanel();
+            return { text: 'Telegram open.' };
+        } catch (error) {
+            console.warn('Action handler: telegram failed:', error?.message || error);
+            return { text: error?.message || 'Telegram integration error.' };
+        }
     }
 };
 
@@ -5593,6 +5894,13 @@ function toggleCart() {
 function toggleLearningGames() {
     if (!gamesContainer) return;
     const shouldShow = state.currentMode !== 'games';
+<<<<<<< HEAD
+=======
+    if (shouldShow) {
+        // When opening learning games, always return ear training to its 2-mode menu.
+        state.earTrainingController?.resetToMenu?.();
+    }
+>>>>>>> ui-update-final
     setMode(shouldShow ? 'games' : 'core');
 }
 
@@ -5737,6 +6045,17 @@ function initLearningGames() {
             void renderMathQuestion();
         });
     }
+<<<<<<< HEAD
+=======
+
+    // Ear training (intervals + major/minor)
+    const earTrainingRoot = document.getElementById('blip-ear-training-game');
+    if (earTrainingRoot && !state.earTrainingMounted) {
+        state.earTrainingController = mountEarTrainingGame(earTrainingRoot);
+        state.earTrainingMounted = true;
+    }
+
+>>>>>>> ui-update-final
     renderLearningGamesPanel();
 }
 
@@ -6104,8 +6423,13 @@ function isSidePanelActuallyVisible(expectedAction = '') {
     const sidePanel = document.getElementById('blip-side-panel');
     if (!isContainerActuallyVisible(sidePanel)) return false;
     if (!expectedAction) return true;
+<<<<<<< HEAD
     if (expectedAction === 'calendarAgenda') {
         return sidePanel.classList.contains('blip-calendar-orb');
+=======
+    if (expectedAction === 'calendaragenda') {
+        return sidePanel.classList.contains('blip-calendar-mirror-panel') || sidePanel.classList.contains('blip-calendar-orb');
+>>>>>>> ui-update-final
     }
     const panelAction = String(sidePanel.dataset?.panelAction || state.currentSidePanelAction || '').trim();
     return panelAction === expectedAction;
@@ -6130,7 +6454,11 @@ function isChartActuallyVisible() {
 }
 
 function isCalendarPanelActuallyVisible() {
+<<<<<<< HEAD
     return isSidePanelActuallyVisible('calendarAgenda');
+=======
+    return isCalendarAgendaDomVisible();
+>>>>>>> ui-update-final
 }
 
 function logUiOpenVisibilityFailure(cmd = '', target = '', details = {}) {
@@ -6744,8 +7072,20 @@ Steps (numbered):
 Approx nutrition per serving: calories, protein, carbs, fiber.
 
 Keep it around 120-220 words.`;
+<<<<<<< HEAD
     try {
         const raw = await generateWithPrompt(systemPrompt, userPrompt, state.geminiKey, state.selectedModel);
+=======
+    const generate = async (sp, up, key, mdl) => {
+        if (mdl.startsWith('gemini')) {
+            return await generateWithPrompt(sp, up, key, mdl);
+        } else {
+            return await generateWithOllama(sp, up, mdl);
+        }
+    };
+    try {
+        const raw = await generate(systemPrompt, userPrompt, state.geminiKey, state.selectedModel);
+>>>>>>> ui-update-final
         const cleaned = String(raw || '').trim();
         return cleaned || buildFallbackRecipeText(focus);
     } catch (error) {
@@ -7142,7 +7482,18 @@ Rules:
 - Avoid external assets and avoid scripts.`;
     if (!preferRaster) {
         try {
+<<<<<<< HEAD
             const raw = await generateWithPrompt(systemPrompt, userPrompt, state.geminiKey, state.selectedModel);
+=======
+            const generate = async (sp, up, key, mdl) => {
+                if (mdl.startsWith('gemini')) {
+                    return await generateWithPrompt(sp, up, key, mdl);
+                } else {
+                    return await generateWithOllama(sp, up, mdl);
+                }
+            };
+            const raw = await generate(systemPrompt, userPrompt, state.geminiKey, state.selectedModel);
+>>>>>>> ui-update-final
             const extracted = extractSvgMarkup(raw);
             const safeSvg = normalizeSvgMarkup(extracted);
             if (safeSvg) {
@@ -7933,17 +8284,35 @@ function openMediaLightbox(url, index = null, kind = 'image', bucket = MEDIA_BUC
 
 function clearSidePanelContext() {
     stopTimerPanelTicker();
+<<<<<<< HEAD
     if (state.currentSidePanelAction === 'telegram') {
         state.pendingTelegramReview = false;
     }
     state.currentSidePanelAction = '';
     state.currentSidePanelVisualUrl = '';
     document.body.classList.remove('blip-gmail-panel-open', 'blip-telegram-panel-open');
+=======
+    clearVoiceToolFollowUpLock();
+    if (state.currentSidePanelAction === 'telegram') {
+        state.pendingTelegramReview = false;
+    }
+    if (state.currentSidePanelAction === 'gmail') {
+        state.pendingEmailReview = null;
+        clearGmailVoiceMergeState();
+    }
+    state.currentSidePanelAction = '';
+    state.currentSidePanelVisualUrl = '';
+    document.body.classList.remove('blip-gmail-panel-open', 'blip-telegram-panel-open', 'blip-calendar-panel-open');
+>>>>>>> ui-update-final
 }
 
 function applyDefaultSidePanelLayout(sidePanel, action = '') {
     if (!sidePanel) return;
+<<<<<<< HEAD
     sidePanel.classList.remove('blip-video-big', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-side-panel-workspace', 'blip-gmail-dock', 'blip-telegram-dock');
+=======
+    sidePanel.classList.remove('blip-video-big', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-calendar-mirror-panel', 'blip-side-panel-workspace', 'blip-gmail-dock', 'blip-telegram-dock');
+>>>>>>> ui-update-final
     sidePanel.dataset.panelAction = action || '';
     delete sidePanel.dataset.youtubeLibraryOnly;
     sidePanel.querySelectorAll('.blip-workspace-dock').forEach((node) => node.remove());
@@ -7986,16 +8355,24 @@ function applyWorkspaceSidePanelLayout(sidePanel, action = '') {
     sidePanel.style.flexDirection = 'column';
 }
 
+<<<<<<< HEAD
 /** Gmail: compact bottom-right dock — fixed panel is on BODY; #app padding + 100% widths keep the face clear. */
 function applyGmailSidePanelLayout(sidePanel) {
     if (!sidePanel) return;
     sidePanel.classList.remove('blip-side-panel-workspace', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-telegram-dock');
+=======
+/** Gmail: bottom-right dock — tall enough for toolbar + compose + inbox + body (CSS blip-gmail-dock sets !important sizes). */
+function applyGmailSidePanelLayout(sidePanel) {
+    if (!sidePanel) return;
+    sidePanel.classList.remove('blip-side-panel-workspace', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-calendar-mirror-panel', 'blip-telegram-dock');
+>>>>>>> ui-update-final
     sidePanel.classList.add('blip-gmail-dock');
     sidePanel.style.top = 'auto';
     sidePanel.style.bottom = 'max(10px, env(safe-area-inset-bottom, 0px))';
     sidePanel.style.left = 'auto';
     sidePanel.style.right = 'max(10px, env(safe-area-inset-right, 0px))';
     sidePanel.style.transform = 'none';
+<<<<<<< HEAD
     sidePanel.style.width = 'min(240px, calc(100vw - 20px))';
     sidePanel.style.maxWidth = 'min(240px, calc(100vw - 20px))';
     sidePanel.style.height = 'min(24vh, 300px)';
@@ -8003,20 +8380,37 @@ function applyGmailSidePanelLayout(sidePanel) {
     sidePanel.style.padding = '10px 12px';
     sidePanel.style.borderRadius = '18px';
     sidePanel.style.overflow = 'auto';
+=======
+    sidePanel.style.width = 'min(400px, calc(100vw - 24px))';
+    sidePanel.style.maxWidth = 'min(400px, calc(100vw - 24px))';
+    sidePanel.style.height = 'min(78vh, 820px)';
+    sidePanel.style.maxHeight = 'min(78vh, 820px)';
+    sidePanel.style.padding = '10px 12px';
+    sidePanel.style.borderRadius = '18px';
+    sidePanel.style.overflow = 'hidden';
+>>>>>>> ui-update-final
     sidePanel.style.display = 'flex';
     sidePanel.style.flexDirection = 'column';
 }
 
+<<<<<<< HEAD
 /** Telegram: same compact bottom-right dock as Gmail (face stays visible). */
 function applyTelegramSidePanelLayout(sidePanel) {
     if (!sidePanel) return;
     sidePanel.classList.remove('blip-side-panel-workspace', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-gmail-dock');
+=======
+/** Telegram: bottom-right dock — wide/tall enough for message + voice hints (face stays visible). */
+function applyTelegramSidePanelLayout(sidePanel) {
+    if (!sidePanel) return;
+    sidePanel.classList.remove('blip-side-panel-workspace', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-calendar-mirror-panel', 'blip-gmail-dock');
+>>>>>>> ui-update-final
     sidePanel.classList.add('blip-telegram-dock');
     sidePanel.style.top = 'auto';
     sidePanel.style.bottom = 'max(10px, env(safe-area-inset-bottom, 0px))';
     sidePanel.style.left = 'auto';
     sidePanel.style.right = 'max(10px, env(safe-area-inset-right, 0px))';
     sidePanel.style.transform = 'none';
+<<<<<<< HEAD
     sidePanel.style.width = 'min(240px, calc(100vw - 20px))';
     sidePanel.style.maxWidth = 'min(240px, calc(100vw - 20px))';
     sidePanel.style.height = 'min(24vh, 300px)';
@@ -8024,6 +8418,15 @@ function applyTelegramSidePanelLayout(sidePanel) {
     sidePanel.style.padding = '10px 12px';
     sidePanel.style.borderRadius = '18px';
     sidePanel.style.overflow = 'auto';
+=======
+    sidePanel.style.width = 'min(380px, calc(100vw - 24px))';
+    sidePanel.style.maxWidth = 'min(380px, calc(100vw - 24px))';
+    sidePanel.style.height = 'min(72vh, 720px)';
+    sidePanel.style.maxHeight = 'min(72vh, 720px)';
+    sidePanel.style.padding = '10px 12px';
+    sidePanel.style.borderRadius = '18px';
+    sidePanel.style.overflow = 'hidden';
+>>>>>>> ui-update-final
     sidePanel.style.display = 'flex';
     sidePanel.style.flexDirection = 'column';
 }
@@ -9582,6 +9985,27 @@ async function handleCommand(text) {
     if (await handleNaturalConversationBridge()) {
         return;
     }
+<<<<<<< HEAD
+=======
+    // Photos / shots lane must win over YouTube `openVideos` — runs before prioritized YT shortcuts.
+    if (isPriorityOpenLocalPhotosIntentFromLower(lowerCmd)) {
+        face.classList.remove('thinking');
+        toggleMediaGallery(true, 'shots');
+        setVoiceToolFollowUpLock('media_shots');
+        const shotCount = getMediaItemsByBucket(MEDIA_BUCKET_SHOTS).length;
+        const photosMsg = getVerifiedOpenMessage({
+            cmd,
+            target: 'media-strip',
+            visible: isMediaStripActuallyVisible(),
+            successMessage: shotCount > 0
+                ? `Photos open. ${shotCount} item${shotCount === 1 ? '' : 's'}.`
+                : 'Photos open. Empty.',
+            details: { lane: 'shots' }
+        });
+        await quickReply(photosMsg, 'happy');
+        return;
+    }
+>>>>>>> ui-update-final
     const ytCmd = getYouTubeVoiceCommand(cmd);
     const prioritizedYouTubeCommands = new Set([
         'pause', 'play', 'stop', 'rewind', 'forward', 'mute', 'unmute', 'restart', 'next',
@@ -9745,6 +10169,19 @@ async function handleCommand(text) {
         return;
     }
 
+<<<<<<< HEAD
+=======
+    // Communication skills (deterministic canned answers)
+    // Run before Gmail/Telegram “natural intent” routing so capability questions
+    // like "can you write emails" don't accidentally open a compose panel.
+    const blipQaAnswer = getBlipQaAnswer(cmd);
+    if (blipQaAnswer) {
+        face.classList.remove('thinking');
+        await quickReply(blipQaAnswer, 'happy');
+        return;
+    }
+
+>>>>>>> ui-update-final
     const naturalMessageFlow = parseNaturalMessageFlow(cmd, getVoiceRoutingContext(state));
     if (naturalMessageFlow?.channel === 'gmail' && !getGmailVoiceCommand(cmd)) {
         face.classList.remove('thinking');
@@ -12310,12 +12747,27 @@ Analyze the user's latest request: "${reviewedRequest}".
 Use the context above and conversation history so that "another graph", "that place", "same" etc. refer to the last topic (e.g. same city, same chart subject).
 
 Return a simple JSON object: {
+<<<<<<< HEAD
   "actions": ["search", "youtube", "map", "chart", "calendar", "weather", "time", "products", "timer", "chat", "none"],
+=======
+  "actions": ["search", "youtube", "map", "chart", "calendar", "weather", "time", "products", "timer", "gmail", "telegram", "chat", "none"],
+>>>>>>> ui-update-final
   "query": "optimized search query — if user said 'another graph' or 'same' use the last search topic; if they said 'there' use last location (leave empty for casual chat)",
   "entities": ["entity1", "entity2"]
 }`;
 
-        const intentResponse = await askGemini(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
+        const askAIBrain = async (prompt, history, images, apiKey, model) => {
+            if (model.startsWith('gemini')) {
+                return await askGemini(prompt, history, images, apiKey, model);
+            } else {
+                const res = await askOllama(prompt, history, images, model);
+                // Shim rawResponse for extractJSON calls in main.js
+                if (res && !res.rawResponse) res.rawResponse = JSON.stringify(res);
+                return res;
+            }
+        };
+
+        const intentResponse = await askAIBrain(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
         let intent = extractJSON(intentResponse.rawResponse) || { actions: [intentResponse.action || 'chat'], query: cmd, entities: [] };
         const fallbackIntentAction = intent.action || intentResponse.action || 'chat';
         if (Array.isArray(intent.actions)) {
@@ -12455,7 +12907,11 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
             synthesisResponse = { emotion: 'happy', text: finalReplyPlain };
             setBlipEmotion('happy');
         } else {
+<<<<<<< HEAD
             synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
+=======
+            synthesisResponse = await askAIBrain(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
+>>>>>>> ui-update-final
             setBlipEmotion(synthesisResponse.emotion);
             synthData = extractJSON(synthesisResponse.rawResponse);
             let conclusion = synthData?.conclusion || synthData?.text || synthesisResponse.text;
@@ -12875,10 +13331,17 @@ function closeAuxiliaryPanelsForGallery() {
         chartContainer.style.display = 'none';
     }
     const sidePanel = document.getElementById('blip-side-panel');
+<<<<<<< HEAD
     if (sidePanel?.classList.contains('blip-calendar-orb') && sidePanel.style.display !== 'none') {
         sidePanel.style.display = 'none';
         sidePanel.innerHTML = '';
         sidePanel.classList.remove('blip-calendar-orb');
+=======
+    if (sidePanel && (sidePanel.classList.contains('blip-calendar-mirror-panel') || sidePanel.classList.contains('blip-calendar-orb')) && sidePanel.style.display !== 'none') {
+        sidePanel.style.display = 'none';
+        sidePanel.innerHTML = '';
+        sidePanel.classList.remove('blip-calendar-mirror-panel', 'blip-calendar-orb');
+>>>>>>> ui-update-final
         clearSidePanelContext();
     } else if (isSidePanelVisible()) {
         closeYouTubePanel();
@@ -12906,6 +13369,7 @@ function closeAuxiliaryPanelsForCalendar() {
 }
 
 function closeCalendarPanel() {
+<<<<<<< HEAD
     const sidePanel = document.getElementById('blip-side-panel');
     state.activeCalendarViewRequest = null;
     if (!sidePanel || sidePanel.style.display === 'none') return false;
@@ -12927,6 +13391,12 @@ function closeCalendarPanel() {
     sidePanel.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
     clearSidePanelContext();
     return true;
+=======
+    state.activeCalendarViewRequest = null;
+    const ok = closeCalendarAgendaPanelUi();
+    if (ok) clearSidePanelContext();
+    return ok;
+>>>>>>> ui-update-final
 }
 
 /** YT.PlayerState: unstarted=-1, ended=0, playing=1, paused=2, buffering=3, cued=5 */
@@ -13734,7 +14204,12 @@ function getDirectProductVoiceQuery(cmd) {
     return query;
 }
 
+<<<<<<< HEAD
 function parseVoiceDateFromText(text) {
+=======
+function parseVoiceDateFromText(text, options = {}) {
+    const requireTime = options.requireTime !== false;
+>>>>>>> ui-update-final
     const lower = normalizeVoiceTokens(text);
     const now = new Date();
     let target = parseMonthDayReferenceFromText(lower) || new Date(now);
@@ -13778,6 +14253,12 @@ function parseVoiceDateFromText(text) {
     if (!matchedDate) return null;
 
     const parsedTime = parseVoiceTimeFromText(lower);
+<<<<<<< HEAD
+=======
+    if (!requireTime && !parsedTime) {
+        return startOfCalendarDay(target);
+    }
+>>>>>>> ui-update-final
     const hours = parsedTime?.hours;
     const minutes = parsedTime?.minutes ?? 0;
     if (!Number.isFinite(hours) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
@@ -14145,9 +14626,21 @@ function getCalendarAgendaVoiceRequest(cmd) {
     const directCalendarOpenIntent = /^(?:can you\s+)?(?:please\s+)?open\s+(?:(?:my|the)\s+)?(?:calendar|schedule|agenda|events?)$/.test(lower);
     const conversationalCalendarOpenIntent = /\b(?:open|show|view|check)\b[\s\w]{0,24}\b(?:calendar|schedule|agenda|events?)\b/.test(lower);
     const explicitViewMatch = lower.match(/\b(day|week|month)\s+view\b/);
+<<<<<<< HEAD
     const directDateOpenIntent = /\b(show|display|view)\b/.test(lower) && (Boolean(parseCalendarDayNumberFromText(lower)) || Boolean(parseMonthDayReferenceFromText(lower)));
     if (!hasCalendarIntent && !explicitViewMatch && !directDateOpenIntent && !directCalendarOpenIntent && !conversationalCalendarOpenIntent) return null;
     if (!explicitViewMatch && !directCalendarOpenIntent && !conversationalCalendarOpenIntent && !/\b(open|show|display|view|what(?:'s| is)|list|tell me|give me|see|check|my)\b/.test(lower)) return null;
+=======
+    const navToDateCue = /\b(?:show|display|view|go\s+to|jump\s+to|navigate\s+to|take\s+me\s+to|head\s+to)\b/;
+    const directDateOpenIntent = navToDateCue.test(lower) && (
+        Boolean(parseCalendarDayNumberFromText(lower))
+        || Boolean(parseMonthDayReferenceFromText(lower))
+        || /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/.test(lower)
+        || Boolean(parseVoiceDateFromText(lower, { requireTime: false }))
+    );
+    if (!hasCalendarIntent && !explicitViewMatch && !directDateOpenIntent && !directCalendarOpenIntent && !conversationalCalendarOpenIntent) return null;
+    if (!explicitViewMatch && !directDateOpenIntent && !directCalendarOpenIntent && !conversationalCalendarOpenIntent && !/\b(open|show|display|view|what(?:'s| is)|list|tell me|give me|see|check|my|go|jump|navigate|head|take)\b/.test(lower)) return null;
+>>>>>>> ui-update-final
 
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -14157,11 +14650,30 @@ function getCalendarAgendaVoiceRequest(cmd) {
     dayAfterTomorrowStart.setDate(dayAfterTomorrowStart.getDate() + 1);
     const monthEnd = new Date(todayStart);
     monthEnd.setDate(monthEnd.getDate() + 30);
+<<<<<<< HEAD
+=======
+    const monthNav = parseNavigateToMonthAnchor(lower);
+    if (monthNav?.monthOnly) {
+        const anchor = monthNav.anchor;
+        return {
+            label: anchor.toLocaleDateString('en-US', { month: 'long' }),
+            view: 'month',
+            anchorDate: anchor.toISOString(),
+            timeMin: todayStart.toISOString(),
+            timeMax: monthEnd.toISOString(),
+            maxResults: 60
+        };
+    }
+>>>>>>> ui-update-final
     const requestedView = explicitViewMatch?.[1] || (/\bmonth\b/.test(lower) ? 'month' : /\bday\b/.test(lower) ? 'day' : /\bweek\b/.test(lower) ? 'week' : '');
     const requestedDay = parseDayOnlyRange(lower);
     const explicitCommandDate = getCalendarDateFromCommand(lower, state.activeCalendarViewRequest || { anchorDate: state.calendarAnchorDate });
 
+<<<<<<< HEAD
     if (!explicitViewMatch && explicitCommandDate && /\b(show|display|view)\b/.test(lower) && !(/\bweek\b|\bmonth\b/.test(lower))) {
+=======
+    if (!explicitViewMatch && explicitCommandDate && navToDateCue.test(lower) && !(/\bweek\b|\bmonth\b/.test(lower))) {
+>>>>>>> ui-update-final
         const anchor = startOfCalendarDay(explicitCommandDate);
         const nextDay = new Date(anchor);
         nextDay.setDate(nextDay.getDate() + 1);
@@ -14662,7 +15174,11 @@ function parseCalendarDayWordFromText(text) {
 
 function parseCalendarDayNumberFromText(text) {
     const lower = normalizeVoiceTokens(text);
+<<<<<<< HEAD
     const match = lower.match(/\bday\s+(\d{1,2})(?:st|nd|rd|th)?\b|\b(?:the\s+)?(\d{1,2})(st|nd|rd|th)\b/);
+=======
+    const match = lower.match(/\bday\s+(\d{1,2})(?:st|nd|rd|th)?\b|\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b/);
+>>>>>>> ui-update-final
     const dayNumber = Number(match?.[1] || match?.[2] || parseCalendarDayWordFromText(lower) || 0);
     return Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= 31 ? dayNumber : null;
 }
@@ -14670,7 +15186,11 @@ function parseCalendarDayNumberFromText(text) {
 function getCalendarDateFromCommand(text, request = {}) {
     const explicitDate = parseMonthDayReferenceFromText(text);
     if (explicitDate) return explicitDate;
+<<<<<<< HEAD
     const parsedDate = parseVoiceDateFromText(text);
+=======
+    const parsedDate = parseVoiceDateFromText(text, { requireTime: false });
+>>>>>>> ui-update-final
     if (parsedDate) return parsedDate;
     const dayNumber = parseCalendarDayNumberFromText(text);
     if (dayNumber) {
@@ -14697,6 +15217,30 @@ function parseMonthDayReferenceFromText(text) {
     return date;
 }
 
+<<<<<<< HEAD
+=======
+/** "Jump to April" / "go to September" (month name only, no day). */
+function parseNavigateToMonthAnchor(lower) {
+    const normalized = typeof lower === 'string' ? normalizeVoiceTokens(lower) : lower;
+    if (!/\b(?:go\s+to|jump\s+to|navigate\s+to|take\s+me\s+to|head\s+to)\b/.test(normalized)) return null;
+    if (parseMonthDayReferenceFromText(normalized)) return null;
+    const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    const monthMatch = normalized.match(new RegExp(`\\b(${months.join('|')})\\b`));
+    if (!monthMatch) return null;
+    const monthIndex = months.indexOf(monthMatch[1]);
+    if (monthIndex < 0) return null;
+    const now = new Date();
+    const todayStart = startOfCalendarDay(now);
+    let year = now.getFullYear();
+    const endOfMonth = new Date(year, monthIndex + 1, 0);
+    if (endOfMonth < todayStart) {
+        year += 1;
+    }
+    const anchor = startOfCalendarDay(new Date(year, monthIndex, 1));
+    return { anchor, monthOnly: true };
+}
+
+>>>>>>> ui-update-final
 function createEmptyLastContext() {
     return {
         lastUserQuery: '',
@@ -14908,12 +15452,20 @@ function buildCalendarAgendaHtml(events, calendarUrl, request = {}) {
     ].filter(Boolean).join(' ');
 
     return `
+<<<<<<< HEAD
         <div class="blip-calendar-shell">
             <div class="blip-calendar-topbar">
                 <div>
                     <div class="blip-calendar-kicker">Blip Calendar</div>
                     <div class="blip-calendar-title">${escapeHtml(panelState.title)}</div>
                     <div class="blip-calendar-subtitle">${escapeHtml(panelState.subtitle)}</div>
+=======
+        <div class="blip-calendar-mirror-shell" data-calendar-view-mode="${panelState.view}">
+            <div class="blip-calendar-mirror-header">
+                <div class="blip-calendar-mirror-heading">
+                    <div class="blip-calendar-kicker">Blip Calendar</div>
+                    <div class="blip-calendar-title">${escapeHtml(panelState.title)}</div>
+>>>>>>> ui-update-final
                 </div>
                 <div class="blip-calendar-topbar-actions">
                     <button type="button" class="blip-calendar-nav-btn" data-calendar-nav="prev" aria-label="Previous range">←</button>
@@ -14921,15 +15473,26 @@ function buildCalendarAgendaHtml(events, calendarUrl, request = {}) {
                     <button type="button" class="blip-calendar-nav-btn" data-calendar-nav="next" aria-label="Next range">→</button>
                 </div>
             </div>
+<<<<<<< HEAD
             <div class="blip-calendar-toolbar">
+=======
+            <div class="blip-calendar-mirror-toolbar">
+>>>>>>> ui-update-final
                 <div class="blip-calendar-view-switch" aria-label="Calendar mode">
                     <div class="blip-calendar-view-pill is-active">Month</div>
                 </div>
                 <a href="${calendarUrl}" target="_blank" class="blip-calendar-google-link">Open Google</a>
             </div>
             <div class="blip-calendar-status${authState.connected ? ' connected' : ''}">${escapeHtml(statusBits || 'Calendar ready.')}</div>
+<<<<<<< HEAD
             <div class="blip-calendar-body" data-calendar-view-mode="${panelState.view}">
                 ${bodyHtml}
+=======
+            <div class="blip-calendar-mirror-content">
+                <div class="blip-calendar-mirror-surface">
+                    ${bodyHtml}
+                </div>
+>>>>>>> ui-update-final
             </div>
         </div>
     `;
@@ -15311,6 +15874,19 @@ async function showCalendarOverview(request = { label: 'upcoming' }) {
     setCalendarDisplayMode(panelState.view);
     setCalendarAnchorDate(panelState.anchorDate);
     const calendarUrl = 'https://calendar.google.com/calendar/u/0/r';
+<<<<<<< HEAD
+=======
+    const bootHtml = buildCalendarAgendaHtml(getCachedCalendarEvents(panelRequest), calendarUrl, panelRequest)
+        || '<div class="blip-calendar-shell"><p class="blip-calendar-status">Opening calendar…</p></div>';
+    renderActionInSidePanel({
+        action: 'calendarAgenda',
+        tool_params: {
+            title: 'Blip Calendar',
+            html: bootHtml
+        },
+        text: 'Blip Calendar open.'
+    });
+>>>>>>> ui-update-final
     const initiallyConnected = await ensureGoogleCalendarConnected({ silent: true });
     const authState = getGoogleCalendarAuthState();
 
@@ -15427,7 +16003,11 @@ async function showCalendarOverview(request = { label: 'upcoming' }) {
                 }
                 const summary = 'Blip Calendar open.';
                 renderActionInSidePanel({
+<<<<<<< HEAD
                     action: 'calendarAgenda',
+=======
+                    action: 'calendaragenda',
+>>>>>>> ui-update-final
                     tool_params: {
                         title: `Blip Calendar`,
                         html: buildCalendarAgendaHtml(visibleEvents, calendarUrl, panelRequest)
@@ -15502,7 +16082,11 @@ async function forceOpenCalendarOverview(request = { label: 'upcoming' }) {
 async function refreshOpenCalendarPanel() {
     const sidePanel = document.getElementById('blip-side-panel');
     if (!sidePanel || sidePanel.style.display === 'none') return null;
+<<<<<<< HEAD
     if (!sidePanel.classList.contains('blip-calendar-orb')) return null;
+=======
+    if (!sidePanel.classList.contains('blip-calendar-mirror-panel') && !sidePanel.classList.contains('blip-calendar-orb')) return null;
+>>>>>>> ui-update-final
     const request = state.activeCalendarViewRequest || { label: 'upcoming' };
     return showCalendarOverview(request);
 }
@@ -15917,14 +16501,25 @@ function getSystemVoiceCommand(cmd) {
     const systemCandidate = stripped.replace(/^play\s+/, '').trim();
     const sleepPhrase = '(?:go\\s+back\\s+to\\s+sleep|go\\s+to\\s+sleep)';
     const condensedSleep = systemCandidate.replace(/\bsleep\b/g, 'sleep').replace(/\s+/g, ' ').trim();
+<<<<<<< HEAD
     const wantsScrollDown =
         /\bscroll\b[\s\w]{0,28}\bdown\b/.test(trimmed) ||
+=======
+    // STT often says "scrolling down" / "scrolled down" — \bscroll\b alone does not match inside "scrolling".
+    const wantsScrollDown =
+        /\bscroll\b[\s\w]{0,28}\bdown\b/.test(trimmed) ||
+        /\b(?:scroll(?:ed|ing)?|scrolled|scrolling)\s+down\b/.test(trimmed) ||
+>>>>>>> ui-update-final
         /\b(?:go|move|page)\s+down\b/.test(trimmed) ||
         /\bscroll\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?(?:lower|below)\b/.test(trimmed) ||
         /^(?:down|lower)\s+please$/.test(stripped) ||
         /^(?:scroll|move|go|page)\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?down(?:\s+please)?$/.test(stripped);
     const wantsScrollUp =
         /\bscroll\b[\s\w]{0,28}\bup\b/.test(trimmed) ||
+<<<<<<< HEAD
+=======
+        /\b(?:scroll(?:ed|ing)?|scrolled|scrolling)\s+up\b/.test(trimmed) ||
+>>>>>>> ui-update-final
         /\b(?:go|move|page)\s+up\b/.test(trimmed) ||
         /\bscroll\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?(?:higher|above)\b/.test(trimmed) ||
         /^(?:up|higher)\s+please$/.test(stripped) ||
@@ -16481,6 +17076,13 @@ function getYouTubeVoiceCommand(cmd) {
     if (!cmd || typeof cmd !== 'string') return null;
     const lower = normalizeVoiceTokens(cmd);
     if (/\bcalendar\b/.test(lower)) return null;
+<<<<<<< HEAD
+=======
+    // Saved shots / camera roll — keep on media gallery path, not YouTube saved lists.
+    if (/\b(?:photos?|fotos?|pictures?|shots?|snapshots?)\b/.test(lower) && !/\b(?:youtube|yt)\b/.test(lower)) {
+        return null;
+    }
+>>>>>>> ui-update-final
     const libraryView = resolveYouTubeLibraryViewFromVoice(lower);
     if (libraryView === 'Music') return 'openMusic';
     if (libraryView === 'Videos') return 'openVideos';
@@ -16494,9 +17096,16 @@ function getYouTubeVoiceCommand(cmd) {
     if (/^(?:please\s+)?(?:play|resume|play\s+(?:the\s+)?(?:video|youtube|player|it)|resume\s+(?:the\s+)?(?:video|youtube|player|it))(?:\s+please)?$/.test(lower)) return 'play';
     if (/^(?:please\s+)?(?:stop|stop\s+(?:the\s+)?(?:video|youtube|player|it))(?:\s+please)?$/.test(lower)) return 'stop';
     if (/^(?:please\s+)?open\s+music(?:\s+please)?$/.test(lower) || /^(?:please\s+)?show\s+music(?:\s+please)?$/.test(lower)) return 'openMusic';
+<<<<<<< HEAD
     if (/^(?:please\s+)?open\s+videos?(?:\s+please)?$/.test(lower) || /^(?:please\s+)?show\s+videos?(?:\s+please)?$/.test(lower)) return 'openVideos';
     if (youtubePanelOpen && /\b(?:switch|change|go|move|set)\s+(?:to\s+)?music\b/.test(lower)) return 'openMusic';
     if (youtubePanelOpen && /\b(?:switch|change|go|move|set)\s+(?:to\s+)?videos?\b/.test(lower)) return 'openVideos';
+=======
+    if (/^(?:please\s+)?open\s+videos\b(?:\s+please)?$/.test(lower) || /^(?:please\s+)?show\s+videos\b(?:\s+please)?$/.test(lower)) return 'openVideos';
+    if (youtubePanelOpen && /\b(?:switch|change|go|move|set)\s+(?:to\s+)?music\b/.test(lower)) return 'openMusic';
+    // Require plural "videos" — singular "video" collides with STT errors for "photos".
+    if (youtubePanelOpen && /\b(?:switch|change|go|move|set)\s+(?:to\s+)?videos\b/.test(lower)) return 'openVideos';
+>>>>>>> ui-update-final
     if ((state.pendingYouTubeAction === 'unmute' || youtubePanelOpen) && /^(ok|yes|play)\s*$/.test(lower)) return 'unmute';
     if (/\bun\s*-?\s*mute\b/.test(lower) ||
         /\bsound\s+on\b/.test(lower) ||
@@ -16552,6 +17161,10 @@ function getYouTubeVoiceCommand(cmd) {
 
 function getYouTubeLibraryBrowseVoiceCommand(cmd) {
     if (!cmd || typeof cmd !== 'string' || !isYouTubeLibraryVoiceContextOpen()) return null;
+<<<<<<< HEAD
+=======
+    if (isCalendarPanelActuallyVisible()) return null;
+>>>>>>> ui-update-final
     const lower = normalizeVoiceTokens(cmd);
     if (isYouTubeLibraryOnlyPanelOpen()) {
         if (/^(?:please\s+)?(?:next|next\s+one|next\s+video|go\s+next|move\s+down)(?:\s+please)?$/.test(lower)) return 'next';
@@ -17599,7 +18212,11 @@ function downloadChart() {
  * @param {{ action: string, tool_params?: object, text?: string }} parsedResponse
  */
 function bindCalendarPanelControls(sidePanel) {
+<<<<<<< HEAD
     sidePanel.querySelector('.blip-calendar-orb-close')?.addEventListener('click', () => {
+=======
+    sidePanel.querySelector('.blip-calendar-mirror-close, .blip-calendar-orb-close')?.addEventListener('click', () => {
+>>>>>>> ui-update-final
         closeCalendarPanel();
     });
 
@@ -17843,7 +18460,11 @@ async function buildEmailPayloadFromContext(request = {}) {
         const payload = await usePayload(formatYouTubeShareForEmail());
         if (payload) return payload;
     }
+<<<<<<< HEAD
     if (state.currentSidePanelAction === 'calendarAgenda' || state.activeCalendarViewRequest || (state.calendarCache || []).length) {
+=======
+    if (state.currentSidePanelAction === 'calendaragenda' || state.activeCalendarViewRequest || (state.calendarCache || []).length) {
+>>>>>>> ui-update-final
         const payload = await usePayload(getPreferredCalendarSharePayload());
         if (payload) return payload;
     }
@@ -17851,6 +18472,7 @@ async function buildEmailPayloadFromContext(request = {}) {
     return null;
 }
 
+<<<<<<< HEAD
 async function ensureGmailProfileLoaded() {
     const authState = getGoogleGmailAuthState();
     if (!authState.connected) return null;
@@ -18025,6 +18647,8 @@ async function sendCurrentGmailDraft(draft = {}) {
     return { ok: true, text: `Gmail accepted the email for ${to}.` };
 }
 
+=======
+>>>>>>> ui-update-final
 function bindCreationsPanelControls(sidePanel) {
     sidePanel.querySelectorAll('[data-creation-open]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -18047,6 +18671,7 @@ function bindCreationsPanelControls(sidePanel) {
     });
 }
 
+<<<<<<< HEAD
 function bindGmailPanelControls(sidePanel) {
     const syncDraftFromInputs = () => {
         const toInput = sidePanel.querySelector('[data-gmail-to]');
@@ -18117,12 +18742,33 @@ function bindGmailPanelControls(sidePanel) {
     });
 }
 
+=======
+>>>>>>> ui-update-final
 // ── UI: SIDE PANEL RENDER (timer, notes, youtube, chart, etc.) ─────────────────
 function renderActionInSidePanel(parsedResponse) {
     const { tool_params = {}, text = '' } = parsedResponse;
     const action = String(parsedResponse?.action || '').trim().toLowerCase();
     if (action === 'none' || !action) return;
+<<<<<<< HEAD
     if (action !== 'timer') stopTimerPanelTicker();
+=======
+    document.body.classList.toggle('blip-calendar-panel-open', action === 'calendaragenda');
+    if (action !== 'timer') stopTimerPanelTicker();
+
+    if (action === 'calendaragenda') {
+        state.currentSidePanelAction = 'calendaragenda';
+        state.currentSidePanelVisualUrl = '';
+        document.body.classList.remove('blip-gmail-panel-open', 'blip-telegram-panel-open');
+        if (sidePanelChart) {
+            sidePanelChart.destroy();
+            sidePanelChart = null;
+        }
+        const sidePanel = mountCalendarAgendaPanel(tool_params.html || '');
+        bindCalendarPanelControls(sidePanel);
+        return;
+    }
+
+>>>>>>> ui-update-final
     state.currentSidePanelAction = action;
     state.currentSidePanelVisualUrl = '';
     document.body.classList.toggle('blip-gmail-panel-open', action === 'gmail');
@@ -18133,7 +18779,11 @@ function renderActionInSidePanel(parsedResponse) {
         sidePanel = document.createElement('div');
         sidePanel.id = 'blip-side-panel';
         sidePanel.style.position = 'fixed';
+<<<<<<< HEAD
         sidePanel.style.zIndex = '1000';
+=======
+        sidePanel.style.zIndex = '1200';
+>>>>>>> ui-update-final
         sidePanel.style.color = '#e5eefc';
         sidePanel.style.fontFamily = 'Inter, sans-serif';
         document.body.appendChild(sidePanel);
@@ -18146,6 +18796,7 @@ function renderActionInSidePanel(parsedResponse) {
     } else if (isWideWorkspaceAction(action)) {
         applyWorkspaceSidePanelLayout(sidePanel, action);
     }
+<<<<<<< HEAD
     if (action === 'calendarAgenda') {
         sidePanel.classList.add('blip-side-panel-centered');
         sidePanel.style.top = '50%';
@@ -18155,6 +18806,8 @@ function renderActionInSidePanel(parsedResponse) {
         sidePanel.style.width = 'min(520px, calc(100vw - 120px))';
         sidePanel.style.height = 'min(680px, calc(100vh - 140px))';
     }
+=======
+>>>>>>> ui-update-final
     sidePanel.style.display = panelUsesFlexColumnLayout(action) ? 'flex' : 'block';
 
     if (sidePanelChart) {
@@ -18162,6 +18815,7 @@ function renderActionInSidePanel(parsedResponse) {
         sidePanelChart = null;
     }
 
+<<<<<<< HEAD
     if (action === 'calendarAgenda') {
         sidePanel.classList.add('blip-calendar-orb');
         state.currentSidePanelVisualUrl = '';
@@ -18184,6 +18838,8 @@ function renderActionInSidePanel(parsedResponse) {
         return;
     }
 
+=======
+>>>>>>> ui-update-final
     const title = (action && action.length) ? action.charAt(0).toUpperCase() + action.slice(1) : 'Panel';
     const summaryText = getSidePanelSummaryText(text);
     sidePanel.innerHTML = buildSidePanelHeaderHtml({
@@ -18734,7 +19390,11 @@ function renderActionInSidePanel(parsedResponse) {
             sidePanel.innerHTML = `
                 ${buildSidePanelHeaderHtml({
                     title: 'Email',
+<<<<<<< HEAD
                     summary: summaryText || 'Read your inbox or compose a new email.',
+=======
+                    summary: summaryText || '',
+>>>>>>> ui-update-final
                     kicker: 'Mail'
                 })}
                 ${emailFeature.buildGmailPanelHtml(tool_params)}
@@ -18746,7 +19406,11 @@ function renderActionInSidePanel(parsedResponse) {
             sidePanel.innerHTML = `
                 ${buildSidePanelHeaderHtml({
                     title: 'Telegram',
+<<<<<<< HEAD
                     summary: summaryText || 'Send a quick message or your latest photo.',
+=======
+                    summary: summaryText || '',
+>>>>>>> ui-update-final
                     kicker: 'Telegram'
                 })}
                 ${telegramFeature.buildTelegramPanelHtml(tool_params)}

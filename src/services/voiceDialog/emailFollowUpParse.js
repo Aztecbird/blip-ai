@@ -122,6 +122,14 @@ export function parseEmailDraftFollowUp(command = '') {
         || /^okay[,]?\s+send(?:\s+it)?$/.test(lower)
         || /^ok[,]?\s+send(?:\s+it)?$/.test(lower)
         || /^just\s+send(?:\s+it)?$/.test(lower)
+<<<<<<< HEAD
+=======
+        // confirmation phrases
+        || /^(?:no\s+)?you\s+send(?:\s+it)?$/.test(lower)
+        || /^(?:no\s+)?ya\s+send(?:\s+it)?$/.test(lower)
+        || /^(?:no\s+)?you\s+can\s+send(?:\s+it)?$/.test(lower)
+        || /^send\s+it\s+(?:yourself|for\s+me)$/.test(lower)
+>>>>>>> ui-update-final
         // After “Shall I send?” — short affirmations (not valid as subject/body)
         || /^(?:really|yes\s+really|for\s+real|definitely|absolutely)$/.test(lower)
     ) {

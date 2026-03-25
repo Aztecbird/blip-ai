@@ -176,6 +176,44 @@ function parseResponse(raw) {
     }
 }
 
+export async function generateWithOllama(prompt, systemPrompt = '', options = {}) {
+    const model = options.model || 'qwen2.5-coder:32b';
+    const baseUrl = getOllamaBaseUrl();
+    const signal = options.signal;
+
+    try {
+        const response = await fetch(`${baseUrl}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model,
+                prompt,
+                system: systemPrompt,
+                stream: false,
+                options: {
+                    temperature: options.temperature ?? 0.7,
+                    num_predict: options.num_predict ?? 2048
+                }
+            }),
+            signal
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ollama error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.response || '';
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            console.log('Ollama generation aborted.');
+            return null;
+        }
+        console.error('Ollama generateWithOllama failed:', error);
+        throw error;
+    }
+}
+
 export async function warmUpModel(modelSymbol = 'phi3.5:latest') {
     try {
         await fetch(OLLAMA_URL, {

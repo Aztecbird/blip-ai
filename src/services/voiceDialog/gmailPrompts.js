@@ -70,7 +70,11 @@ export function getGmailVoicePills(stage, { offerPolish = false } = {}) {
     if (stage === 'draftReady' && offerPolish) {
         return ['yes', 'no thanks', 'send', 'improve it'];
     }
+<<<<<<< HEAD
     return ['to …', 'subject …', 'message …', 'send', 'clear saved email contacts'];
+=======
+    return ['inbox', 'sent', 'refresh email', 'compose email', 'send', 'scroll down'];
+>>>>>>> ui-update-final
 }
 
 export function buildGmailVoiceReplyDraft(stage, draft, { getEmailContactLabel, getDefaultSenderEmail, offerPolish = false }) {

@@ -349,6 +349,10 @@ export function getGmailVoiceCommand(command = '') {
         || /^(?:check\s+my\s+email|check\s+email)$/.test(lower)
         || /^(?:can\s+you\s+)?(?:please\s+)?(?:open|show|check|view)\s+(?:my\s+)?(?:gmail|email|mail|inbox)\b/.test(lower)
         || (/\b(?:open|show|check|view)\b/.test(lower) && /\b(?:gmail|email|mail|inbox|mail tool|email tool|mail client|email client)\b/.test(lower))
+<<<<<<< HEAD
+=======
+        || /^(?:email|mail|inbox)$/.test(lower)
+>>>>>>> ui-update-final
     ) {
         return { action: 'openInbox' };
     }
@@ -435,5 +439,18 @@ export function getGmailVoiceCommand(command = '') {
     const sendStatus = extractGmailSendStatusRequest(lower);
     if (sendStatus) return sendStatus;
 
+<<<<<<< HEAD
+=======
+    // Short mailbox phrases (voice-first panel)
+    if (/^(?:inbox|my inbox)$/.test(lower)) return { action: 'openInbox' };
+    if (/^(?:sent|my sent|sent folder)$/.test(lower)) return { action: 'openSent' };
+    if (
+        /^(?:show\s+me\s+)?(?:the\s+)?(?:email\s+)?list$/.test(lower)
+        || /^show\s+(?:my\s+)?(?:mail|email)$/.test(lower)
+    ) {
+        return { action: 'openInbox' };
+    }
+
+>>>>>>> ui-update-final
     return null;
 }

@@ -301,12 +301,21 @@ body::before {
     width: 66px;
     height: 24px;
     border-radius: 999px;
+<<<<<<< HEAD
     background: linear-gradient(180deg, rgba(148, 163, 184, 0.45) 0%, rgba(100, 116, 139, 0.34) 100%);
     border: 1px solid rgba(191, 219, 254, 0.3);
     box-shadow: 0 0 18px rgba(148, 163, 184, 0.4);
     opacity: 0;
     animation: ufoPass 150s linear infinite;
     animation-delay: -52s;
+=======
+    background: linear-gradient(180deg, rgba(148, 163, 184, 0.65) 0%, rgba(100, 116, 139, 0.44) 100%);
+    border: 1px solid rgba(191, 219, 254, 0.4);
+    box-shadow: 0 0 22px rgba(148, 163, 184, 0.5);
+    opacity: 0;
+    animation: ufoPass 48s linear infinite;
+    animation-delay: -12s;
+>>>>>>> ui-update-final
 }
 
 /* Second UFO: rises from below the viewport toward the top */
@@ -314,8 +323,13 @@ body::before {
     top: auto;
     left: 72vw;
     bottom: max(-48px, env(safe-area-inset-bottom, 0px));
+<<<<<<< HEAD
     animation: ufoRise 140s linear infinite;
     animation-delay: -18s;
+=======
+    animation: ufoRise 54s linear infinite;
+    animation-delay: -22s;
+>>>>>>> ui-update-final
 }
 
 .ufo-drift::after {
@@ -482,6 +496,7 @@ body::before {
 }
 
 @keyframes ufoPass {
+<<<<<<< HEAD
     0%, 21% {
         opacity: 0;
         transform: translate(-120px, 0) scale(0.86);
@@ -514,12 +529,47 @@ body::before {
         transform: translate(88vw, 2vh) scale(1);
     }
     79%, 100% {
+=======
+    0%, 5% {
+        opacity: 0;
+        transform: translate(-120px, 0) scale(0.86);
+    }
+    15% {
+        opacity: 0.5;
+    }
+    30% {
+        opacity: 0.62;
+        transform: translate(32vw, 1vh) scale(0.94);
+    }
+    45% {
+        opacity: 0.3;
+        transform: translate(74vw, -2vh) scale(0.98);
+    }
+    55%, 65% {
+        opacity: 0;
+        transform: translate(calc(100vw + 110px), 3vh) scale(1);
+    }
+    75% {
+        opacity: 0.5;
+        transform: translate(-120px, -1vh) scale(0.88);
+    }
+    85% {
+        opacity: 0.65;
+        transform: translate(42vw, -2vh) scale(0.95);
+    }
+    95% {
+        opacity: 0.32;
+        transform: translate(88vw, 2vh) scale(1);
+    }
+    100% {
+>>>>>>> ui-update-final
         opacity: 0;
         transform: translate(calc(100vw + 140px), 4vh) scale(1.02);
     }
 }
 
 @keyframes ufoRise {
+<<<<<<< HEAD
     0%, 44% {
         opacity: 0;
         transform: translateY(0) translateX(0) scale(0.88);
@@ -536,6 +586,24 @@ body::before {
         transform: translateY(-72vh) translateX(2vw) scale(0.98);
     }
     66%, 100% {
+=======
+    0%, 10% {
+        opacity: 0;
+        transform: translateY(0) translateX(0) scale(0.88);
+    }
+    25% {
+        opacity: 0.48;
+    }
+    50% {
+        opacity: 0.6;
+        transform: translateY(-38vh) translateX(-4vw) scale(0.94);
+    }
+    75% {
+        opacity: 0.34;
+        transform: translateY(-72vh) translateX(2vw) scale(0.98);
+    }
+    100% {
+>>>>>>> ui-update-final
         opacity: 0;
         transform: translateY(-118vh) translateX(0) scale(1);
     }
@@ -689,7 +757,11 @@ body::before {
 }
 
 .weather-display-icon {
+<<<<<<< HEAD
     font-size: 1.7rem;
+=======
+    font-size: 1.96rem;
+>>>>>>> ui-update-final
     line-height: 1;
     filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.18));
 }
@@ -703,12 +775,20 @@ body::before {
 }
 
 .weather-display-city {
+<<<<<<< HEAD
     font-size: 0.62rem;
+=======
+    font-size: 0.71rem;
+>>>>>>> ui-update-final
     color: rgba(196, 230, 255, 0.86);
 }
 
 .weather-display-temp {
+<<<<<<< HEAD
     font-size: 0.98rem;
+=======
+    font-size: 1.13rem;
+>>>>>>> ui-update-final
     font-weight: 800;
     line-height: 1;
     letter-spacing: 0.04em;
@@ -717,14 +797,22 @@ body::before {
 }
 
 .weather-display-desc {
+<<<<<<< HEAD
     font-size: 0.58rem;
+=======
+    font-size: 0.67rem;
+>>>>>>> ui-update-final
     color: rgba(220, 232, 247, 0.72);
     max-width: 204px;
     line-height: 1.25;
 }
 
 .weather-display-time {
+<<<<<<< HEAD
     font-size: 0.86rem;
+=======
+    font-size: 0.99rem;
+>>>>>>> ui-update-final
     font-weight: 800;
     color: rgba(228, 244, 255, 0.92);
     letter-spacing: 0.04em;
@@ -732,7 +820,11 @@ body::before {
 }
 
 .weather-display-date {
+<<<<<<< HEAD
     font-size: 0.56rem;
+=======
+    font-size: 0.64rem;
+>>>>>>> ui-update-final
     color: rgba(205, 227, 245, 0.74);
     line-height: 1.1;
     letter-spacing: 0.03em;
@@ -927,13 +1019,143 @@ body::before {
     transform: translateY(-2px);
 }
 
+<<<<<<< HEAD
+=======
+.blip-calendar-mirror-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.28);
+    background: rgba(8, 20, 40, 0.86);
+    color: #e2e8f0;
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 6;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.blip-calendar-mirror-close:hover {
+    background: rgba(17, 37, 72, 0.98);
+    border-color: rgba(79, 195, 255, 0.56);
+    transform: scale(1.05);
+}
+
+.blip-calendar-mirror-frame {
+    position: absolute;
+    inset: 12px;
+    border-radius: 26px;
+    background:
+        radial-gradient(circle at top left, rgba(79, 195, 255, 0.12), transparent 34%),
+        linear-gradient(180deg, rgba(13, 43, 82, 0.98), rgba(8, 24, 48, 0.98));
+    border: 1px solid rgba(79, 195, 255, 0.2);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        inset 0 0 40px rgba(79, 195, 255, 0.04);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: visible;
+}
+
+.blip-calendar-mirror-body {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+    padding: 1rem 1.1rem 1.1rem;
+}
+
+.blip-calendar-mirror-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.blip-calendar-mirror-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.35);
+    border-radius: 999px;
+}
+
+.blip-calendar-mirror-shell {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.blip-calendar-mirror-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding-right: 3.1rem;
+}
+
+.blip-calendar-mirror-heading {
+    min-width: 0;
+}
+
+.blip-calendar-mirror-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+}
+
+.blip-calendar-mirror-content {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto !important;
+    pointer-events: auto !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(79, 195, 255, 0.28) transparent;
+}
+
+.blip-calendar-mirror-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.blip-calendar-mirror-content::-webkit-scrollbar-thumb {
+    background: rgba(79, 195, 255, 0.22);
+    border-radius: 999px;
+}
+
+.blip-calendar-mirror-surface {
+    min-height: 100%;
+    height: 100%;
+    border: 1px solid rgba(79, 195, 255, 0.12);
+    background:
+        radial-gradient(ellipse 120% 80% at 50% 0%, rgba(79, 195, 255, 0.06), transparent 55%),
+        rgba(15, 23, 42, 0.38);
+    border-radius: 22px;
+    padding: 0.65rem;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+>>>>>>> ui-update-final
 .blip-calendar-orb {
     border-radius: 32px !important;
     background:
         radial-gradient(circle at top left, rgba(103, 232, 249, 0.18), transparent 34%),
         radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 28%),
+<<<<<<< HEAD
         linear-gradient(155deg, rgba(2, 6, 23, 0.98), rgba(12, 18, 36, 0.98)) !important;
     border: 1px solid rgba(103, 232, 249, 0.22) !important;
+=======
+        linear-gradient(155deg, #07182e, #07182e) !important;
+    border: 1px solid rgba(103, 232, 249, 0.22) !important;
+    display: flex;
+    flex-direction: column;
+>>>>>>> ui-update-final
     box-shadow:
         0 24px 80px rgba(2, 6, 23, 0.48),
         inset 0 1px 0 rgba(255, 255, 255, 0.06),
@@ -952,8 +1174,13 @@ body::before {
 
 .blip-calendar-orb-close {
     position: absolute;
+<<<<<<< HEAD
     top: 18px;
     right: 18px;
+=======
+    top: 14px;
+    right: 14px;
+>>>>>>> ui-update-final
     width: 42px;
     height: 42px;
     border-radius: 999px;
@@ -978,19 +1205,37 @@ body::before {
 
 .blip-calendar-orb-inner {
     position: absolute;
+<<<<<<< HEAD
     inset: 18px;
     border-radius: 26px;
     padding: 1.1rem;
     background: linear-gradient(180deg, rgba(8, 15, 32, 0.72), rgba(8, 15, 32, 0.9));
     display: flex;
     flex-direction: column;
+=======
+    inset: 14px;
+    border-radius: 26px;
+    padding: 0.9rem;
+    background: #0d2b52;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+>>>>>>> ui-update-final
     overflow: hidden;
 }
 
 .blip-calendar-orb-body {
     flex: 1 1 auto;
+<<<<<<< HEAD
     min-height: 0;
     overflow: auto;
+=======
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+    overflow-x: auto;
+>>>>>>> ui-update-final
     padding-right: 0.15rem;
 }
 
@@ -1006,7 +1251,13 @@ body::before {
 .blip-calendar-shell {
     display: flex;
     flex-direction: column;
+<<<<<<< HEAD
     min-height: 100%;
+=======
+    flex: 1 1 auto;
+    min-height: 100%;
+    height: 100%;
+>>>>>>> ui-update-final
     gap: 0.9rem;
 }
 
@@ -1027,8 +1278,13 @@ body::before {
 }
 
 .blip-calendar-title {
+<<<<<<< HEAD
     margin-top: 0.38rem;
     font-size: clamp(1.5rem, 2vw, 2rem);
+=======
+    margin-top: 0.16rem;
+    font-size: clamp(1.3rem, 1.7vw, 1.75rem);
+>>>>>>> ui-update-final
     font-weight: 700;
     letter-spacing: 0.03em;
     color: #f8fafc;
@@ -1044,7 +1300,11 @@ body::before {
 .blip-calendar-view-switch {
     display: inline-flex;
     align-items: center;
+<<<<<<< HEAD
     gap: 0.45rem;
+=======
+    gap: 0.35rem;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-nav-btn,
@@ -1055,8 +1315,13 @@ body::before {
     background: rgba(15, 23, 42, 0.72);
     color: #e2e8f0;
     border-radius: 999px;
+<<<<<<< HEAD
     padding: 0.62rem 0.95rem;
     font-size: 0.88rem;
+=======
+    padding: 0.48rem 0.78rem;
+    font-size: 0.8rem;
+>>>>>>> ui-update-final
     line-height: 1;
     text-decoration: none;
     cursor: pointer;
@@ -1082,7 +1347,11 @@ body::before {
     display: flex;
     justify-content: space-between;
     align-items: center;
+<<<<<<< HEAD
     gap: 0.8rem;
+=======
+    gap: 0.55rem;
+>>>>>>> ui-update-final
     flex-wrap: wrap;
 }
 
@@ -1091,9 +1360,15 @@ body::before {
     background: rgba(245, 158, 11, 0.09);
     color: rgba(254, 243, 199, 0.94);
     border-radius: 18px;
+<<<<<<< HEAD
     padding: 0.85rem 1rem;
     font-size: 0.86rem;
     line-height: 1.45;
+=======
+    padding: 0.55rem 0.75rem;
+    font-size: 0.76rem;
+    line-height: 1.3;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-status.connected {
@@ -1106,16 +1381,30 @@ body::before {
     border: 1px solid rgba(148, 163, 184, 0.14);
     background: rgba(15, 23, 42, 0.42);
     border-radius: 24px;
+<<<<<<< HEAD
     padding: 0.9rem;
     min-height: 0;
     flex: 1 1 auto;
+=======
+    padding: 0.65rem;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: auto;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-weekdays {
     display: grid;
+<<<<<<< HEAD
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0.55rem;
     margin-bottom: 0.55rem;
+=======
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    gap: 0.35rem;
+    margin-bottom: 0.35rem;
+    min-width: 520px;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-weekday-label {
@@ -1130,8 +1419,14 @@ body::before {
 .blip-calendar-week-grid,
 .blip-calendar-month-grid {
     display: grid;
+<<<<<<< HEAD
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0.55rem;
+=======
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    gap: 0.35rem;
+    min-width: 520px;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-day-card,
@@ -1139,16 +1434,26 @@ body::before {
     min-width: 0;
     border-radius: 20px;
     border: 1px solid rgba(148, 163, 184, 0.12);
+<<<<<<< HEAD
     background: rgba(2, 6, 23, 0.52);
     padding: 0.72rem;
+=======
+    background: #1f5fa8;
+    padding: 0.45rem;
+>>>>>>> ui-update-final
     cursor: pointer;
     transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
 }
 
 .blip-calendar-day-card.is-today,
 .blip-calendar-month-cell.is-today {
+<<<<<<< HEAD
     border-color: rgba(103, 232, 249, 0.42);
     background: rgba(8, 47, 73, 0.3);
+=======
+    border-color: #4fc3ff;
+    background: #16457c;
+>>>>>>> ui-update-final
     box-shadow:
         0 0 0 1px rgba(103, 232, 249, 0.18),
         0 0 28px rgba(34, 211, 238, 0.12);
@@ -1188,7 +1493,11 @@ body::before {
 
 .blip-calendar-day-number,
 .blip-calendar-month-date {
+<<<<<<< HEAD
     font-size: 1.2rem;
+=======
+    font-size: 1rem;
+>>>>>>> ui-update-final
     font-weight: 700;
     color: #f8fafc;
 }
@@ -1302,10 +1611,17 @@ body::before {
 .blip-calendar-day-view {
     display: flex;
     flex-direction: column;
+<<<<<<< HEAD
     gap: 0.85rem;
     margin-top: 1rem;
     border-top: 1px solid rgba(148, 163, 184, 0.16);
     padding-top: 1rem;
+=======
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.16);
+    padding-top: 0.85rem;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-all-day {
@@ -1327,7 +1643,11 @@ body::before {
 .blip-calendar-day-hours {
     display: flex;
     flex-direction: column;
+<<<<<<< HEAD
     gap: 0.45rem;
+=======
+    gap: 0.35rem;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-hour-row {
@@ -1362,9 +1682,15 @@ body::before {
 }
 
 .blip-calendar-hour-content {
+<<<<<<< HEAD
     min-height: 58px;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
     padding-top: 0.45rem;
+=======
+    min-height: 42px;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+    padding-top: 0.35rem;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-hour-empty {
@@ -1390,7 +1716,11 @@ body::before {
 }
 
 .blip-calendar-month-cell {
+<<<<<<< HEAD
     min-height: 124px;
+=======
+    min-height: 88px;
+>>>>>>> ui-update-final
 }
 
 .blip-calendar-month-cell.is-muted {
@@ -1432,12 +1762,15 @@ body::before {
 }
 
 @media (max-width: 960px) {
+<<<<<<< HEAD
     .blip-calendar-week-grid,
     .blip-calendar-month-grid,
     .blip-calendar-weekdays {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+=======
+>>>>>>> ui-update-final
     .blip-calendar-topbar {
         flex-direction: column;
         padding-right: 0;
@@ -1445,6 +1778,46 @@ body::before {
 }
 
 @media (max-width: 640px) {
+<<<<<<< HEAD
+=======
+    .blip-calendar-mirror-shell {
+        min-height: 0;
+    }
+
+    .blip-calendar-mirror-header,
+    .blip-calendar-mirror-toolbar {
+        padding-right: 0;
+        width: 100%;
+    }
+
+    .blip-calendar-mirror-header {
+        flex-direction: column;
+    }
+
+    .blip-calendar-mirror-content {
+        min-height: 360px;
+    }
+
+    .blip-calendar-mirror-surface {
+        padding: 0.75rem;
+    }
+
+    .blip-calendar-mirror-frame {
+        inset: 8px;
+    }
+
+    .blip-calendar-mirror-body {
+        padding: 0.9rem;
+    }
+
+    .blip-calendar-mirror-close {
+        top: 10px;
+        right: 10px;
+        width: 38px;
+        height: 38px;
+    }
+
+>>>>>>> ui-update-final
     .blip-calendar-orb-inner {
         inset: 12px;
         padding: 0.85rem;
@@ -1476,12 +1849,15 @@ body::before {
         justify-content: center;
     }
 
+<<<<<<< HEAD
     .blip-calendar-week-grid,
     .blip-calendar-month-grid,
     .blip-calendar-weekdays {
         grid-template-columns: 1fr;
     }
 
+=======
+>>>>>>> ui-update-final
     .blip-calendar-hour-row {
         grid-template-columns: 1fr;
         gap: 0.35rem;
@@ -2053,7 +2429,11 @@ body::before {
     background: rgba(15, 23, 42, 0.86);
     color: #fee2e2;
     font-family: 'JetBrains Mono', monospace;
+<<<<<<< HEAD
     font-size: 0.72rem;
+=======
+    font-size: 0.83rem;
+>>>>>>> ui-update-final
     font-weight: 700;
     letter-spacing: 0.05em;
     backdrop-filter: blur(8px);
@@ -2157,6 +2537,96 @@ body::before {
     isolation: isolate;
     transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
     animation: face-float 6s ease-in-out infinite;
+    transform-origin: center center;
+}
+
+body.blip-calendar-panel-open .face-frame {
+    transform: scale(0.65) translateY(-140px) !important;
+    opacity: 0.6;
+    animation: none;
+}
+
+body.blip-calendar-panel-open #blip-status {
+    transform: translateY(-80px) scale(0.85);
+    opacity: 0.5;
+}
+
+#blip-stage[data-chat-engaged="true"] #blip-face {
+    transform: translateY(-2px) scale(1.022);
+    filter: brightness(1.03);
+}
+
+#blip-stage[data-chat-engaged="true"] #blip-aura {
+    filter: blur(44px) brightness(1.08) saturate(1.04);
+    opacity: 0.9;
+}
+
+#blip-stage[data-chat-engaged="true"] #blip-radar {
+    animation-duration: 9.5s;
+    opacity: 0.9;
+}
+
+.face-frame::before,
+.face-frame::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.08);
+    z-index: 0;
+}
+
+.face-frame::before {
+    width: 190%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at center,
+            rgba(255, 255, 255, 0.88) 0 3%,
+            rgba(255, 244, 204, 0.42) 5%,
+            rgba(255, 255, 255, 0.06) 8%,
+            transparent 13%),
+        radial-gradient(circle at center,
+            transparent 0 18%,
+            rgba(164, 235, 255, 0.24) 24%,
+            transparent 33%),
+        radial-gradient(circle at center,
+            transparent 0 31%,
+            rgba(205, 188, 255, 0.22) 38%,
+            transparent 47%),
+        radial-gradient(circle at center,
+            transparent 0 44%,
+            rgba(186, 243, 255, 0.18) 52%,
+            rgba(255, 235, 204, 0.12) 58%,
+            transparent 66%);
+    filter: blur(24px) saturate(1.02);
+    mix-blend-mode: screen;
+}
+
+.face-frame::after {
+    width: 96%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at center,
+            rgba(255, 255, 255, 0.92) 0 8%,
+            rgba(246, 251, 255, 0.64) 12%,
+            rgba(196, 237, 255, 0.24) 22%,
+            rgba(224, 210, 255, 0.09) 29%,
+            rgba(185, 236, 255, 0.06) 36%,
+            transparent 48%);
+    filter: blur(7px);
+    mix-blend-mode: screen;
+}
+
+.face-frame.wake-rainbow::before {
+    animation: wake-rainbow-bloom 2.95s cubic-bezier(0.16, 0.84, 0.32, 1) forwards;
+}
+
+.face-frame.wake-rainbow::after {
+    animation: wake-core-bloom 2.1s cubic-bezier(0.18, 0.9, 0.38, 1) forwards;
 }
 
 #blip-stage[data-chat-engaged="true"] #blip-face {
@@ -2424,6 +2894,36 @@ body::before {
     flex: 0 0 auto;
 }
 
+<<<<<<< HEAD
+=======
+/* Dismiss camera overlay (same idea as lightbox ✕) */
+.face-frame .camera-close-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 12;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(2, 6, 23, 0.85);
+    color: #f8fafc;
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.face-frame .camera-close-btn:hover {
+    background: rgba(30, 41, 59, 0.92);
+}
+
+>>>>>>> ui-update-final
 @keyframes planet-orbit {
     from {
         transform: translate(-50%, -50%) rotate(var(--artifact-phase, 0deg)) translateX(var(--artifact-orbit-radius, 62px)) rotate(calc(-1 * var(--artifact-phase, 0deg)));
@@ -4348,7 +4848,8 @@ body.projector-mode.projecting-visual .map-panel iframe {
     height: 100% !important;
 }
 
-body.projector-mode.projecting-visual .hub-panel {
+body.projector-mode.projecting-visual .hub-panel,
+body.projector-mode.projecting-visual .cart-panel {
     max-height: none !important;
 }
 
@@ -5180,7 +5681,12 @@ body[data-mode="settings"] #under-the-hood {
 }
 
 body[data-mode="hub"] .hub-panel,
+<<<<<<< HEAD
 body[data-mode="media"] .media-panel {
+=======
+body[data-mode="media"] .media-panel,
+body[data-mode="cart"] .cart-panel {
+>>>>>>> ui-update-final
     display: flex !important;
 }
 
@@ -5352,14 +5858,98 @@ input[type="range"] {
     animation: blip-panel-float 12s ease-in-out infinite;
 }
 
+<<<<<<< HEAD
+=======
+#blip-side-panel.blip-calendar-mirror-panel::before,
+>>>>>>> ui-update-final
 #blip-side-panel.blip-calendar-orb::before {
     display: none;
 }
 
+<<<<<<< HEAD
+=======
+#blip-side-panel.blip-calendar-mirror-panel::after,
+>>>>>>> ui-update-final
 #blip-side-panel.blip-calendar-orb::after {
     display: none;
 }
 
+<<<<<<< HEAD
+=======
+#blip-side-panel.blip-calendar-mirror-panel {
+    position: fixed !important;
+    z-index: 1200 !important;
+    left: 50% !important;
+    top: 42% !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translate(-50%, -50%) !important;
+    width: min(1180px, calc(100vw - 28px)) !important;
+    height: min(840px, calc(100vh - 42px)) !important;
+    max-width: min(1180px, calc(100vw - 28px)) !important;
+    max-height: min(840px, calc(100vh - 42px)) !important;
+    padding: 0 !important;
+    border-radius: 30px !important;
+    overflow: visible !important;
+    display: block !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    box-sizing: border-box !important;
+    background:
+        radial-gradient(circle at top left, rgba(79, 195, 255, 0.18), transparent 34%),
+        radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 30%),
+        linear-gradient(160deg, rgba(4, 16, 32, 0.98), rgba(6, 18, 36, 0.98)) !important;
+    border: 1px solid rgba(79, 195, 255, 0.22) !important;
+    box-shadow:
+        0 28px 90px rgba(2, 6, 23, 0.58),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        inset 0 0 58px rgba(79, 195, 255, 0.08) !important;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
+
+/* Calendar must stay viewport-fixed; without position:fixed, top/left/transform are ignored and the panel can render off-screen. Above cart/games/lightbox hit targets. */
+#blip-side-panel.blip-calendar-orb {
+    position: fixed !important;
+    z-index: 1200 !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    /* Mirror calendarPanelUi inline size so the shell never collapses to the default 280×340 tool card. */
+    width: min(1200px, calc(100vw - 20px)) !important;
+    height: min(880px, calc(100vh - 20px)) !important;
+    max-width: min(1200px, calc(100vw - 20px)) !important;
+    max-height: min(880px, calc(100vh - 20px)) !important;
+    box-sizing: border-box !important;
+}
+
+@media (max-width: 900px) {
+    #blip-side-panel.blip-calendar-mirror-panel {
+        width: calc(100vw - 14px) !important;
+        max-width: none !important;
+        height: min(94vh, calc(100vh - 14px)) !important;
+        max-height: min(94vh, calc(100vh - 14px)) !important;
+    }
+
+    #blip-side-panel.blip-calendar-orb {
+        width: calc(100vw - 16px) !important;
+        max-width: none !important;
+        height: min(92vh, calc(100vh - 16px)) !important;
+        max-height: min(92vh, calc(100vh - 16px)) !important;
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important;
+    }
+}
+
+/* Calendar owns its own layout; avoid inheriting generic centered-panel padding. */
+#blip-side-panel.blip-calendar-mirror-panel,
+#blip-side-panel.blip-calendar-orb {
+    padding: 0 !important;
+}
+
+>>>>>>> ui-update-final
 #blip-side-panel.blip-side-panel-centered {
     border-radius: 18px !important;
     padding: 16px !important;
@@ -5869,7 +6459,11 @@ input[type="range"] {
     gap: 1rem;
 }
 
+<<<<<<< HEAD
 /* Gmail / Telegram dock: bottom-right — matches main.js injected FULL_BROWSER rules */
+=======
+/* Gmail / Telegram dock: bottom-right — Gmail is larger so inbox + body stay visible */
+>>>>>>> ui-update-final
 #blip-side-panel.blip-gmail-dock,
 #blip-side-panel.blip-telegram-dock {
     position: fixed !important;
@@ -5879,10 +6473,13 @@ input[type="range"] {
     top: auto !important;
     bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
     transform: none !important;
+<<<<<<< HEAD
     width: min(240px, 48vw) !important;
     max-width: min(240px, 48vw) !important;
     height: min(32vh, 400px) !important;
     max-height: min(32vh, 400px) !important;
+=======
+>>>>>>> ui-update-final
     box-sizing: border-box;
     background: rgba(4, 10, 26, 0.72) !important;
     backdrop-filter: blur(24px) saturate(180%) !important;
@@ -5890,10 +6487,45 @@ input[type="range"] {
     border: 1px solid rgba(255, 255, 255, 0.15) !important;
 }
 
+<<<<<<< HEAD
 /* Reserve space on the right; fix 100vw .container ignoring #app padding */
 body.blip-gmail-panel-open #app,
 body.blip-telegram-panel-open #app {
     padding-right: calc(min(240px, 48vw) + 12px) !important;
+=======
+#blip-side-panel.blip-telegram-dock {
+    width: min(380px, calc(100vw - 24px)) !important;
+    max-width: min(380px, calc(100vw - 24px)) !important;
+    height: min(72vh, 720px) !important;
+    max-height: min(72vh, 720px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding: 10px 12px !important;
+}
+
+#blip-side-panel.blip-gmail-dock {
+    width: min(400px, calc(100vw - 24px)) !important;
+    max-width: min(400px, calc(100vw - 24px)) !important;
+    height: min(78vh, 820px) !important;
+    max-height: min(78vh, 820px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding: 10px 12px !important;
+}
+
+/* Reserve space on the right; fix 100vw .container ignoring #app padding */
+body.blip-gmail-panel-open #app {
+    padding-right: calc(min(400px, calc(100vw - 24px)) + 12px) !important;
+    padding-left: 0 !important;
+    box-sizing: border-box;
+    transition: padding-right 0.2s ease;
+}
+
+body.blip-telegram-panel-open #app {
+    padding-right: calc(min(380px, calc(100vw - 24px)) + 12px) !important;
+>>>>>>> ui-update-final
     padding-left: 0 !important;
     box-sizing: border-box;
     transition: padding-right 0.2s ease;
@@ -5935,9 +6567,18 @@ body.blip-telegram-panel-open #transcript-area {
 }
 
 @media (max-width: 520px) {
+<<<<<<< HEAD
     body.blip-gmail-panel-open #app,
     body.blip-telegram-panel-open #app {
         padding-right: calc(min(200px, 48vw) + 8px) !important;
+=======
+    body.blip-gmail-panel-open #app {
+        padding-right: calc(min(400px, calc(100vw - 16px)) + 8px) !important;
+    }
+
+    body.blip-telegram-panel-open #app {
+        padding-right: calc(min(380px, calc(100vw - 16px)) + 8px) !important;
+>>>>>>> ui-update-final
     }
     body.blip-gmail-panel-open #blip-face.blip-face,
     body.blip-telegram-panel-open #blip-face.blip-face {
@@ -5946,9 +6587,18 @@ body.blip-telegram-panel-open #transcript-area {
     }
 }
 
+<<<<<<< HEAD
 /* Compact Gmail dock: compose first, keep message body visible; inbox preview stays short */
 #blip-side-panel.blip-gmail-dock .blip-gmail-shell {
     gap: 0.65rem;
+=======
+/* Compact Gmail dock: compose capped so mailbox + reader get the remaining height */
+#blip-side-panel.blip-gmail-dock .blip-gmail-shell {
+    gap: 0.65rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+>>>>>>> ui-update-final
 }
 
 #blip-side-panel.blip-gmail-dock .blip-gmail-layout {
@@ -5957,6 +6607,7 @@ body.blip-telegram-panel-open #transcript-area {
 }
 
 #blip-side-panel.blip-gmail-dock .blip-gmail-secondary {
+<<<<<<< HEAD
     max-height: min(46vh, 360px);
     overflow: auto;
     flex-shrink: 0;
@@ -5966,6 +6617,51 @@ body.blip-telegram-panel-open #transcript-area {
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
+=======
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 1;
+}
+
+#blip-side-panel.blip-gmail-dock .blip-gmail-layout-secondary {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.55rem;
+}
+
+#blip-side-panel.blip-gmail-dock .blip-gmail-list.blip-panel-scroll {
+    max-height: none;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+#blip-side-panel.blip-gmail-dock .blip-gmail-reader {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+#blip-side-panel.blip-gmail-dock .blip-gmail-reader-body {
+    flex: 1 1 auto;
+    min-height: 100px;
+    max-height: none;
+}
+
+#blip-side-panel.blip-gmail-dock .blip-gmail-compose-simplified {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: min(38vh, 360px);
+    overflow-y: auto;
+>>>>>>> ui-update-final
 }
 
 #blip-side-panel.blip-gmail-dock .blip-gmail-textarea {
@@ -5979,6 +6675,105 @@ body.blip-telegram-panel-open #transcript-area {
     padding: 0.65rem 0.75rem;
 }
 
+<<<<<<< HEAD
+=======
+/* Voice-first Email / Telegram docks: less chrome, more room for fields + list */
+#blip-side-panel.blip-gmail-dock .blip-panel-kicker,
+#blip-side-panel.blip-telegram-dock .blip-panel-kicker {
+    display: none;
+}
+
+#blip-side-panel.blip-gmail-dock .blip-panel-head,
+#blip-side-panel.blip-telegram-dock .blip-panel-head {
+    margin-bottom: 0.45rem;
+    padding-left: 2.4rem;
+}
+
+#blip-side-panel .blip-gmail-voice-cheatsheet,
+#blip-side-panel .blip-telegram-voice-cheatsheet {
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.45;
+    color: rgba(191, 219, 254, 0.72);
+}
+
+#blip-side-panel .blip-gmail-voice-kw,
+#blip-side-panel .blip-telegram-voice-kw {
+    color: #e0f2fe;
+    font-weight: 600;
+}
+
+#blip-side-panel .blip-gmail-toolbar--voice {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+}
+
+#blip-side-panel.blip-gmail-dock .blip-gmail-status {
+    padding: 0.45rem 0.65rem;
+    font-size: 0.75rem;
+}
+
+#blip-side-panel .blip-gmail-mailbox-badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(125, 211, 252, 0.88);
+}
+
+#blip-side-panel .blip-gmail-secondary-header--voice {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+#blip-side-panel .blip-gmail-secondary-header--voice .blip-gmail-secondary-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(191, 219, 254, 0.82);
+}
+
+#blip-side-panel .blip-gmail-voice-cheatsheet--sub {
+    font-size: 0.6rem;
+    line-height: 1.4;
+    margin: 0;
+}
+
+#blip-side-panel .blip-gmail-contact-chips--compact {
+    gap: 0.35rem;
+}
+
+#blip-side-panel .blip-gmail-contact-chips--compact .blip-gmail-contact-chip {
+    padding: 0.32rem 0.5rem;
+    font-size: 0.7rem;
+}
+
+#blip-side-panel .blip-telegram-toolbar--voice {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+}
+
+#blip-side-panel.blip-telegram-dock .blip-telegram-status {
+    padding: 0.45rem 0.65rem;
+    font-size: 0.75rem;
+}
+
+#blip-side-panel .blip-telegram-photo-note--compact {
+    font-size: 0.68rem;
+    line-height: 1.4;
+    margin: 0;
+    color: rgba(191, 219, 254, 0.65);
+}
+
+#blip-side-panel .blip-telegram-chat-row--compact {
+    padding: 0.45rem 0.65rem;
+}
+
+>>>>>>> ui-update-final
 /* Compact Telegram dock: tighter shell + scrollable message area */
 #blip-side-panel.blip-telegram-dock .blip-telegram-shell {
     gap: 0.55rem;
@@ -5991,7 +6786,12 @@ body.blip-telegram-panel-open #transcript-area {
 }
 
 #blip-side-panel.blip-telegram-dock .blip-telegram-textarea {
+<<<<<<< HEAD
     max-height: min(18vh, 120px);
+=======
+    max-height: min(48vh, 480px);
+    min-height: 6.5rem;
+>>>>>>> ui-update-final
     font-size: 0.88rem;
     line-height: 1.45;
 }
@@ -7361,14 +8161,45 @@ body.blip-telegram-panel-open #transcript-area {
 .cart-panel {
     display: none;
     flex-direction: column;
+<<<<<<< HEAD
     min-height: 260px;
     height: auto !important;
     max-height: 60vh;
+=======
+    position: fixed;
+    left: 50%;
+    right: auto;
+    bottom: max(18px, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    width: min(96vw, 1100px);
+    max-width: min(96vw, 1100px);
+    min-height: 300px;
+    height: auto !important;
+    max-height: 68vh;
+    margin-top: 0;
+>>>>>>> ui-update-final
     padding: 0 !important;
     background: rgba(10, 10, 31, 0.98);
     border: 1px solid rgba(255, 255, 255, 0.12);
     box-shadow: 0 20px 80px rgba(0, 0, 0, 0.6);
     overflow: hidden;
+<<<<<<< HEAD
+=======
+    z-index: 960;
+    border-radius: 22px;
+}
+
+@media (max-width: 900px) {
+    .cart-panel {
+        left: 12px;
+        right: 12px;
+        width: auto;
+        max-width: none;
+        transform: none;
+        bottom: max(14px, env(safe-area-inset-bottom, 0px));
+        max-height: min(72vh, 720px);
+    }
+>>>>>>> ui-update-final
 }
 
 .games-panel {
@@ -7673,6 +8504,10 @@ body.blip-telegram-panel-open #transcript-area {
     justify-content: stretch;
     z-index: 1100;
     padding: 0.6rem;
+<<<<<<< HEAD
+=======
+    padding-top: 2.5rem;
+>>>>>>> ui-update-final
     border-radius: 14px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     box-shadow: 0 16px 45px rgba(0, 0, 0, 0.55);
@@ -7708,8 +8543,28 @@ body.blip-telegram-panel-open #transcript-area {
 
 .media-lightbox-close {
     position: absolute;
+<<<<<<< HEAD
     top: 6px;
     right: 6px;
+=======
+    top: 8px;
+    right: 8px;
+    width: 38px;
+    height: 38px;
+    z-index: 30;
+    font-size: 1.1rem;
+    font-weight: 700;
+    background: rgba(2, 6, 23, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.media-lightbox-close:hover {
+    background: rgba(30, 41, 59, 0.95);
+    border-color: rgba(255, 255, 255, 0.45);
+>>>>>>> ui-update-final
 }
 
 .media-lightbox-actions {
@@ -7733,7 +8588,12 @@ body.blip-telegram-panel-open #transcript-area {
 }
 
 @media (max-width: 900px) {
+<<<<<<< HEAD
     #blip-side-panel:not(.blip-calendar-orb) {
+=======
+    /* Leave Gmail/Telegram bottom docks on fixed sizing — generic rule was crushing mailbox height */
+    #blip-side-panel:not(.blip-calendar-orb):not(.blip-calendar-mirror-panel):not(.blip-gmail-dock):not(.blip-telegram-dock) {
+>>>>>>> ui-update-final
         right: 12px !important;
         left: 12px !important;
         width: auto !important;
@@ -7789,10 +8649,21 @@ body.blip-telegram-panel-open #transcript-area {
         grid-template-columns: minmax(0, 1fr);
     }
 
+<<<<<<< HEAD
     #blip-side-panel .blip-gmail-reader-body {
         max-height: 220px;
     }
 
+=======
+    #blip-side-panel:not(.blip-gmail-dock) .blip-gmail-reader-body {
+        max-height: 220px;
+    }
+
+    #blip-side-panel.blip-gmail-dock .blip-gmail-reader-body {
+        max-height: none;
+    }
+
+>>>>>>> ui-update-final
     #blip-side-panel .blip-yt-player {
         height: min(42vh, 420px);
     }
@@ -7912,6 +8783,10 @@ body.blip-telegram-panel-open #transcript-area {
 
 #cart-items {
     flex: 1;
+<<<<<<< HEAD
+=======
+    min-height: 0;
+>>>>>>> ui-update-final
     overflow-y: auto;
     padding: 1rem;
     display: flex;

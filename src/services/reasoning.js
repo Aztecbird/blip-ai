@@ -5,6 +5,10 @@
  */
 
 import { askGemini, generateWithPrompt } from './geminiText.js';
+<<<<<<< HEAD
+=======
+import { askOllama } from './ollama.js';
+>>>>>>> ui-update-final
 import { web } from './web.js';
 
 function normalizeMessage(value = '') {
@@ -140,10 +144,27 @@ export async function runFastReasoning(message, context = {}) {
     audience.prompt
   ].join('\n');
 
+<<<<<<< HEAD
   const response = await askGemini(
     fastMessage,
     Array.isArray(context.history) ? context.history : [],
     Array.isArray(context.images) ? context.images : [],
+=======
+  const askAIBrain = async (prompt, history, images, apiKey, model) => {
+    if (model.startsWith('gemini')) {
+      return await askGemini(prompt, history, images, apiKey, model);
+    } else {
+      const res = await askOllama(prompt, history, images, model);
+      if (res && !res.rawResponse) res.rawResponse = JSON.stringify(res);
+      return res;
+    }
+  };
+
+  const response = await askAIBrain(
+    fastMessage,
+    context.history || [],
+    [],
+>>>>>>> ui-update-final
     context.apiKey,
     context.model
   );

@@ -64,7 +64,14 @@ export function resolveYouTubeLibraryViewFromVoice(text = '') {
     if (/^(?:(?:youtube\s+)?music|(?:menu|library|list)(?:\s+of)?\s+(?:youtube\s+)?music|(?:youtube\s+)?music\s+(?:menu|library|list)|youtube\s+music\s+menu)$/.test(target)) {
         return 'Music';
     }
+<<<<<<< HEAD
     if (/^(?:(?:youtube\s+)?videos?|(?:menu|library|list)(?:\s+of)?\s+(?:youtube\s+)?videos?|(?:youtube\s+)?videos?\s+(?:menu|library|list)|youtube\s+videos?\s+menu)$/.test(target)) {
+=======
+    // Do not treat bare "video" as the saved Videos library — STT often turns "open photos" into
+    // "open video", which must not hijack the local photos flow. Require plural "videos", or
+    // "youtube video(s)", or menu phrasing.
+    if (/^(?:(?:youtube\s+)?videos\b|(?:youtube\s+)video\b|(?:menu|library|list)(?:\s+of)?\s+(?:youtube\s+)?videos?|(?:youtube\s+)?videos?\s+(?:menu|library|list)|youtube\s+videos?\s+menu)$/.test(target)) {
+>>>>>>> ui-update-final
         return 'Videos';
     }
     if (/^(?:(?:youtube\s+)?music)\s+to\s+(?:youtube\s+)?videos?$/.test(target)) {
