@@ -22,10 +22,7 @@
         "dev:gemini-backend": "node server/geminiBackend.js",
         "build": "vite build",
         "test": "node --test tests/*.test.js",
-<<<<<<< HEAD
-=======
         "test:smoke": "node --test tests/youtubeLibrary.test.js tests/emailFollowUpParse.test.js tests/voiceToolIntent.test.js",
->>>>>>> ui-update-final
         "preview": "vite preview"
     },
     "devDependencies": {

@@ -1277,8 +1277,6 @@ export function createEmailFeature(env = {}) {
                 if (transcriptText) transcriptText.innerText = reply;
             });
         });
-
->>>>>>> ui-update-final
         sidePanel.querySelectorAll('[data-gmail-open]').forEach((button) => {
             button.addEventListener('click', async () => {
                 const messageId = button.getAttribute('data-gmail-open');
@@ -1296,55 +1294,6 @@ export function createEmailFeature(env = {}) {
                 }
             });
         });
-
-<<<<<<< HEAD
-        sidePanel.querySelector('[data-gmail-refresh]')?.addEventListener('click', async () => {
-            syncDraftFromInputs();
-            try {
-                await openGmailInboxPanel({ summary: 'Inbox refreshed.' });
-                if (transcriptText) transcriptText.innerText = 'Inbox refreshed.';
-            } catch (error) {
-                console.warn('Refresh Gmail inbox failed:', error?.message || error);
-                if (transcriptText) transcriptText.innerText = error?.message || 'Could not refresh Gmail.';
-            }
-        });
-
-        sidePanel.querySelector('[data-gmail-compose-clear]')?.addEventListener('click', async () => {
-            clearPendingEmailReview();
-            resetGmailComposeDraft();
-            await openGmailInboxPanel({ summary: 'New email ready.' });
-            if (transcriptText) transcriptText.innerText = 'New email ready.';
-        });
-
-        sidePanel.querySelector('[data-gmail-send]')?.addEventListener('click', async () => {
-            const toInput = sidePanel.querySelector('[data-gmail-to]');
-            const subjectInput = sidePanel.querySelector('[data-gmail-subject]');
-            const bodyInput = sidePanel.querySelector('[data-gmail-body]');
-            const resolvedRecipient = resolveRecipientInput(toInput?.value || '');
-            const subjectValue = String(subjectInput?.value || '').trim();
-
-            resetGmailComposeDraft({
-                to: resolvedRecipient.recipient || '',
-                recipientQuery: resolvedRecipient.recipientQuery || '',
-                subject: subjectValue,
-                subjectSkipped: subjectValue ? false : !!state.gmailComposeDraft.subjectSkipped,
-                text: bodyInput?.value || '',
-                attachments: state.gmailComposeDraft.attachments
-            });
-
-            try {
-                const result = await sendCurrentGmailDraft(state.gmailComposeDraft);
-                if (transcriptText) transcriptText.innerText = result.text;
-                if (result?.ok) {
-                    playEmailSendConfirm?.({ delayMs: 140 });
-                }
-            } catch (error) {
-                console.warn('Send Gmail from panel failed:', error?.message || error);
-                if (transcriptText) transcriptText.innerText = error?.message || 'Could not send that email.';
-            }
-        });
-
-=======
         requestAnimationFrame(() => {
             const compose = sidePanel.querySelector('.blip-gmail-compose-simplified');
             const bodyEl = sidePanel.querySelector('[data-gmail-body]');

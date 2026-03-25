@@ -248,7 +248,6 @@ export function createTelegramFeature(env = {}) {
     }
 
     function bindTelegramPanelControls(sidePanel) {
->>>>>>> ui-update-final
         const syncDraftFromInputs = () => {
             const chatIdInput = sidePanel.querySelector('[data-telegram-chat-id]');
             const textInput = sidePanel.querySelector('[data-telegram-text]');
@@ -346,9 +345,6 @@ export function createTelegramFeature(env = {}) {
 
             await openTelegramPanel({ summary: 'Telegram photo ready.' });
             state.pendingTelegramReview = true;
-<<<<<<< HEAD
-            await quickReply('Telegram is open. Add an optional caption, then say send photo or press Send Latest Photo.', 'happy');
-=======
             await quickReply('Telegram is open. Add an optional caption, then say send photo.', 'happy');
             return;
         }
