@@ -37,7 +37,7 @@ import {
     onGoogleGmailAuthStateChange,
     sendGoogleGmailMessage
 } from './services/googleGmail.js'
-import { getGmailVoiceCommand } from './services/gmailVoice.js'
+import { getStudentDeskVoiceCommand } from './services/studentDeskVoice.js'
 import {
     getTelegramAuthState,
     initTelegram,
@@ -46,12 +46,45 @@ import {
     sendTelegramPhoto,
     sendTelegramTest
 } from './services/telegram.js'
-import { getTelegramVoiceCommand } from './services/telegramVoice.js'
-import { parseNaturalMessageFlow } from './services/messageFlow.js'
-import { getVoiceRoutingContext } from './services/voiceDialog/context.js'
+import { getCameraDesignTransferCommand } from './services/cameraDesignVoice.js'
+import { analyzeHomeworkPhoto } from './services/homeworkVision.js'
+import { parseBlipIntent } from './services/blipIntent.js'
+import { resolveVoiceRoutingSnapshot } from './services/assistantRouter.js'
+import {
+    createToolConversationState,
+    getConversationSnapshot,
+    isGlobalUndoVoiceCommand,
+    recordConversationAction,
+    undoLastConversationAction,
+    setToolBranchState
+} from './services/toolConversation.js'
+import {
+    buildCareCamViewerUrl,
+    createCareCamSession,
+    getCareCamCommands,
+    getCareCamFrame,
+    getCareCamModeFromUrl,
+    getCareCamSessionStatus,
+    postCareCamCommand,
+    pushCareCamFrame
+} from './services/careCam.js'
 /* Blip face emotions: setBlipEmotion(emotion) applies .emotion-{name} to #blip-face; used in setPersona and after synthesis. */
 import { setBlipEmotion } from './services/emotions.js'
 import * as notesStore from './services/notesStore.js'
+import {
+    advanceFreeformNotesDraft,
+    isNotesDraftFinishIntent,
+    parseFreeformNoteBody
+} from './services/notesDraftVoice.js'
+import {
+    addStudentDeskItem,
+    clearStudentDeskItems,
+    loadStudentDeskBackendItems,
+    normalizeStudentDeskItems,
+    readStudentDeskFallbackItems,
+    removeStudentDeskItem,
+    syncStudentDeskItems
+} from './services/studentDeskStore.js'
 import { executeTimerFire } from './services/timerFireEffect.js'
 import { buildTimerPanelBodyHtml } from './services/panelTimerBody.js'
 import {
@@ -81,6 +114,7 @@ import {
     clearVoiceToolFollowUpLock,
     setVoiceToolFollowUpLock
 } from './voice/voiceToolIntent.js'
+import { isStrongEmailSendDraftCommand } from './services/voiceDialog/emailFollowUpParse.js'
 
 import { getBlipQaAnswer } from './services/blipQa.js'
 
@@ -91,6 +125,7 @@ const faceFrame = document.querySelector('.face-frame');
 const blipStage = document.getElementById('blip-stage');
 const weatherLayer = document.getElementById('weather-layer');
 const dreamThoughts = document.getElementById('dream-thoughts');
+const spaceOverlay = document.getElementById('space-overlay');
 const mouth = document.querySelector('#blip-face .mouth');
 const talkBtn = document.getElementById('talkBtn');
 const sleepBtn = document.getElementById('sleepBtn');
@@ -120,6 +155,20 @@ const kokoroStatusDot = document.getElementById('kokoro-status');
 const cameraBtn = document.getElementById('cameraBtn');
 const closeCameraBtn = document.getElementById('closeCameraBtn');
 const watchBtn = document.getElementById('watchBtn');
+const careCamQuickBtn = document.getElementById('careCamQuickBtn');
+const careCamDemoBtn = document.getElementById('careCamDemoBtn');
+const openCareCamViewerBtn = document.getElementById('openCareCamViewerBtn');
+const copyCareCamLinkBtn = document.getElementById('copyCareCamLinkBtn');
+const careCamStatus = document.getElementById('careCamStatus');
+const careCamViewerShell = document.getElementById('care-cam-viewer-shell');
+const careCamViewerTitle = document.getElementById('care-cam-viewer-title');
+const careCamViewerStatus = document.getElementById('care-cam-viewer-status');
+const careCamViewerNote = document.getElementById('care-cam-viewer-note');
+const careCamFrame = document.getElementById('care-cam-frame');
+const careCamEmpty = document.getElementById('care-cam-empty');
+const careCamTalkInput = document.getElementById('care-cam-talk-input');
+const careCamTalkBtn = document.getElementById('care-cam-talk-btn');
+const careCamAlertBtn = document.getElementById('care-cam-alert-btn');
 const uploadBtn = document.getElementById('uploadBtn');
 const fileInput = document.getElementById('fileInput');
 const visionPreviewContainer = document.getElementById('vision-preview-container');
@@ -133,7 +182,7 @@ const snapBtn = document.getElementById('snapBtn');
 const recordBtn = document.getElementById('recordBtn');
 const stopCameraBtn = document.getElementById('stopCameraBtn');
 
-// Hub Elements
+// Student Desk Elements
 const mediaBtn = document.getElementById('mediaBtn');
 const creationsBtn = document.getElementById('creationsBtn');
 const mediaStrip = document.getElementById('media-strip');
@@ -172,6 +221,7 @@ const hubContainer = document.getElementById('hub-container');
 const hubMessages = document.getElementById('hub-messages');
 const closeHubBtn = document.getElementById('closeHubBtn');
 const gamesContainer = document.getElementById('games-container');
+const learningGamesDebug = document.getElementById('learning-games-debug');
 const closeGamesBtn = document.getElementById('closeGamesBtn');
 const mathIntro = document.getElementById('math-intro');
 const mathQuestion = document.getElementById('math-question');
@@ -214,6 +264,7 @@ const connectGmailBtn = document.getElementById('connectGmailBtn');
 const openGmailInboxBtn = document.getElementById('openGmailInboxBtn');
 const disconnectGmailBtn = document.getElementById('disconnectGmailBtn');
 const gmailAuthStatus = document.getElementById('gmailAuthStatus');
+const openConversationInspectorBtn = document.getElementById('openConversationInspectorBtn');
 const openTelegramBtn = document.getElementById('openTelegramBtn');
 const sendTelegramTestBtn = document.getElementById('sendTelegramTestBtn');
 const telegramAuthStatus = document.getElementById('telegramAuthStatus');
@@ -240,13 +291,31 @@ const idleSoundVolumeInput = document.getElementById('idleSoundVolumeInput');
 const idleSoundVolumeValue = document.getElementById('idleSoundVolumeValue');
 const weatherDisplay = document.getElementById('weather-display');
 const countdownDisplay = document.getElementById('countdown-display');
+const careCamRoute = getCareCamModeFromUrl();
+
+function initButtonTooltips() {
+    const tooltipTargets = document.querySelectorAll(
+        '.mini-actions button, .care-cam-quick-btn, .secondary-btn, .panel-close-btn, .action-link, #watchBtn, #uploadBtn, #snapBtn, #recordBtn, #stopCameraBtn, #save-to-hub-btn, #clear-image-btn, #careCamDemoBtn, #copyCareCamLinkBtn, #openCareCamViewerBtn'
+    );
+
+    tooltipTargets.forEach((btn) => {
+        if (!btn || btn.dataset.tooltip) return;
+        const label = String(btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.textContent || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!label) return;
+        btn.dataset.tooltip = label;
+    });
+}
+
+initButtonTooltips();
 
 // ── APP STATE ────────────────────────────────────────────────────────────────
 const isGitHub = window.location.hostname.includes('github.io');
 
 /** Single source of truth for app version — update here (and package.json) when releasing. */
-const BLIP_VERSION = '6.7';
-console.log('--- BLIP_VERSION 6.7 ACTIVE ---');
+const BLIP_VERSION = '4.3.24';
+console.log('--- BLIP_VERSION 4.3.24 ACTIVE ---');
 const WAKE_GREETING_ENABLED = true;
 
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
@@ -285,6 +354,11 @@ const SLEEP_DREAM_QUOTES = [
     'I am kind and grateful.',
     'I am growing every day.'
 ];
+const SLEEP_ARCADE_MIN_DELAY_MS = 2200;
+const SLEEP_ARCADE_MAX_DELAY_MS = 5200;
+const SLEEP_ARCADE_JET_MS = 1700;
+const SLEEP_ARCADE_BEAM_MS = 320;
+const SLEEP_ARCADE_HIT_HOLD_MS = 1600;
 
 // Backward compatibility: older runtime paths may still reference this name.
 const EXTRA_SCENERY_OBJECTS = CAPABILITY_SCENERY_OBJECTS;
@@ -518,12 +592,12 @@ const BLIP_PERSONALIZATION_STORAGE_KEY = 'blip_personalization_v1';
 const BLIP_DEFAULT_PERSONALIZATION = Object.freeze({
     hat: 'none',       // none | cap | beanie | crown
     glasses: 'none',   // none | round | visor
-    eyeColor: 'white', // white | blue | green | amber | purple | pink | cyan
+    eyeColor: 'blue', // white | blue | green | amber | purple | pink | cyan
     auraColor: 'default' // default | blue | green | gold | pink | purple | cyan
 });
 const BLIP_EYE_COLOR_MAP = Object.freeze({
     white: '#ffffff',
-    blue: '#93c5fd',
+    blue: 'rgba(147, 197, 253, 0.72)',
     green: '#86efac',
     amber: '#fcd34d',
     purple: '#c4b5fd',
@@ -765,6 +839,7 @@ const state = {
     sensitivity: 20,
     selectedVoice: null,
     currentEmotion: 'serious',
+    conversation: createToolConversationState(),
     history: [], // Loaded from localStorage in init
     timers: [],
     activeAlert: null,
@@ -778,6 +853,22 @@ const state = {
     lastScheduledReminder: null,
     pendingImage: null, // Base64 string
     cameraStream: null,
+    careCamSessionId: '',
+    careCamViewerUrl: '',
+    careCamRelayTimer: null,
+    careCamPollTimer: null,
+    careCamCommandCursor: 0,
+    careCamViewerMode: false,
+    careCamRunning: false,
+    careCamFallWatchActive: false,
+    careCamFallWatchTimer: null,
+    careCamFallWatchStartedAt: 0,
+    careCamFallWatchLocation: 'living room',
+    careCamFallWatchPhase: 'idle',
+    careCamFallAnalysisInFlight: false,
+    careCamLastFallAnalysisAt: 0,
+    careCamLastFallAnalysisResult: null,
+    careCamLocalOnly: false,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
     youtubeApiKey: localStorage.getItem('blip_youtube_key') || '', // optional: for in-panel video playback (YouTube Data API v3)
     weatherApiKey: localStorage.getItem('blip_weather_key') || '',
@@ -851,6 +942,10 @@ const state = {
     telegramDraft: { chatId: '', text: '' },
     lastTelegramSendResult: null,
     pendingTelegramReview: false,
+    voiceSession: {
+        lastMessagingTool: '',
+        lastMessagingToolAtMs: 0
+    },
     emailContacts: (() => {
         try {
             const parsed = JSON.parse(localStorage.getItem(EMAIL_CONTACTS_STORAGE_KEY) || '{}');
@@ -873,7 +968,7 @@ const state = {
     activeCalendarViewRequest: null,
     calendarDisplayMode: normalizeCalendarDisplayMode(localStorage.getItem('blip_calendar_display_mode') || 'month'),
     calendarAnchorDate: normalizeCalendarAnchorDate(localStorage.getItem('blip_calendar_anchor_date') || '').toISOString(),
-    hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
+    hubItems: readStudentDeskFallbackItems(),
     cartItems: JSON.parse(localStorage.getItem('blip_cart') || '[]'),
     // Per-session overrides for media display (not persisted).
     // Prevents edits like "darken photo" from sticking forever unless explicitly baked into a data URL.
@@ -941,6 +1036,7 @@ const state = {
     recordingStartedAt: 0,
     recordingStopReason: null,
     sleepDreamInterval: null,
+    sleepArcadeTimers: [],
     isMediaStripOpen: false,
     mediaStripLane: 'shots', // 'shots' | 'created' | 'all'
     activeMediaIndex: -1, // 0-based index of currently expanded media item
@@ -1002,6 +1098,29 @@ const state = {
         lastWeatherLocation: ''
     }
 };
+
+const sidePanelToolRegistry = new Map();
+
+function normalizeSidePanelAction(action = '') {
+    return String(action || '').trim().toLowerCase();
+}
+
+function registerSidePanelTool(action, handlers = {}) {
+    const key = normalizeSidePanelAction(action);
+    if (!key) return null;
+    const registration = {
+        isOpen: typeof handlers.isOpen === 'function' ? handlers.isOpen : null,
+        closePanel: typeof handlers.closePanel === 'function' ? handlers.closePanel : null
+    };
+    sidePanelToolRegistry.set(key, registration);
+    return registration;
+}
+
+function getSidePanelRegistration(action = '') {
+    const key = normalizeSidePanelAction(action);
+    if (!key) return null;
+    return sidePanelToolRegistry.get(key) || null;
+}
 
 // ── Features: Email (Gmail) ──────────────────────────────────────────────────
 const emailFeature = createEmailFeature({
@@ -1069,6 +1188,43 @@ const telegramFeature = createTelegramFeature({
         quickReply: (...args) => featureQuickReply(...args),
         getEmailPhotoAttachmentPayload,
     }
+});
+
+registerSidePanelTool('gmail', {
+    isOpen: () => state.currentSidePanelAction === 'gmail' && isSidePanelVisible(),
+    closePanel: () => {
+        emailFeature.closePanel?.();
+        return true;
+    }
+});
+
+registerSidePanelTool('telegram', {
+    isOpen: () => state.currentSidePanelAction === 'telegram' && isSidePanelVisible(),
+    closePanel: () => {
+        telegramFeature.closePanel?.();
+        return true;
+    }
+});
+
+registerSidePanelTool('youtube', {
+    isOpen: () => state.currentSidePanelAction === 'youtube' && (isSidePanelVisible() || !!blipYtPlayer),
+    closePanel: () => {
+        closeYouTubePanel();
+        return true;
+    }
+});
+
+registerSidePanelTool('calendaragenda', {
+    isOpen: () => state.currentSidePanelAction === 'calendaragenda' && isCalendarAgendaDomVisible(),
+    closePanel: () => {
+        closeCalendarPanel();
+        return true;
+    }
+});
+
+registerSidePanelTool('conversation', {
+    isOpen: () => state.currentSidePanelAction === 'conversation' && isSidePanelVisible(),
+    closePanel: () => true
 });
 
 function triggerEmailSendConfirm(options = {}) {
@@ -2138,6 +2294,7 @@ function syncSleepButtonUI() {
     sleepBtn.textContent = resting ? 'Wake' : 'Sleep';
     sleepBtn.setAttribute('aria-label', resting ? 'Wake Blip' : 'Put Blip to sleep');
     sleepBtn.classList.toggle('wake-mode', resting);
+    syncSleepArcadeMode();
 }
 
 function parseWakePhrase(text = '', options = {}) {
@@ -2189,6 +2346,26 @@ function parseWakePhrase(text = '', options = {}) {
 
     const command = tokens.slice(wakeIndex + 1).join(' ').replace(/^[,.:;-]+\s*/, '').trim();
     return { matched: true, command, score: wakeScore };
+}
+
+function parseWakeOrEmergencyWakePhrase(text = '', options = {}) {
+    const wakeInfo = parseWakePhrase(text, options);
+    if (wakeInfo.matched) {
+        return wakeInfo;
+    }
+    const emergencyInfo = parseBlipIntent(text, {
+        careCamActive: true,
+        careCamHelpActive: false
+    });
+    if (emergencyInfo?.kind === 'carecam' && emergencyInfo.action === 'start_and_send_help') {
+        return {
+            matched: true,
+            command: String(text || '').trim(),
+            score: 1,
+            emergency: true
+        };
+    }
+    return wakeInfo;
 }
 
 function stopPassiveWakeLoop() {
@@ -2245,9 +2422,11 @@ async function wakeBlipHandsFree(spokenText = '') {
     syncChatEngagementState();
     syncWakeReadinessUI();
     syncSleepButtonUI();
+    syncSleepArcadeMode();
 
     const wakeInfo = parseWakePhrase(spokenText);
-    if (wakeInfo.command) {
+    const emergencyWakeInfo = parseWakeOrEmergencyWakePhrase(spokenText);
+    if (wakeInfo.command || emergencyWakeInfo.emergency) {
         transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${spokenText}</i>`;
         await handleCommand(spokenText);
         return;
@@ -2269,7 +2448,7 @@ function startPassiveWakeLoop() {
     const started = speech.startListening(
         (result) => {
             if (!result?.isFinal) return;
-            const wakeInfo = parseWakePhrase(result.text || '', { confidence: result.confidence });
+            const wakeInfo = parseWakeOrEmergencyWakePhrase(result.text || '', { confidence: result.confidence });
             if (!wakeInfo.matched) return;
             state.passiveWakeListening = false;
             speech.stopListening();
@@ -2887,6 +3066,11 @@ async function init() {
         if (personaLabelEl) personaLabelEl.textContent = "BLIP";
         if (PERSONAS.idle) PERSONAS.idle.label = "BLIP";
 
+        if (await initCareCamMode()) {
+            return;
+        }
+        updateCareCamHomeControls();
+
         // Restore conversation history from last session (better context)
         try {
             const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
@@ -3328,12 +3512,86 @@ async function init() {
             };
         }
         if (watchBtn) watchBtn.onclick = toggleLiveWatch;
+        if (careCamQuickBtn) {
+            careCamQuickBtn.onclick = async () => {
+                if (state.careCamRunning) {
+                    await stopCareCamDemo();
+                    if (transcriptText) transcriptText.innerText = 'Care Cam demo stopped.';
+                    return;
+                }
+                try {
+                    await startCareCamDemo();
+                    if (transcriptText) transcriptText.innerText = 'Care Cam demo ready. Share the phone viewer link.';
+                } catch (error) {
+                    console.warn('Care Cam quick start failed:', error?.message || error);
+                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not start Care Cam demo.';
+                }
+            };
+        }
+        if (careCamDemoBtn) {
+            careCamDemoBtn.onclick = async () => {
+                if (state.careCamRunning) {
+                    await stopCareCamDemo();
+                    if (transcriptText) transcriptText.innerText = 'Care Cam demo stopped.';
+                    return;
+                }
+                try {
+                    await startCareCamDemo();
+                    if (transcriptText) transcriptText.innerText = 'Care Cam demo ready. Copy the viewer link to your phone.';
+                } catch (error) {
+                    console.warn('Care Cam demo start failed:', error?.message || error);
+                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not start Care Cam demo.';
+                }
+            };
+        }
+        if (copyCareCamLinkBtn) {
+            copyCareCamLinkBtn.onclick = async () => {
+                if (!state.careCamSessionId) {
+                    await startCareCamDemo();
+                }
+                await copyCareCamLink();
+            };
+        }
+        if (openCareCamViewerBtn) {
+            openCareCamViewerBtn.onclick = async () => {
+                if (!state.careCamSessionId) {
+                    await startCareCamDemo();
+                }
+                await openCareCamViewer();
+            };
+        }
+        if (careCamTalkBtn) {
+            careCamTalkBtn.onclick = async () => {
+                await sendCareCamViewerCommand('talk');
+            };
+        }
+        if (careCamAlertBtn) {
+            careCamAlertBtn.onclick = async () => {
+                await sendCareCamViewerCommand('alert');
+            };
+        }
+        if (careCamTalkInput) {
+            careCamTalkInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void sendCareCamViewerCommand('talk');
+                }
+            });
+        }
         if (uploadBtn && fileInput) {
             uploadBtn.onclick = () => fileInput.click();
             fileInput.onchange = handleFileUpload;
         }
         if (clearImageBtn) clearImageBtn.onclick = clearPendingImage;
         if (saveToHubBtn) saveToHubBtn.onclick = saveCurrentVisionToHub;
+        if (visionPreviewContainer) {
+            visionPreviewContainer.addEventListener('click', async (event) => {
+                if (event.target.closest('#clear-image-btn, #save-to-hub-btn')) return;
+                if (state.careCamRunning || state.careCamSessionId) {
+                    await openCareCamViewer();
+                }
+            });
+        }
         if (mediaBtn) mediaBtn.onclick = () => toggleMediaGallery(null, 'all');
         if (creationsBtn) {
             creationsBtn.onclick = () => {
@@ -3422,9 +3680,9 @@ async function init() {
                     return;
                 }
                 try {
-                    await telegramFeature.openPanel({ summary: 'Telegram open.' });
-                    state.pendingTelegramReview = true;
-                    if (transcriptText) transcriptText.innerText = 'Telegram open.';
+                    await telegramFeature.openPanel({ summary: 'Telegram is open. Your message is ready to review.' });
+                    state.pendingTelegramReview = false;
+                    if (transcriptText) transcriptText.innerText = 'Telegram is open. Your message is ready to review.';
                 } catch (error) {
                     console.warn('Open Telegram tool failed:', error?.message || error);
                     openSettingsPanel();
@@ -3447,6 +3705,9 @@ async function init() {
         };
         closePanelBtn.onclick = () => closeSettingsPanel();
         document.getElementById('ui-debug-refresh-btn')?.addEventListener('click', refreshUiDebugDump);
+        openConversationInspectorBtn?.addEventListener('click', () => {
+            openConversationInspectorPanel();
+        });
 
         // Chart Toggles
         if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
@@ -3495,7 +3756,7 @@ async function init() {
         chatInput.addEventListener('input', () => syncChatEngagementState());
         chatInput.addEventListener('blur', () => setTimeout(() => syncChatEngagementState(), 0));
 
-        renderHub();
+        await initStudentDeskStore();
         renderCart();
         initLearningGames();
         persistMediaGallery();
@@ -3746,8 +4007,12 @@ function stopCamera(options = {}) {
     if (closeCameraBtn) closeCameraBtn.style.display = 'none';
     if (cameraBtn) cameraBtn.style.display = 'block';
     if (visionPreviewContainer) visionPreviewContainer.style.display = state.pendingImage ? 'block' : 'none';
+    setCareCamMiniPreviewState(false);
     updateRecordButtonUI();
     setEmotion('serious');
+    if (state.careCamRunning || state.careCamSessionId) {
+        resetCareCamSession('No care cam session running.');
+    }
     if (!keepTranscript) transcriptText.innerText = transcript;
 
     // Resume listening if Blip is still active
@@ -3785,6 +4050,62 @@ async function capturePhotoWhenReady() {
     return capturePhoto();
 }
 
+async function captureCameraPhotoToDesign(title = 'Camera Photo', options = {}) {
+    const { analyze = false, prompt = title } = options || {};
+    const hasPendingPhoto = !!state.pendingImage;
+    if (!hasPendingPhoto) {
+        const ok = await capturePhotoWhenReady();
+        if (!ok) return { ok: false, message: 'I could not capture the photo yet.' };
+    }
+
+    const pendingImage = state.pendingImage;
+    const rawData = typeof pendingImage === 'string'
+        ? pendingImage.trim()
+        : String(pendingImage?.data || '').trim();
+    const mimeType = typeof pendingImage === 'object' && pendingImage?.mimeType
+        ? pendingImage.mimeType
+        : 'image/jpeg';
+    const dataUrl = rawData ? (rawData.startsWith('data:') ? rawData : `data:${mimeType};base64,${rawData}`) : '';
+    if (!dataUrl) {
+        return { ok: false, message: 'I could not prepare that photo for Design.' };
+    }
+
+    let summaryText = `${title} ready in Design.`;
+    if (analyze) {
+        try {
+            const analysis = await analyzeHomeworkPhoto(
+                { data: rawData, mimeType },
+                prompt,
+                state.geminiKey,
+                state.selectedModel
+            );
+            if (analysis?.text) {
+                summaryText = analysis.text;
+                setPersona(analysis.emotion || 'curious');
+                setBlipEmotion(analysis.emotion || 'curious');
+                addToHub('note', analysis.text, { source: 'student-homework', kind: 'homework' });
+            }
+        } catch (error) {
+            console.warn('Homework photo analysis failed:', error?.message || error);
+            summaryText = `${title} ready in Design.`;
+        }
+    }
+
+    state.lastContext.lastDesignPrompt = prompt || title;
+    state.lastContext.lastDesignDataUrl = dataUrl;
+    renderActionInSidePanel({
+        action: 'design',
+        tool_params: {
+            dataUrl,
+            imageUrl: dataUrl,
+            prompt: prompt || title,
+            title
+        },
+        text: summaryText
+    });
+    return { ok: true, message: summaryText };
+}
+
 function exitVisionMode(options = {}) {
     const appContainer = document.querySelector('.container');
     stopCamera(options);
@@ -3801,19 +4122,32 @@ function exitVisionMode(options = {}) {
 function toggleLiveWatch() {
     state.isLiveWatch = !state.isLiveWatch;
     if (watchBtn) watchBtn.classList.toggle('active', state.isLiveWatch);
+    if (careCamQuickBtn) careCamQuickBtn.classList.toggle('active', state.careCamRunning);
+    if (careCamQuickBtn) {
+        careCamQuickBtn.setAttribute('aria-label', state.careCamRunning ? 'Stop Care Cam Demo' : 'Start Care Cam Demo');
+        careCamQuickBtn.title = state.careCamRunning ? 'Stop Care Cam Demo' : 'Start Care Cam Demo';
+    }
     if (liveIndicator) liveIndicator.style.display = state.isLiveWatch ? 'block' : 'none';
     if (visionPreviewContainer) visionPreviewContainer.style.display = state.isLiveWatch ? 'block' : (state.pendingImage ? 'block' : 'none');
+    setCareCamMiniPreviewState(state.isLiveWatch && state.careCamRunning, 'LIVE VERIFY');
 
-    if (state.isLiveWatch) {
-        setEmotion('curious');
-        transcriptText.innerText = "Live Watch ACTIVE. I'm observing everything...";
-        // If camera not yet on, start it
-        if (!state.cameraStream) startCamera();
+        if (state.isLiveWatch) {
+            setEmotion('curious');
+            transcriptText.innerText = "Live Watch ACTIVE. I'm observing everything...";
+            // If camera not yet on, start it
+            if (!state.cameraStream) startCamera();
 
-        state.liveInterval = setInterval(captureLiveFrame, 1500);
-    } else {
-        clearInterval(state.liveInterval);
-        state.liveFrames = [];
+            state.liveInterval = setInterval(captureLiveFrame, 1500);
+            if (state.careCamRunning) {
+                setCareCamMiniPreviewState(true, 'LIVE VERIFY');
+                if (visionPreviewContainer) visionPreviewContainer.style.display = 'block';
+            }
+        } else {
+            clearInterval(state.liveInterval);
+            state.liveFrames = [];
+            if (state.careCamRunning) {
+                resetCareCamSession('Care Cam paused.');
+        }
         transcriptText.innerText = "Live Watch stopped.";
         if (state.isActive) startListeningLoop();
     }
@@ -3835,6 +4169,531 @@ function captureLiveFrame() {
 
     // Update preview bubble with latest
     if (visionPreview) visionPreview.src = `data:image/jpeg;base64,${base64}`;
+    if (state.careCamRunning) {
+        setCareCamMiniPreviewState(true, 'LIVE VERIFY');
+        if (visionPreviewContainer) visionPreviewContainer.style.display = 'block';
+    }
+
+    if (state.careCamSessionId) {
+        pushCareCamFrame(state.careCamSessionId, {
+            imageDataUrl: `data:image/jpeg;base64,${base64}`,
+            emotion: state.currentEmotion || 'serious',
+            caption: state.careCamRunning ? 'Live room feed' : ''
+        }).catch((error) => {
+            console.warn('Care Cam frame push failed:', error?.message || error);
+        });
+    }
+
+}
+
+function setCareCamHomeStatus(text = '') {
+    const message = String(text || '').trim() || 'No care cam session running.';
+    if (careCamStatus) careCamStatus.textContent = message;
+}
+
+function setCareCamMiniPreviewState(active, label = 'LIVE VERIFY') {
+    if (!visionPreviewContainer) return;
+    visionPreviewContainer.classList.toggle('care-cam-mini-live', !!active);
+    if (active) {
+        visionPreviewContainer.dataset.liveLabel = label;
+        visionPreviewContainer.title = 'Tap to open the Care Cam viewer';
+        visionPreviewContainer.setAttribute('aria-label', 'Care Cam live preview. Tap to open the viewer.');
+    } else {
+        delete visionPreviewContainer.dataset.liveLabel;
+        visionPreviewContainer.title = '';
+        visionPreviewContainer.removeAttribute('aria-label');
+    }
+}
+
+function setCareCamViewerStatus(text = '') {
+    const message = String(text || '').trim() || 'Waiting for a live session...';
+    if (careCamViewerStatus) careCamViewerStatus.textContent = message;
+}
+
+function setCareCamViewerVisible(visible) {
+    state.careCamViewerMode = !!visible;
+    document.body.classList.toggle('care-cam-viewer-mode', !!visible);
+    if (careCamViewerShell) {
+        careCamViewerShell.classList.toggle('hidden', !visible);
+        careCamViewerShell.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    }
+}
+
+function getCareCamSessionLink() {
+    if (!state.careCamSessionId) return '';
+    if (!state.careCamViewerUrl) {
+        state.careCamViewerUrl = buildCareCamViewerUrl(state.careCamSessionId);
+    }
+    return state.careCamViewerUrl;
+}
+
+async function ensureCareCamSession() {
+    if (state.careCamSessionId) return state.careCamSessionId;
+    const result = await createCareCamSession('Blip Care Cam');
+    state.careCamSessionId = result.sessionId;
+    state.careCamViewerUrl = buildCareCamViewerUrl(result.sessionId);
+    state.careCamCommandCursor = 0;
+    setCareCamHomeStatus(`Session ready: ${result.sessionId.slice(0, 8)}…`);
+    return state.careCamSessionId;
+}
+
+function updateCareCamHomeControls() {
+    const link = getCareCamSessionLink();
+    if (copyCareCamLinkBtn) copyCareCamLinkBtn.disabled = !link;
+    if (openCareCamViewerBtn) openCareCamViewerBtn.disabled = !link;
+    if (careCamDemoBtn) {
+        careCamDemoBtn.textContent = state.careCamRunning ? '🛑 Stop Care Cam Demo' : '🍼 Start Care Cam Demo';
+    }
+}
+
+async function copyCareCamLink() {
+    const link = getCareCamSessionLink();
+    if (!link) {
+        setCareCamHomeStatus('Start the demo first to generate a viewer link.');
+        return false;
+    }
+    try {
+        await navigator.clipboard.writeText(link);
+        setCareCamHomeStatus('Viewer link copied to clipboard.');
+        return true;
+    } catch (_) {
+        setCareCamHomeStatus(link);
+        return false;
+    }
+}
+
+function stopCareCamPolling() {
+    if (state.careCamRelayTimer) {
+        clearInterval(state.careCamRelayTimer);
+        state.careCamRelayTimer = null;
+    }
+    if (state.careCamPollTimer) {
+        clearInterval(state.careCamPollTimer);
+        state.careCamPollTimer = null;
+    }
+}
+
+function clearCareCamFallWatch() {
+    if (state.careCamFallWatchTimer) {
+        clearTimeout(state.careCamFallWatchTimer);
+        state.careCamFallWatchTimer = null;
+    }
+    state.careCamFallWatchActive = false;
+    state.careCamFallWatchPhase = 'idle';
+    state.careCamFallWatchStartedAt = 0;
+    state.careCamLastFallAnalysisAt = 0;
+    state.careCamLastFallAnalysisResult = null;
+}
+
+function getCareCamFallMessage(location = state.careCamFallWatchLocation || 'living room') {
+    const room = String(location || 'living room').trim() || 'living room';
+    return `Your dad fell in the ${room}.`;
+}
+
+function getCareCamUrgentMessage(location = state.careCamFallWatchLocation || 'living room') {
+    const room = String(location || 'living room').trim() || 'living room';
+    return `Urgent: your dad says he is not okay in the ${room}. Call him now!`;
+}
+
+async function sendCareCamTelegramFallMessage(options = {}) {
+    const location = String(options.location || state.careCamFallWatchLocation || 'living room').trim() || 'living room';
+    const announce = Boolean(options.announce);
+    const keepWatch = Boolean(options.keepWatch);
+    const urgent = Boolean(options.urgent);
+    const message = urgent ? getCareCamUrgentMessage(location) : getCareCamFallMessage(location);
+
+    try {
+        await sendTelegramMessage({ text: message });
+        state.lastTelegramSendResult = {
+            ok: true,
+            kind: 'text',
+            chatId: ''
+        };
+        setCareCamHomeStatus(`Telegram sent: ${message}`);
+        if (state.careCamViewerMode) {
+            setCareCamViewerStatus('Telegram alert sent.');
+        }
+        transcriptText.innerHTML = `<b>Blip:</b> Telegram alert sent.<br><small>${message}</small>`;
+        state.history.push({ user: 'care cam', blip: `Telegram alert sent: ${message}` });
+        if (state.history.length > HISTORY_MAX) state.history.shift();
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+        if (keepWatch) {
+            state.careCamFallWatchActive = true;
+            state.careCamFallWatchPhase = urgent ? 'idle' : 'check';
+            state.careCamFallWatchStartedAt = Date.now();
+            if (state.careCamFallWatchTimer) {
+                clearTimeout(state.careCamFallWatchTimer);
+                state.careCamFallWatchTimer = null;
+            }
+        } else {
+            clearCareCamFallWatch();
+        }
+        if (announce) {
+            await speakWithGuard(
+                urgent
+                    ? 'I sent the urgent Telegram alert.'
+                    : 'I sent the Telegram alert.',
+                'serious'
+            );
+        }
+        return true;
+    } catch (error) {
+        console.warn('Care Cam Telegram send failed:', error?.message || error);
+        setCareCamHomeStatus(error?.message || 'Could not send the Telegram alert.');
+        if (state.careCamViewerMode) {
+            setCareCamViewerStatus(error?.message || 'Could not send the Telegram alert.');
+        }
+        clearCareCamFallWatch();
+        if (announce) {
+            await speakWithGuard(error?.message || 'I could not send the Telegram alert.', 'sad');
+        }
+        return false;
+    }
+}
+
+async function beginCareCamFallWatch(options = {}) {
+    const location = String(options.location || state.careCamFallWatchLocation || 'living room').trim() || 'living room';
+    const prompt = String(options.prompt || 'Are you okay?').trim() || 'Are you okay?';
+    const autoDelayMs = Math.max(5000, Number(options.autoDelayMs) || 60000);
+    const shouldSpeak = options.shouldSpeak !== false;
+
+    state.careCamFallWatchLocation = location;
+    clearCareCamFallWatch();
+    state.careCamFallWatchActive = true;
+    state.careCamFallWatchPhase = 'watch';
+    state.careCamFallWatchStartedAt = Date.now();
+    setCareCamHomeStatus(`Fall watch active. Asking "${prompt}" and waiting for Telegram fallback...`);
+    if (state.careCamViewerMode) {
+        setCareCamViewerStatus(`Fall watch active. Quiet for ${Math.round(autoDelayMs / 1000)}s sends Telegram.`);
+    }
+    if (shouldSpeak) {
+        transcriptText.innerHTML = `<b>Blip:</b> ${prompt}`;
+        state.history.push({ user: 'care cam alert', blip: prompt });
+        if (state.history.length > HISTORY_MAX) state.history.shift();
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+        setPersona('warning');
+        await speakWithGuard(prompt, 'serious');
+    }
+
+    state.careCamFallWatchTimer = setTimeout(() => {
+        void sendCareCamTelegramFallMessage({ location, announce: false });
+    }, autoDelayMs);
+
+    return true;
+}
+
+async function handleCareCamHelpVoice(command = '') {
+    const intent = parseBlipIntent(command, {
+        careCamActive: state.careCamRunning || state.careCamViewerMode || state.careCamSessionId,
+        careCamHelpActive: state.careCamFallWatchActive,
+        careCamFollowUpPhase: state.careCamFallWatchPhase
+    });
+    if (!intent || intent.kind !== 'carecam') return false;
+    if (intent.action === 'start_and_send_help') {
+        const location = state.careCamFallWatchLocation || 'living room';
+        if (!state.careCamRunning && !state.careCamSessionId) {
+            setCareCamHomeStatus('Turning on Care Cam and sending Telegram alert...');
+            if (state.careCamViewerMode) {
+                setCareCamViewerStatus('Turning on Care Cam and sending Telegram alert...');
+            }
+            await startCareCamDemo();
+        } else {
+            setCareCamHomeStatus('Sending Telegram alert...');
+            if (state.careCamViewerMode) {
+                setCareCamViewerStatus('Sending Telegram alert...');
+            }
+        }
+        transcriptText.innerHTML = `<b>Blip:</b> Turning on Care Cam and calling for help now.`;
+        state.history.push({ user: command || 'send help message', blip: 'Turning on Care Cam and calling for help now.' });
+        if (state.history.length > HISTORY_MAX) state.history.shift();
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+        clearCareCamFallWatch();
+        await sendCareCamTelegramFallMessage({ location, announce: true });
+        await beginCareCamSafetyCheck({ location });
+        return true;
+    }
+    if (!['request_help', 'send_help'].includes(intent.action)) return false;
+
+    const location = state.careCamFallWatchLocation || 'living room';
+    setCareCamHomeStatus('Help requested. Sending Telegram alert...');
+    if (state.careCamViewerMode) {
+        setCareCamViewerStatus('Help requested. Sending Telegram alert...');
+    }
+    transcriptText.innerHTML = `<b>Blip:</b> Calling for help now.`;
+    state.history.push({ user: command || 'call for help', blip: 'Calling for help now.' });
+    if (state.history.length > HISTORY_MAX) state.history.shift();
+    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+    clearCareCamFallWatch();
+    await sendCareCamTelegramFallMessage({ location, announce: true });
+    await beginCareCamSafetyCheck({ location });
+    return true;
+}
+
+async function beginCareCamSafetyCheck(options = {}) {
+    const location = String(options.location || state.careCamFallWatchLocation || 'living room').trim() || 'living room';
+    state.careCamFallWatchLocation = location;
+    state.careCamFallWatchActive = true;
+    state.careCamFallWatchPhase = 'check';
+    state.careCamFallWatchStartedAt = Date.now();
+    if (state.careCamFallWatchTimer) {
+        clearTimeout(state.careCamFallWatchTimer);
+        state.careCamFallWatchTimer = null;
+    }
+    setCareCamHomeStatus('Telegram sent. Waiting for yes or no...');
+    if (state.careCamViewerMode) {
+        setCareCamViewerStatus('Telegram sent. Waiting for yes or no...');
+    }
+    transcriptText.innerHTML = `<b>Blip:</b> I sent the Telegram alert. Are you okay?`;
+    state.history.push({ user: 'care cam', blip: 'I sent the Telegram alert. Are you okay?' });
+    if (state.history.length > HISTORY_MAX) state.history.shift();
+    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+    await speakWithGuard('I sent the Telegram alert. Are you okay?', 'serious');
+    if (state.isActive && !state.softSleepMode && !state.isThinking && !speech.isSpeaking) {
+        startListeningLoop();
+    }
+    return true;
+}
+
+async function handleCareCamFallWatchVoice(command = '') {
+    if (!state.careCamFallWatchActive) return false;
+    const intent = parseBlipIntent(command, {
+        careCamActive: state.careCamRunning || state.careCamViewerMode || state.careCamSessionId,
+        careCamHelpActive: state.careCamFallWatchActive,
+        careCamFollowUpPhase: state.careCamFallWatchPhase
+    });
+
+    if (intent.action === 'send_help') {
+        clearCareCamFallWatch();
+        await sendCareCamTelegramFallMessage({ announce: true });
+        await beginCareCamSafetyCheck({ location: state.careCamFallWatchLocation || 'living room' });
+        return true;
+    }
+
+    if (intent.action === 'urgent_help') {
+        clearCareCamFallWatch();
+        await sendCareCamTelegramFallMessage({ announce: true, urgent: true });
+        return true;
+    }
+
+    if (intent.action === 'clear_help') {
+        clearCareCamFallWatch();
+        setCareCamHomeStatus('Fall watch cleared.');
+        if (state.careCamViewerMode) {
+            setCareCamViewerStatus('Fall watch cleared.');
+        }
+        transcriptText.innerHTML = `<b>Blip:</b> Okay, I’m staying quiet and watching.`;
+        state.history.push({ user: command || 'I am okay', blip: 'Okay, I’m staying quiet and watching.' });
+        if (state.history.length > HISTORY_MAX) state.history.shift();
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+        await speakWithGuard('Okay, I’m staying quiet and watching.', 'happy');
+        return true;
+    }
+
+    return false;
+}
+
+function resetCareCamSession(message = 'No care cam session running.') {
+    stopCareCamPolling();
+    clearCareCamFallWatch();
+    state.careCamRunning = false;
+    state.careCamLocalOnly = false;
+    state.careCamSessionId = '';
+    state.careCamViewerUrl = '';
+    state.careCamCommandCursor = 0;
+    updateCareCamHomeControls();
+    setCareCamHomeStatus(message);
+}
+
+async function processCareCamCommand(command = {}) {
+    const kind = String(command.kind || 'talk').toLowerCase();
+    const text = String(command.text || '').trim();
+    if (!text && kind !== 'alert') return;
+
+    if (kind === 'alert') {
+        face.classList.remove('thinking');
+        setBlipEmotion('surprised', 1600);
+        setPersona('warning');
+        transcriptText.innerHTML = `<b>Phone:</b> ${text || 'Care Cam alert'}<br><b>Blip:</b> Are you okay?`;
+        state.history.push({ user: text || 'Care Cam alert', blip: 'Are you okay?' });
+        if (state.history.length > HISTORY_MAX) state.history.shift();
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+        await beginCareCamFallWatch({
+            prompt: 'Are you okay?',
+            location: state.careCamFallWatchLocation || 'living room',
+            autoDelayMs: 60000,
+            shouldSpeak: false
+        });
+        await speakWithGuard('Are you okay?', 'serious');
+        return;
+    }
+
+    face.classList.remove('thinking');
+    transcriptText.innerHTML = `<b>Phone:</b> ${text}<br><b>Blip:</b> Thinking...`;
+    await handleCommand(text);
+}
+
+async function pollCareCamCommands() {
+    if (!state.careCamSessionId) return;
+    try {
+        const result = await getCareCamCommands(state.careCamSessionId, state.careCamCommandCursor || 0);
+        const commands = Array.isArray(result.commands) ? result.commands : [];
+        if (commands.length) {
+            for (const command of commands) {
+                state.careCamCommandCursor = Math.max(state.careCamCommandCursor || 0, Number(command.id) || 0);
+                await processCareCamCommand(command);
+            }
+        } else if (Number.isFinite(Number(result.latestCommandId))) {
+            state.careCamCommandCursor = Math.max(state.careCamCommandCursor || 0, Number(result.latestCommandId) || 0);
+        }
+    } catch (error) {
+        console.warn('Care Cam command poll failed:', error?.message || error);
+    }
+}
+
+async function startCareCamPolling() {
+    stopCareCamPolling();
+    await pollCareCamCommands();
+    state.careCamRelayTimer = setInterval(() => {
+        void pollCareCamCommands();
+    }, 900);
+}
+
+async function startCareCamDemo() {
+    state.careCamRunning = true;
+    updateCareCamHomeControls();
+    if (!state.cameraStream) {
+        const started = await startCamera();
+        if (!started) {
+            resetCareCamSession('Could not start the camera for Care Cam.');
+            throw new Error('Could not start the camera for Care Cam.');
+        }
+    }
+    if (!state.isLiveWatch) toggleLiveWatch();
+    if (visionPreviewContainer) visionPreviewContainer.style.display = 'block';
+    setCareCamMiniPreviewState(true, 'LIVE VERIFY');
+    try {
+        const sessionId = await ensureCareCamSession();
+        state.careCamLocalOnly = false;
+        await startCareCamPolling();
+        setCareCamHomeStatus(`Session live. Share the viewer link for ${sessionId.slice(0, 8)}…`);
+        return sessionId;
+    } catch (error) {
+        console.warn('Care Cam backend unavailable, using local preview only:', error?.message || error);
+        state.careCamLocalOnly = true;
+        stopCareCamPolling();
+        state.careCamSessionId = '';
+        state.careCamViewerUrl = '';
+        setCareCamHomeStatus('Live preview active locally. Start the Care Cam backend to share to a phone.');
+        if (state.careCamViewerMode) {
+            setCareCamViewerStatus('Local preview only. Start the Care Cam backend to open the phone viewer.');
+        }
+        updateCareCamHomeControls();
+        return '';
+    }
+}
+
+async function stopCareCamDemo() {
+    state.careCamRunning = false;
+    setCareCamMiniPreviewState(false);
+    if (state.liveInterval || state.cameraStream) {
+        stopCamera({ keepTranscript: true, transcript: 'Care Cam demo stopped.', resumeListening: true });
+    } else {
+        resetCareCamSession('Care Cam demo stopped.');
+    }
+}
+
+async function openCareCamViewer() {
+    const link = getCareCamSessionLink();
+    if (!link) {
+        if (state.careCamLocalOnly || state.careCamRunning) {
+            setCareCamHomeStatus('Care Cam backend is offline, so the phone viewer is unavailable right now.');
+            return;
+        }
+        await startCareCamDemo();
+    }
+    const next = getCareCamSessionLink();
+    if (next) window.open(next, '_blank', 'noopener,noreferrer');
+}
+
+async function updateCareCamViewerFrame() {
+    if (!state.careCamViewerMode || !state.careCamSessionId) return;
+    try {
+        const result = await getCareCamSessionStatus(state.careCamSessionId);
+        if (careCamViewerTitle) careCamViewerTitle.textContent = result.label || 'Investor demo';
+        if (careCamViewerStatus) {
+            const statusText = result.hasFrame
+                ? `Live frame updated ${result.frameUpdatedAt ? new Date(result.frameUpdatedAt).toLocaleTimeString() : ''}`
+                : 'Waiting for the home device to go live...';
+            careCamViewerStatus.textContent = statusText;
+        }
+        if (careCamViewerShell) careCamViewerShell.classList.remove('hidden');
+        if (result.hasFrame && result.frameUpdatedAt) {
+            const frame = await getCareCamFrame(state.careCamSessionId);
+            if (frame?.frame?.imageDataUrl && careCamFrame) {
+                careCamFrame.src = frame.frame.imageDataUrl;
+                careCamFrame.style.display = 'block';
+                if (careCamEmpty) careCamEmpty.style.display = 'none';
+            }
+        } else if (careCamEmpty) {
+            careCamEmpty.style.display = 'flex';
+            if (careCamFrame) careCamFrame.style.display = 'none';
+        }
+    } catch (error) {
+        console.warn('Care Cam viewer update failed:', error?.message || error);
+        setCareCamViewerStatus('Waiting for the home device...');
+    }
+}
+
+function startCareCamViewerLoop() {
+    if (!state.careCamSessionId) {
+        setCareCamViewerStatus('Waiting for a session link...');
+        return;
+    }
+    if (state.careCamPollTimer) {
+        clearInterval(state.careCamPollTimer);
+        state.careCamPollTimer = null;
+    }
+    void updateCareCamViewerFrame();
+    state.careCamPollTimer = setInterval(() => {
+        void updateCareCamViewerFrame();
+    }, 700);
+}
+
+async function sendCareCamViewerCommand(kind = 'talk') {
+    if (!state.careCamSessionId) return false;
+    const text = String(careCamTalkInput?.value || '').trim();
+    if (kind !== 'alert' && !text) {
+        setCareCamViewerStatus('Type a message first.');
+        return false;
+    }
+    const payload = kind === 'alert'
+        ? { kind: 'alert', text: text || 'Care Cam alert: please check the room now.' }
+        : { kind: 'talk', text };
+    try {
+        await postCareCamCommand(state.careCamSessionId, payload);
+        if (careCamTalkInput) careCamTalkInput.value = '';
+        setCareCamViewerStatus(kind === 'alert' ? 'Alert sent.' : 'Message sent to Blip.');
+        return true;
+    } catch (error) {
+        console.warn('Care Cam talkback failed:', error?.message || error);
+        setCareCamViewerStatus(error?.message || 'Could not send message.');
+        return false;
+    }
+}
+
+async function initCareCamMode() {
+    if (careCamRoute.role === 'viewer') {
+        state.careCamViewerMode = true;
+        state.careCamSessionId = careCamRoute.sessionId;
+        state.careCamViewerUrl = buildCareCamViewerUrl(careCamRoute.sessionId);
+        setCareCamViewerVisible(true);
+        if (careCamViewerTitle) careCamViewerTitle.textContent = 'Viewer mode';
+        if (careCamViewerNote) careCamViewerNote.textContent = 'Phone viewer connected to a live Blip session.';
+        startCareCamViewerLoop();
+        return true;
+    }
+    setCareCamViewerVisible(false);
+    return false;
 }
 
 function handleFileUpload(e) {
@@ -3905,6 +4764,7 @@ async function toggleApp() {
             chatEntry.classList.remove('hidden'); // Show chat entry automatically on wake
             syncChatEngagementState();
             syncSleepButtonUI();
+            syncSleepArcadeMode();
             transcriptText.innerText = 'I am awake.';
             if (WAKE_GREETING_ENABLED) {
                 await speakWithGuard('I am awake.', 'happy');
@@ -3947,6 +4807,8 @@ function cancelInteraction() {
  */
 function cleanupAllSystemTimers() {
     console.log('🧹 Cleaning up all system timers...');
+
+    clearSleepArcadeTimers();
     
     // 1. Clear speech (mouth animations, safety timeouts)
     if (speech && typeof speech.stopAll === 'function') {
@@ -4006,6 +4868,7 @@ function stopApp() {
     talkBtn.innerText = SLEEP_BUTTON_LABEL;
     transcriptText.innerText = SLEEP_PROMPT_TEXT;
     syncScenerySuppression();
+    syncSleepArcadeMode();
     schedulePassiveWakeLoop(500);
     syncWakeReadinessUI();
     syncSleepButtonUI();
@@ -4039,6 +4902,7 @@ async function enterSoftSleepMode(message = SLEEP_PROMPT_TEXT) {
     }
     syncWakeReadinessUI();
     syncSleepButtonUI();
+    syncSleepArcadeMode();
 }
 
 const GMAIL_VOICE_MERGE_FLUSH_MS = 850;
@@ -4069,6 +4933,7 @@ function isGmailImmediateVoiceCommand(text) {
     const t = normalizeVoiceTokens(String(text || '')).trim();
     if (!t) return true;
     if (looksLikeCompleteGmailUtterance(text)) return true;
+    if (isStrongEmailSendDraftCommand(text)) return true;
     return /^(send|send it|send now|yes|no|ok|okay|go ahead|go on|never mind|nevermind|forget it|cancel|stop|no subject|correct|change it)$/i.test(t)
         || /^(okay you can send it|you can send it|please send)$/i.test(t)
         || /^(undo|scratch that|take that back|oops)$/i.test(t);
@@ -4218,7 +5083,7 @@ function startListeningLoop() {
                 }
                 const systemCmd = getSystemVoiceCommand(result.text);
                 if (state.softSleepMode) {
-                    const wakePhrase = parseWakePhrase(result.text, { confidence: result.confidence });
+                    const wakePhrase = parseWakeOrEmergencyWakePhrase(result.text, { confidence: result.confidence });
                     if (systemCmd !== 'wake' && !wakePhrase.matched) {
                         transcriptText.innerText = SLEEP_PROMPT_TEXT;
                         setPersona('sleepy');
@@ -4459,7 +5324,7 @@ function applyBlipPersonalization() {
     if (!face) return;
     if (!ENABLE_BLIP_PERSONALIZATION) {
         face.classList.remove('style-hat-cap', 'style-hat-beanie', 'style-hat-crown', 'style-glasses-round', 'style-glasses-visor');
-        face.style.setProperty('--blip-eye-color', BLIP_EYE_COLOR_MAP.white);
+        face.style.setProperty('--blip-eye-color', BLIP_EYE_COLOR_MAP.blue);
         document.documentElement.style.setProperty('--blip-aura-core', BLIP_AURA_COLOR_MAP.default.core);
         document.documentElement.style.setProperty('--blip-aura-mid', BLIP_AURA_COLOR_MAP.default.mid);
         return;
@@ -4477,7 +5342,7 @@ function applyBlipPersonalization() {
     if (hat !== 'none') face.classList.add(`style-hat-${hat}`);
     if (glasses !== 'none') face.classList.add(`style-glasses-${glasses}`);
 
-    face.style.setProperty('--blip-eye-color', BLIP_EYE_COLOR_MAP[eyeColor] || BLIP_EYE_COLOR_MAP.white);
+    face.style.setProperty('--blip-eye-color', BLIP_EYE_COLOR_MAP[eyeColor] || BLIP_EYE_COLOR_MAP.blue);
     const auraPreset = BLIP_AURA_COLOR_MAP[auraColor] || BLIP_AURA_COLOR_MAP.default;
     document.documentElement.style.setProperty('--blip-aura-core', auraPreset.core);
     document.documentElement.style.setProperty('--blip-aura-mid', auraPreset.mid);
@@ -5263,6 +6128,38 @@ const actionHandlers = {
         const url = createGoogleCalendarUrl(details);
         const eventTitle = details.title || details.summary || 'Event';
         const reminderStatus = scheduleCalendarEventReminder(details);
+        const calendarBranchSnapshot = {
+            currentTask: 'calendar event',
+            currentIntent: {
+                family: 'calendar',
+                action: 'compose',
+                confidence: 0.95
+            },
+            activePanel: 'calendaragenda',
+            panelStack: ['calendaragenda'],
+            draft: {
+                title: eventTitle,
+                start: details.start,
+                end: details.end,
+                description: String(details.description || ''),
+                location: String(details.location || ''),
+                invitees: Array.isArray(details.attendees) ? details.attendees : [],
+                reminderMinutes: Number(details.reminderMinutes || 0) || 0
+            },
+            lastUtterance: String(res.text || ''),
+            note: `Calendar event: ${eventTitle}`
+        };
+        setToolBranchState(state, 'calendar', calendarBranchSnapshot);
+        recordConversationAction(state, {
+            tool: 'calendar',
+            action_type: 'event_requested',
+            target_object: eventTitle,
+            previous_state: null,
+            new_state: calendarBranchSnapshot.draft,
+            undo_strategy: 'cancel_draft',
+            undo_window: 'session',
+            user_visible_summary: `Prepared calendar event ${eventTitle}`
+        });
         await ensureGoogleCalendarConnected({ silent: true });
         const authState = getGoogleCalendarAuthState();
 
@@ -5278,6 +6175,37 @@ const actionHandlers = {
                     htmlLink: eventUrl,
                     source: 'google'
                 }]);
+                setToolBranchState(state, 'calendar', {
+                    ...calendarBranchSnapshot,
+                    currentTask: 'calendar event sent',
+                    currentIntent: {
+                        family: 'calendar',
+                        action: 'sendDirect',
+                        confidence: 1
+                    },
+                    draft: {
+                        ...calendarBranchSnapshot.draft,
+                        eventId: event?.id || eventTitle,
+                        url: eventUrl
+                    },
+                    note: `Created calendar event: ${eventTitle}`
+                });
+                recordConversationAction(state, {
+                    tool: 'calendar',
+                    action_type: 'event_created',
+                    target_object: event?.id || eventTitle,
+                    previous_state: calendarBranchSnapshot.draft,
+                    new_state: {
+                        id: event?.id || eventTitle,
+                        summary: event?.summary || eventTitle,
+                        start: details.start,
+                        end: details.end,
+                        url: eventUrl
+                    },
+                    undo_strategy: 'delete_event',
+                    undo_window: 'session',
+                    user_visible_summary: `Created calendar event ${eventTitle}`
+                });
                 await refreshOpenCalendarPanel();
                 addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url: eventUrl });
                 return {
@@ -5302,6 +6230,37 @@ const actionHandlers = {
                                 htmlLink: eventUrl,
                                 source: 'google'
                             }]);
+                            setToolBranchState(state, 'calendar', {
+                                ...calendarBranchSnapshot,
+                                currentTask: 'calendar event sent',
+                                currentIntent: {
+                                    family: 'calendar',
+                                    action: 'sendDirect',
+                                    confidence: 1
+                                },
+                                draft: {
+                                    ...calendarBranchSnapshot.draft,
+                                    eventId: event?.id || eventTitle,
+                                    url: eventUrl
+                                },
+                                note: `Created calendar event: ${eventTitle}`
+                            });
+                            recordConversationAction(state, {
+                                tool: 'calendar',
+                                action_type: 'event_created',
+                                target_object: event?.id || eventTitle,
+                                previous_state: calendarBranchSnapshot.draft,
+                                new_state: {
+                                    id: event?.id || eventTitle,
+                                    summary: event?.summary || eventTitle,
+                                    start: details.start,
+                                    end: details.end,
+                                    url: eventUrl
+                                },
+                                undo_strategy: 'delete_event',
+                                undo_window: 'session',
+                                user_visible_summary: `Created calendar event ${eventTitle}`
+                            });
                             await refreshOpenCalendarPanel();
                             addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url: eventUrl });
                             return {
@@ -5324,6 +6283,30 @@ const actionHandlers = {
         }
 
         queuePendingCalendarEvent(details);
+        setToolBranchState(state, 'calendar', {
+            ...calendarBranchSnapshot,
+            currentTask: 'calendar pending sync',
+            currentIntent: {
+                family: 'calendar',
+                action: 'compose',
+                confidence: 0.86
+            },
+            note: `Queued calendar event: ${eventTitle}`
+        });
+        recordConversationAction(state, {
+            tool: 'calendar',
+            action_type: 'event_queued',
+            target_object: eventTitle,
+            previous_state: calendarBranchSnapshot.draft,
+            new_state: {
+                title: eventTitle,
+                start: details.start,
+                end: details.end
+            },
+            undo_strategy: 'remove_queued_event',
+            undo_window: 'session',
+            user_visible_summary: `Queued calendar event ${eventTitle}`
+        });
         await refreshOpenCalendarPanel();
         addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url });
         return {
@@ -5490,7 +6473,7 @@ const actionHandlers = {
         }
         try {
             await telegramFeature.openPanel();
-            return { text: 'Telegram open.' };
+            return { text: 'Telegram is open. Your message is ready to review.' };
         } catch (error) {
             console.warn('Action handler: telegram failed:', error?.message || error);
             return { text: error?.message || 'Telegram integration error.' };
@@ -5686,6 +6669,7 @@ function inferNoteKindAndTitle(text = '') {
 function parseNoteItemsFromText(text = '') {
     const raw = sanitizeVoiceQuery(text)
         .replace(/^(?:please\s+)?(?:add|include|put|write\s+down|save|note)\s+/i, '')
+        .replace(/^(?:please\s+)?(?:add|include|put)\s+to\s+(?:the\s+)?(?:a\s+)?(?:note|list)\s+/i, '')
         .replace(/^(?:and|also)\s+/i, '')
         .replace(/^(?:you\s+can\s+)?save\s+(?:the\s+)?note$/i, '')
         .replace(/^(?:you\s+can\s+)?save\s+(?:the\s+)?list$/i, '')
@@ -5702,11 +6686,6 @@ function parseNoteItemsFromText(text = '') {
     return [...new Set(items)];
 }
 
-function isNotesDraftFinishIntent(text = '') {
-    const lower = normalizeVoiceTokens(text);
-    return /^(?:done|finished|finish|save|save it|save note|save the note|save list|save the list|you can save the note|you can save the list|that's all|thats all|that's it|thats it|that is all|end note|end list|complete|okay save note|ok save note)$/i.test(lower);
-}
-
 function buildSavedNoteContent(draft) {
     const bodyText = String(draft?.bodyText || '').trim();
     if (bodyText) return bodyText;
@@ -5721,22 +6700,13 @@ function formatPendingNotesDraftPrompt(draft) {
     if (!draft) return userName ? `What kind of note do you need, ${userName}?` : 'What kind of note do you need?';
     if (draft.stage === 'awaiting_freeform') {
         return userName
-            ? `Okay, ${userName}. I am listening. Dictate your note.`
-            : 'Okay. I am listening. Dictate your note.';
+            ? `Okay, ${userName}. I am listening. Say everything you want in the note, then say I am done with the note to save.`
+            : 'Okay. I am listening. Say everything you want in the note, then say I am done with the note to save.';
     }
     const kindLabel = draft.noteType === 'note' ? 'note' : draft.noteType;
     return userName
         ? `Okay, ${userName}. I will create a ${kindLabel} called ${draft.title}. What should I add?`
         : `Okay. I will create a ${kindLabel} called ${draft.title}. What should I add?`;
-}
-
-function parseFreeformNoteBody(text = '') {
-    return sanitizeVoiceQuery(text)
-        .replace(/^(?:yes\s+)?(?:this|here)(?:\s+is)?\s+(?:the\s+)?note[:\s,-]*/i, '')
-        .replace(/^(?:yes\s+)?(?:it'?s|it is)\s+(?:the\s+)?note[:\s,-]*/i, '')
-        .replace(/^(?:please\s+)?(?:take|save|write)\s+(?:this\s+)?note[:\s,-]*/i, '')
-        .replace(/^(?:note|memo)[:\s,-]*/i, '')
-        .trim();
 }
 
 function resolvePendingNotesFollowUp(cmd) {
@@ -5752,28 +6722,30 @@ function resolvePendingNotesFollowUp(cmd) {
     if (draft.stage === 'awaiting_kind') {
         const descriptor = inferNoteKindAndTitle(cmd);
         if (!descriptor) {
-            return { needsMore: true, message: 'What kind of note do you need, Pablo?' };
+            const userName = getDisplayUserName();
+            return {
+                needsMore: true,
+                message: userName ? `What kind of note do you need, ${userName}?` : 'What kind of note do you need?'
+            };
         }
         state.pendingNotesDraft = buildPendingNotesDraft(descriptor.noteType, descriptor.title);
         return { needsMore: true, message: formatPendingNotesDraftPrompt(state.pendingNotesDraft) };
     }
 
     if (draft.stage === 'awaiting_freeform') {
-        const bodyText = parseFreeformNoteBody(cmd);
-        if (!bodyText) {
-            return { needsMore: true, message: 'I am listening. Dictate the note when you are ready.' };
+        const freeformStep = advanceFreeformNotesDraft(draft, cmd, lower);
+        if (!freeformStep) {
+            return { needsMore: true, message: formatPendingNotesDraftPrompt(draft) };
+        }
+        if (freeformStep.type === 'needsMore') {
+            state.pendingNotesDraft = freeformStep.draft;
+            return { needsMore: true, message: freeformStep.message };
         }
         state.pendingNotesDraft = null;
-        return {
-            completed: true,
-            draft: {
-                ...draft,
-                bodyText
-            }
-        };
+        return { completed: true, draft: freeformStep.draft };
     }
 
-    if (isNotesDraftFinishIntent(cmd)) {
+    if (isNotesDraftFinishIntent(lower)) {
         if (!draft.items?.length) {
             return { needsMore: true, message: 'Tell me what should go in the note first.' };
         }
@@ -5852,6 +6824,190 @@ function openNotesPanel(message = '', prefill = '') {
         action: 'notes',
         tool_params: { notes, prefill: String(prefill || ''), draft: state.pendingNotesDraft || null },
         text: summary
+    });
+}
+
+function formatConversationTime(timestamp = '') {
+    const value = String(timestamp || '').trim();
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function summarizeConversationDraft(draft = {}) {
+    if (!draft || typeof draft !== 'object') return 'No draft';
+    const parts = [];
+    if (String(draft.to || '').trim()) parts.push(`to ${String(draft.to || '').trim()}`);
+    if (String(draft.chatId || '').trim()) parts.push(`chat ${String(draft.chatId || '').trim()}`);
+    if (String(draft.subject || '').trim()) parts.push(`subject ${String(draft.subject || '').trim()}`);
+    if (String(draft.text || '').trim()) parts.push(String(draft.text || '').trim());
+    if (!parts.length && String(draft.note || '').trim()) parts.push(String(draft.note || '').trim());
+    return parts.length ? parts.join(' · ').slice(0, 180) : 'No draft';
+}
+
+function summarizeConversationIntent(intent = {}) {
+    const family = String(intent?.family || 'none').trim() || 'none';
+    const action = String(intent?.action || 'none').trim() || 'none';
+    const confidence = Number(intent?.confidence || 0);
+    const confidenceLabel = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : '0%';
+    return `${family} · ${action} · ${confidenceLabel}`;
+}
+
+function getConversationUndoCandidate(snapshot = {}) {
+    const actions = Array.isArray(snapshot?.recentActions) ? snapshot.recentActions : [];
+    return actions.find((action) => {
+        const undoStrategy = String(action?.undo_strategy || '').trim().toLowerCase();
+        const undoWindow = String(action?.undo_window || '').trim().toLowerCase();
+        return String(action?.action_type || '').toLowerCase() !== 'undo' && undoStrategy !== 'none' && undoWindow !== 'none';
+    }) || null;
+}
+
+function buildConversationInspectorHtml(snapshot = {}) {
+    const branches = Object.entries(snapshot.branches || {})
+        .map(([toolId, branch]) => ({ toolId, ...(branch || {}) }))
+        .sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+    const sharedObjects = Array.isArray(snapshot.sharedObjects) ? snapshot.sharedObjects.slice(0, 12) : [];
+    const recentActions = Array.isArray(snapshot.recentActions) ? snapshot.recentActions.slice(0, 12) : [];
+    const undoCandidate = getConversationUndoCandidate(snapshot);
+    const activeIntent = snapshot.currentIntent || null;
+    const activeTool = String(snapshot.activeTool || 'none').trim() || 'none';
+    const previousTool = String(snapshot.previousTool || 'none').trim() || 'none';
+    const currentScreenStack = Array.isArray(snapshot.currentScreenStack) ? snapshot.currentScreenStack : [];
+    const referencedEntities = Array.isArray(snapshot.referencedEntities) ? snapshot.referencedEntities : [];
+
+    return `
+        <div class="blip-conversation-panel blip-panel-body">
+            <div class="blip-conversation-hero blip-panel-card">
+                <div class="blip-conversation-grid">
+                    <div class="blip-conversation-stat">
+                        <span class="blip-conversation-stat-label">Active tool</span>
+                        <strong>${escapeHtml(activeTool)}</strong>
+                    </div>
+                    <div class="blip-conversation-stat">
+                        <span class="blip-conversation-stat-label">Previous tool</span>
+                        <strong>${escapeHtml(previousTool)}</strong>
+                    </div>
+                    <div class="blip-conversation-stat">
+                        <span class="blip-conversation-stat-label">Branches</span>
+                        <strong>${branches.length}</strong>
+                    </div>
+                    <div class="blip-conversation-stat">
+                        <span class="blip-conversation-stat-label">Shared objects</span>
+                        <strong>${sharedObjects.length}</strong>
+                    </div>
+                    <div class="blip-conversation-stat">
+                        <span class="blip-conversation-stat-label">Recent actions</span>
+                        <strong>${recentActions.length}</strong>
+                    </div>
+                    <div class="blip-conversation-stat">
+                        <span class="blip-conversation-stat-label">Updated</span>
+                        <strong>${escapeHtml(formatConversationTime(snapshot.lastUpdatedAt) || '—')}</strong>
+                    </div>
+                </div>
+                <div class="blip-conversation-actions">
+                    <button type="button" class="action-link outline" data-conversation-refresh>🔄 Refresh</button>
+                    <button type="button" class="action-link outline" data-conversation-undo${undoCandidate ? '' : ' disabled'}>↩ Undo last</button>
+                </div>
+                <div class="blip-conversation-undo-note">
+                    ${undoCandidate
+                        ? `Last undoable: ${escapeHtml(undoCandidate.tool || 'tool')} · ${escapeHtml(undoCandidate.action_type || 'action')} · ${escapeHtml(undoCandidate.user_visible_summary || '')}`
+                        : 'No undoable action is currently available.'}
+                </div>
+            </div>
+
+            <div class="blip-conversation-section">
+                <div class="blip-conversation-section-head">Current Intent</div>
+                <div class="blip-conversation-chip-row">
+                    <span class="blip-conversation-chip">${escapeHtml(summarizeConversationIntent(activeIntent || {}))}</span>
+                    <span class="blip-conversation-chip">${escapeHtml(String(snapshot.currentScreenStack?.length || 0))} screen${(snapshot.currentScreenStack?.length || 0) === 1 ? '' : 's'}</span>
+                    <span class="blip-conversation-chip">${escapeHtml(String(referencedEntities.length))} referenced</span>
+                </div>
+            </div>
+
+            <div class="blip-conversation-section">
+                <div class="blip-conversation-section-head">Branches</div>
+                <div class="blip-conversation-branch-list">
+                    ${branches.length ? branches.map((branch) => `
+                        <div class="blip-panel-card blip-conversation-branch">
+                            <div class="blip-conversation-branch-top">
+                                <div class="blip-conversation-branch-title">${escapeHtml(branch.toolId || 'tool')}</div>
+                                <div class="blip-conversation-branch-meta">${escapeHtml(formatConversationTime(branch.updatedAt) || '—')}</div>
+                            </div>
+                            <div class="blip-conversation-branch-task">${escapeHtml(branch.currentTask || 'No task')}</div>
+                            <div class="blip-conversation-branch-detail">
+                                ${branch.activePanel ? `<span class="blip-conversation-chip">panel: ${escapeHtml(branch.activePanel)}</span>` : ''}
+                                ${branch.note ? `<span class="blip-conversation-chip">${escapeHtml(branch.note)}</span>` : ''}
+                                ${branch.currentIntent ? `<span class="blip-conversation-chip">${escapeHtml(summarizeConversationIntent(branch.currentIntent))}</span>` : ''}
+                                ${branch.draft ? `<span class="blip-conversation-chip">${escapeHtml(summarizeConversationDraft(branch.draft))}</span>` : ''}
+                            </div>
+                            ${Array.isArray(branch.referencedObjects) && branch.referencedObjects.length
+                                ? `<div class="blip-conversation-subtext">Refs: ${escapeHtml(branch.referencedObjects.slice(0, 5).join(', '))}</div>`
+                                : ''}
+                        </div>
+                    `).join('') : '<div class="blip-panel-empty">No tool branches yet.</div>'}
+                </div>
+            </div>
+
+            <div class="blip-conversation-section">
+                <div class="blip-conversation-section-head">Shared Objects</div>
+                <div class="blip-conversation-object-list">
+                    ${sharedObjects.length ? sharedObjects.map((item) => `
+                        <div class="blip-conversation-object">
+                            <div class="blip-conversation-object-title">${escapeHtml(item.label || item.id || 'Object')}</div>
+                            <div class="blip-conversation-object-meta">
+                                ${escapeHtml(item.kind || 'entity')} · ${escapeHtml(item.tool || 'tool')}
+                                ${item.source ? ` · ${escapeHtml(item.source)}` : ''}
+                            </div>
+                            ${item.summary ? `<div class="blip-conversation-subtext">${escapeHtml(item.summary)}</div>` : ''}
+                        </div>
+                    `).join('') : '<div class="blip-panel-empty">No shared objects yet.</div>'}
+                </div>
+            </div>
+
+            <div class="blip-conversation-section">
+                <div class="blip-conversation-section-head">Recent Actions</div>
+                <div class="blip-conversation-action-list">
+                    ${recentActions.length ? recentActions.map((action) => `
+                        <div class="blip-conversation-action">
+                            <div class="blip-conversation-action-top">
+                                <strong>${escapeHtml(action.tool || 'tool')}</strong>
+                                <span>${escapeHtml(formatConversationTime(action.timestamp) || '—')}</span>
+                            </div>
+                            <div class="blip-conversation-action-summary">${escapeHtml(action.user_visible_summary || action.action_type || 'Action')}</div>
+                            <div class="blip-conversation-action-meta">
+                                <span>${escapeHtml(action.action_type || 'unknown')}</span>
+                                <span>${escapeHtml(action.undo_strategy || 'none')}</span>
+                                <span>${escapeHtml(action.undo_window || 'none')}</span>
+                            </div>
+                        </div>
+                    `).join('') : '<div class="blip-panel-empty">No recent actions yet.</div>'}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function bindConversationInspectorControls(sidePanel) {
+    sidePanel.querySelector('[data-conversation-refresh]')?.addEventListener('click', () => {
+        openConversationInspectorPanel('Conversation refreshed.');
+    });
+    sidePanel.querySelector('[data-conversation-undo]')?.addEventListener('click', () => {
+        const result = undoLastConversationAction(state);
+        if (transcriptText) transcriptText.innerText = result?.message || 'Nothing to undo yet.';
+        openConversationInspectorPanel(result?.message || 'Conversation updated.');
+    });
+}
+
+function openConversationInspectorPanel(message = '') {
+    const snapshot = getConversationSnapshot(state) || {};
+    const branchCount = Object.keys(snapshot.branches || {}).length;
+    const sharedCount = Array.isArray(snapshot.sharedObjects) ? snapshot.sharedObjects.length : 0;
+    const actionCount = Array.isArray(snapshot.recentActions) ? snapshot.recentActions.length : 0;
+    renderActionInSidePanel({
+        action: 'conversation',
+        tool_params: { snapshot },
+        text: message || `Conversation open. ${branchCount} branch${branchCount === 1 ? '' : 'es'}, ${sharedCount} shared object${sharedCount === 1 ? '' : 's'}, ${actionCount} recent action${actionCount === 1 ? '' : 's'}.`
     });
 }
 
@@ -5945,6 +7101,11 @@ async function speakLearningGameLine(text, emotion = 'curious') {
     }
 }
 
+function setLearningGamesDebug(text = '') {
+    if (!learningGamesDebug) return;
+    learningGamesDebug.textContent = `Debug: ${String(text || '').trim() || 'idle'}`;
+}
+
 async function renderMathQuestion() {
     if (!mathQuestion || !mathOptions || !mathFeedback || !mathNextBtn) return;
     const q = generateMathQuestion();
@@ -5971,7 +7132,7 @@ async function renderMathQuestion() {
     setBlipEmotion('curious');
     setPersona(getReplyPersonaKey('curious'));
     if (mathIntro) mathIntro.textContent = 'Blip will ask easy number questions!';
-    await speakLearningGameLine(`Can you solve this? ${q.text}`, 'curious');
+    await speakLearningGameLine(`What number is this? ${q.text}`, 'curious');
 }
 
 async function handleMathAnswer(selected) {
@@ -5986,10 +7147,10 @@ async function handleMathAnswer(selected) {
         state.mathGame.score += 1;
         mathScore.textContent = `Score: ${state.mathGame.score}`;
         mathFeedback.textContent = "Great job! That's correct.";
-        await speakLearningGameLine('Yay! You got it!', 'happy');
+        await speakLearningGameLine('Correct. Nice work.', 'happy');
     } else {
-        mathFeedback.textContent = `Good try! The answer was ${state.mathGame.currentAnswer}.`;
-        await speakLearningGameLine(`That's okay, we can learn together. The answer was ${state.mathGame.currentAnswer}.`, 'gentle');
+        mathFeedback.textContent = `Not quite. It was ${state.mathGame.currentAnswer}. Try this one.`;
+        await speakLearningGameLine(`Not quite. It was ${state.mathGame.currentAnswer}. Try this one.`, 'gentle');
     }
 
     mathNextBtn.style.display = 'inline-block';
@@ -6001,12 +7162,14 @@ async function startMathGame() {
     state.mathGame.answered = false;
     if (mathScore) mathScore.textContent = 'Score: 0';
     if (mathIntro) mathIntro.textContent = 'Blip will ask easy number questions!';
+    setLearningGamesDebug('math start requested');
     await renderMathQuestion();
 }
 
 function renderLearningGamesPanel() {
     if (!gamesContainer) return;
     if (mathScore) mathScore.textContent = `Score: ${state.mathGame.score}`;
+    setLearningGamesDebug(state.currentMode === 'games' ? 'games panel ready' : 'games panel hidden');
     if (!state.mathGame.started) {
         if (mathQuestion) mathQuestion.textContent = 'Press Start';
         if (mathIntro) mathIntro.textContent = "Let's play with numbers!";
@@ -6029,10 +7192,13 @@ function initLearningGames() {
     }
 
     // Ear training (intervals + major/minor)
-    const earTrainingRoot = document.getElementById('blip-ear-training-game');
+const earTrainingRoot = document.getElementById('blip-ear-training-game');
     if (earTrainingRoot && !state.earTrainingMounted) {
-        state.earTrainingController = mountEarTrainingGame(earTrainingRoot);
+        state.earTrainingController = mountEarTrainingGame(earTrainingRoot, {
+            speakLine: (text, emotion = 'curious') => speakLearningGameLine(text, emotion)
+        });
         state.earTrainingMounted = true;
+        setLearningGamesDebug('ear training mounted');
     }
 
     renderLearningGamesPanel();
@@ -6402,11 +7568,20 @@ function isSidePanelActuallyVisible(expectedAction = '') {
     const sidePanel = document.getElementById('blip-side-panel');
     if (!isContainerActuallyVisible(sidePanel)) return false;
     if (!expectedAction) return true;
-    if (expectedAction === 'calendaragenda') {
+    const normalizedAction = normalizeSidePanelAction(expectedAction);
+    const registration = getSidePanelRegistration(normalizedAction);
+    if (registration?.isOpen) {
+        try {
+            return !!registration.isOpen();
+        } catch (error) {
+            console.warn(`Side panel visibility check failed for ${normalizedAction}:`, error?.message || error);
+        }
+    }
+    if (normalizedAction === 'calendaragenda') {
         return sidePanel.classList.contains('blip-calendar-mirror-panel') || sidePanel.classList.contains('blip-calendar-orb');
     }
-    const panelAction = String(sidePanel.dataset?.panelAction || state.currentSidePanelAction || '').trim();
-    return panelAction === expectedAction;
+    const panelAction = normalizeSidePanelAction(sidePanel.dataset?.panelAction || state.currentSidePanelAction || '');
+    return panelAction === normalizedAction;
 }
 
 function isYouTubePanelActuallyVisible() {
@@ -6566,6 +7741,36 @@ function rememberMediaUndo(entry = null) {
         : null;
 }
 
+function recordMediaConversationAction(action = {}) {
+    try {
+        recordConversationAction(state, {
+            tool: 'photos',
+            action_type: action.action_type || 'media_action',
+            target_object: action.target_object || '',
+            previous_state: action.previous_state || null,
+            new_state: action.new_state || null,
+            undo_strategy: action.undo_strategy || 'session',
+            undo_window: action.undo_window || 'session',
+            user_visible_summary: action.user_visible_summary || ''
+        });
+        setToolBranchState(state, 'photos', {
+            currentTask: action.currentTask || 'media',
+            currentIntent: {
+                family: 'photos',
+                action: action.intentAction || 'none',
+                confidence: Number(action.confidence || 0.8)
+            },
+            activePanel: 'photos',
+            panelStack: ['photos'],
+            draft: action.draft || null,
+            lastUtterance: String(action.lastUtterance || ''),
+            note: String(action.user_visible_summary || '').trim()
+        });
+    } catch (_) {
+        // best effort
+    }
+}
+
 function getMediaUndoLane(entry = null) {
     if (!entry) return null;
     if (entry.type === 'youtube-single' || entry.type === 'youtube-bulk') {
@@ -6631,6 +7836,46 @@ function undoLastMediaRemoval() {
                 ? `Restored ${entries.length} ${view.toLowerCase()} items.`
                 : `Restored ${view.toLowerCase()} item.`
         };
+    }
+
+    return { ok: false, message: 'Nothing to undo.', lane: null };
+}
+
+function undoLatestPhotoConversationAction() {
+    const convo = state.conversation || null;
+    if (!convo || !Array.isArray(convo.recentActions)) {
+        return { ok: false, message: 'Nothing to undo.', lane: null };
+    }
+    const index = convo.recentActions.findIndex((action) => String(action?.tool || '') === 'photos' && String(action?.undo_window || '') !== 'none');
+    if (index < 0) {
+        return { ok: false, message: 'Nothing to undo.', lane: null };
+    }
+    const action = convo.recentActions.splice(index, 1)[0];
+    if (!action) return { ok: false, message: 'Nothing to undo.', lane: null };
+
+    if (String(action.action_type || '') === 'photo_edit') {
+        const targetId = String(action.target_object || action.previous_state?.id || '');
+        const item = (state.mediaItems || []).find((entry) => String(entry?.id || '') === targetId);
+        if (item && action.previous_state) {
+            item.url = action.previous_state.url || item.url;
+            item.rotation = action.previous_state.rotation ?? item.rotation;
+            item.lastEdit = action.previous_state.lastEdit || null;
+            if (state.mediaBrightnessOverrides) delete state.mediaBrightnessOverrides[String(item.id)];
+            persistMediaGallery();
+            renderMediaGallery();
+            return { ok: true, message: 'I restored the previous photo edit.', lane: 'photos' };
+        }
+    }
+
+    if (String(action.action_type || '') === 'photo_removed') {
+        const removed = action.previous_state?.item || action.previous_state?.mediaItem || null;
+        const index = Number(action.previous_state?.index);
+        if (removed && Number.isFinite(index)) {
+            state.mediaItems.splice(Math.max(0, Math.min(state.mediaItems.length, index)), 0, removed);
+            persistMediaGallery();
+            renderMediaGallery();
+            return { ok: true, message: 'I restored the removed photo.', lane: 'photos' };
+        }
     }
 
     return { ok: false, message: 'Nothing to undo.', lane: null };
@@ -8280,7 +9525,7 @@ function applyDefaultSidePanelLayout(sidePanel, action = '') {
 
 /** Wide, centered workspace tools. Gmail & Telegram use compact corner docks, not this. */
 function isWideWorkspaceAction(action = '') {
-    return ['youtube', 'products', 'notes', 'image', 'design', 'drawing', 'chart'].includes(String(action || ''));
+    return ['youtube', 'products', 'notes', 'image', 'design', 'drawing', 'chart', 'conversation'].includes(String(action || ''));
 }
 
 function panelUsesFlexColumnLayout(action = '') {
@@ -8350,6 +9595,7 @@ function getWorkspaceDockText(action = '') {
     if (action === 'notes') return { title: 'Blip Notes', hint: 'Listen and save' };
     if (action === 'gmail') return { title: 'Blip Email', hint: 'Inbox and compose' };
     if (action === 'telegram') return { title: 'Blip Telegram', hint: 'Text and photo send' };
+    if (action === 'conversation') return { title: 'Blip Thread', hint: 'Branches, memory, undo' };
     if (action === 'image' || action === 'design' || action === 'drawing') return { title: 'Blip Vision', hint: 'Create and inspect' };
     if (action === 'chart') return { title: 'Blip Data', hint: 'View and save' };
     return { title: 'Blip', hint: 'Voice ready' };
@@ -8443,20 +9689,29 @@ function openCreationsPanel(summary = '') {
 }
 
 function closeSidePanel() {
-    if (state.currentSidePanelAction === 'youtube') {
-        closeYouTubePanel();
-        return 'youtube';
-    }
-    if (closeCalendarPanel()) {
-        return 'calendar';
-    }
     const sidePanel = document.getElementById('blip-side-panel');
-    if (!sidePanel || sidePanel.style.display === 'none') return null;
+    const action = normalizeSidePanelAction(state.currentSidePanelAction || sidePanel?.dataset?.panelAction || '');
+    const registration = getSidePanelRegistration(action);
+    if (registration?.closePanel) {
+        try {
+            registration.closePanel();
+        } catch (error) {
+            console.warn(`Side panel close failed for ${action || 'panel'}:`, error?.message || error);
+        }
+    }
+    if (sidePanelChart) {
+        sidePanelChart.destroy();
+        sidePanelChart = null;
+    }
+    if (!sidePanel || sidePanel.style.display === 'none') {
+        clearSidePanelContext();
+        return action || null;
+    }
     sidePanel.innerHTML = '';
     sidePanel.style.display = 'none';
     applyDefaultSidePanelLayout(sidePanel);
     clearSidePanelContext();
-    return 'panel';
+    return action || 'panel';
 }
 
 function canOpenCurrentCreationFromPanel() {
@@ -8700,11 +9955,10 @@ function closeCurrentPanel() {
         setMode('core');
         return 'panel';
     }
-    if (closeCalendarPanel()) {
-        return 'calendar';
-    }
-    if (isSidePanelVisible()) {
-        return closeSidePanel() || 'panel';
+    if (state.currentSidePanelAction || isSidePanelVisible()) {
+        const closed = closeSidePanel();
+        if (closed === 'calendaragenda') return 'calendar';
+        return closed || 'panel';
     }
     return null;
 }
@@ -8717,9 +9971,7 @@ function closeEverythingPanels() {
     closeCalendarPanel();
     state.pendingNotesDraft = null;
     state.pendingProfileDraft = null;
-    if (state.currentSidePanelAction === 'youtube' || blipYtPlayer) {
-        closeYouTubePanel();
-    } else if (isSidePanelVisible()) {
+    if (isSidePanelVisible() || state.currentSidePanelAction || blipYtPlayer) {
         closeSidePanel();
     }
     if (state.currentMode === 'settings' || isSettingsPanelOpen()) closeSettingsPanel();
@@ -9061,6 +10313,16 @@ function cancelScheduledTimerById(timerId) {
     try { clearTimeout(timerId); } catch (_) { }
     persistTimers();
     renderCountdownDisplay();
+    recordConversationAction(state, {
+        tool: 'timer',
+        action_type: 'timer_cancelled',
+        target_object: String(removed?.id || timerId || ''),
+        previous_state: { id: removed?.id || timerId, text: removed?.text || '', time: removed?.time || null },
+        new_state: null,
+        undo_strategy: 'restore_timer',
+        undo_window: 'session',
+        user_visible_summary: `Cancelled timer ${removed?.text || ''}`.trim()
+    });
     return removed || null;
 }
 
@@ -9089,6 +10351,15 @@ function clearAllScheduledTimers() {
     state.timers = [];
     persistTimers();
     renderCountdownDisplay();
+    recordConversationAction(state, {
+        tool: 'timer',
+        action_type: 'timers_cleared',
+        previous_state: { timers: timers.map((timer) => ({ ...timer })) },
+        new_state: { remaining: 0 },
+        undo_strategy: 'restore_timers',
+        undo_window: 'session',
+        user_visible_summary: 'Cleared all timers'
+    });
     return timers.length;
 }
 
@@ -9156,6 +10427,37 @@ function openLastVideoPanel() {
     const watchUrl = last.lastYoutubeUrl || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '');
     const embedUrl = last.lastYoutubeEmbedUrl || (videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : null);
     if (!watchUrl && !videoId) return false;
+    setToolBranchState(state, 'youtube', {
+        currentTask: 'open video',
+        currentIntent: {
+            family: 'youtube',
+            action: 'openVideo',
+            confidence: 0.92
+        },
+        activePanel: 'youtube',
+        panelStack: ['youtube'],
+        draft: {
+            url: watchUrl,
+            embedUrl,
+            videoId: videoId || '',
+            query: last.lastYoutubeQuery || 'video'
+        },
+        lastUtterance: 'open video',
+        note: 'Reopening last video.'
+    });
+    recordConversationAction(state, {
+        tool: 'youtube',
+        action_type: 'video_opened',
+        target_object: watchUrl || videoId || '',
+        previous_state: null,
+        new_state: {
+            url: watchUrl,
+            videoId: videoId || ''
+        },
+        undo_strategy: 'close_panel',
+        undo_window: 'session',
+        user_visible_summary: 'Opened the last video'
+    });
     renderActionInSidePanel({
         action: 'youtube',
         tool_params: {
@@ -9233,6 +10535,22 @@ function saveCurrentYouTubeToPlaylist(playlistName = DEFAULT_VIDEO_PLAYLIST) {
         return sameId || sameUrl;
     });
     if (duplicate) {
+        setToolBranchState(state, 'youtube', {
+            currentTask: 'save video',
+            currentIntent: {
+                family: 'youtube',
+                action: 'saveVideo',
+                confidence: 0.92
+            },
+            activePanel: 'youtube',
+            panelStack: ['youtube'],
+            draft: {
+                playlistName: normalizedName,
+                videoId: duplicate.videoId || payload.videoId || '',
+                url: duplicate.url || payload.url || ''
+            },
+            note: `${payload.title} already in ${normalizedName}.`
+        });
         return { ok: true, playlistName: normalizedName, duplicate: true, item: duplicate };
     }
 
@@ -9242,6 +10560,36 @@ function saveCurrentYouTubeToPlaylist(playlistName = DEFAULT_VIDEO_PLAYLIST) {
         [normalizedName]: nextList
     };
     persistVideoPlaylists();
+    setToolBranchState(state, 'youtube', {
+        currentTask: 'save video',
+        currentIntent: {
+            family: 'youtube',
+            action: 'saveVideo',
+            confidence: 0.95
+        },
+        activePanel: 'youtube',
+        panelStack: ['youtube'],
+        draft: {
+            playlistName: normalizedName,
+            videoId: payload.videoId || '',
+            url: payload.url || ''
+        },
+        lastUtterance: `save video to ${normalizedName}`,
+        note: `Saved video to ${normalizedName}`
+    });
+    recordConversationAction(state, {
+        tool: 'youtube',
+        action_type: 'video_saved',
+        target_object: payload.videoId || payload.url || payload.title || '',
+        previous_state: null,
+        new_state: {
+            playlistName: normalizedName,
+            title: payload.title
+        },
+        undo_strategy: 'remove_saved_video',
+        undo_window: 'session',
+        user_visible_summary: `Saved video to ${normalizedName}`
+    });
     addToHub('link', `🎬 ${normalizedName}: ${payload.title}`, {
         url: payload.url,
         playlistName: normalizedName,
@@ -9268,22 +10616,26 @@ function addToHub(type, content, data = {}) {
     };
     state.hubItems.unshift(item); // Newest at top
     if (state.hubItems.length > 50) state.hubItems.pop();
-    localStorage.setItem('blip_hub', JSON.stringify(state.hubItems));
     renderHub();
+    void addStudentDeskItem(item).catch((error) => {
+        console.warn('Student Desk sync failed:', error?.message || error);
+    });
+    return item;
 }
 
 function persistHub() {
-    try {
-        localStorage.setItem('blip_hub', JSON.stringify(state.hubItems || []));
-    } catch (e) {
-        console.warn('Hub save failed:', e.message);
-    }
+    void syncStudentDeskItems(state.hubItems || []).catch((error) => {
+        console.warn('Student Desk save failed:', error?.message || error);
+    });
 }
 
 function removeHubItem(itemId) {
     const before = Array.isArray(state.hubItems) ? state.hubItems.length : 0;
     state.hubItems = (state.hubItems || []).filter((item) => String(item?.id) !== String(itemId));
     renderHub();
+    void removeStudentDeskItem(itemId).catch((error) => {
+        console.warn('Student Desk remove failed:', error?.message || error);
+    });
     persistHub();
     return before !== state.hubItems.length;
 }
@@ -9312,8 +10664,38 @@ function clearHub() {
     const removedCount = Array.isArray(state.hubItems) ? state.hubItems.length : 0;
     state.hubItems = [];
     renderHub();
+    void clearStudentDeskItems().catch((error) => {
+        console.warn('Student Desk clear failed:', error?.message || error);
+    });
     persistHub();
     return removedCount;
+}
+
+async function initStudentDeskStore() {
+    const legacyItems = readStudentDeskFallbackItems();
+    try {
+        const backendItems = normalizeStudentDeskItems(await loadStudentDeskBackendItems());
+        if (backendItems.length > 0) {
+            state.hubItems = backendItems;
+            renderHub();
+            return;
+        }
+
+        if (legacyItems.length > 0) {
+            state.hubItems = legacyItems;
+            renderHub();
+            await syncStudentDeskItems(legacyItems);
+            return;
+        }
+
+        state.hubItems = [];
+        renderHub();
+        await syncStudentDeskItems([]);
+    } catch (error) {
+        console.warn('Student Desk backend unavailable, using local cache:', error?.message || error);
+        state.hubItems = legacyItems;
+        renderHub();
+    }
 }
 
 function persistCart() {
@@ -9462,7 +10844,7 @@ function postManualHub() {
 
     addToHub(type, text, data);
     hubInput.value = '';
-    console.log('✅ Manual item added to Hub');
+    console.log('✅ Manual item added to Student Desk');
 }
 
 function saveCurrentVisionToHub() {
@@ -9485,7 +10867,7 @@ function saveCurrentVisionToHub() {
 
 function renderHub() {
     if (state.hubItems.length === 0) {
-        hubMessages.innerHTML = '<div class="hub-empty">Hub is empty. Save photos or notes here!</div>';
+        hubMessages.innerHTML = '<div class="hub-empty">Student Desk is empty. Save homework photos, notes, and links here!</div>';
         return;
     }
 
@@ -9495,7 +10877,7 @@ function renderHub() {
             const label = item.content.length > 40 ? '🔗 Open Link' : item.content;
             body = `<a href="${item.data.url}" target="_blank">${label}</a>`;
         } else if (item.type === 'image') {
-            body = `<img src="${item.data.url}" alt="Hub Image" onclick="window.open('${item.data.url}')">`;
+            body = `<img src="${item.data.url}" alt="Student Desk image" onclick="window.open('${item.data.url}')">`;
         } else {
             body = item.content;
         }
@@ -9687,6 +11069,23 @@ async function handleCommand(text) {
         }
         resumeAfterSpeech();
     };
+
+    const bareCloseIntent = /^(?:close|close\s+it|close\s+this|close\s+that|close\s+them|hide|hide\s+it|hide\s+this|hide\s+that|dismiss|dismiss\s+it|dismiss\s+this|dismiss\s+that|exit|exit\s+it|exit\s+this|exit\s+that)(?:\s+please)?$/.test(normalizedText.trim());
+    if (bareCloseIntent) {
+        const anythingOpenNow = !!(
+            mediaLightbox?.classList.contains('active') ||
+            state.isMediaStripOpen ||
+            state.pendingImage ||
+            isSidePanelVisible() ||
+            isSettingsPanelOpen() ||
+            state.currentMode !== 'core'
+        );
+        if (anythingOpenNow) {
+            closeEverythingPanels();
+            await quickReply('Everything closed.', 'happy');
+            return;
+        }
+    }
 
     const passiveReply = async (message = '', emotion = 'happy', extraHtml = '', resumeListening = true) => {
         transcriptText.innerHTML = `<b>You:</b> ${cmd}${message ? `<br><b>Blip:</b> ${message}` : ''}${extraHtml}`;
@@ -10072,6 +11471,24 @@ async function handleCommand(text) {
         return;
     }
 
+    const conversationCmd = getSystemVoiceCommand(cmd);
+    if (conversationCmd === 'conversation') {
+        face.classList.remove('thinking');
+        openConversationInspectorPanel('Conversation inspector open.');
+        await quickReply('Conversation inspector open.', 'happy');
+        return;
+    }
+    if (conversationCmd === 'closeConversation') {
+        face.classList.remove('thinking');
+        if (state.currentSidePanelAction === 'conversation' && isSidePanelVisible()) {
+            closeSidePanel();
+            await quickReply('Conversation inspector closed.', 'happy');
+        } else {
+            await quickReply('Conversation inspector is not open.', 'happy');
+        }
+        return;
+    }
+
     const chatCmd = getChatVoiceCommand(cmd);
     if (chatCmd) {
         face.classList.remove('thinking');
@@ -10090,8 +11507,54 @@ async function handleCommand(text) {
         return;
     }
 
-    const naturalMessageFlow = parseNaturalMessageFlow(cmd, getVoiceRoutingContext(state));
-    if (naturalMessageFlow?.channel === 'gmail' && !getGmailVoiceCommand(cmd)) {
+    if (isGlobalUndoVoiceCommand(cmd)) {
+        face.classList.remove('thinking');
+        const undoResult = undoLastConversationAction(state);
+        await quickReply(undoResult?.message || 'Nothing to undo yet.', undoResult?.ok ? 'happy' : 'thinking');
+        return;
+    }
+
+    const voiceRoute = await resolveVoiceRoutingSnapshot(cmd, state);
+    const voiceConversationTool = voiceRoute.family && voiceRoute.family !== 'none' && voiceRoute.family !== 'message'
+        ? voiceRoute.family
+        : (voiceRoute.needsClarification ? 'general' : '');
+    if (voiceConversationTool) {
+        const branchSnapshot = {
+            currentTask: voiceRoute.action || 'voice command',
+            currentIntent: {
+                family: voiceRoute.family || 'none',
+                action: voiceRoute.action || 'none',
+                confidence: Number(voiceRoute.confidence || 0)
+            },
+            activePanel: String(state.currentSidePanelAction || ''),
+            lastUtterance: String(cmd || ''),
+            draft: voiceRoute.gmailCmd?.draft || voiceRoute.telegramCmd?.draft || null,
+            note: voiceRoute.clarificationPrompt || ''
+        };
+        setToolBranchState(state, voiceConversationTool, branchSnapshot);
+        recordConversationAction(state, {
+            tool: voiceConversationTool,
+            action_type: voiceRoute.needsClarification ? 'voice_clarify' : 'voice_route',
+            target_object: voiceRoute.family || '',
+            previous_state: {
+                activeTool: state.conversation?.previousTool || '',
+                activePanel: state.currentSidePanelAction || ''
+            },
+            new_state: branchSnapshot,
+            undo_strategy: 'none',
+            undo_window: 'session',
+            user_visible_summary: voiceRoute.needsClarification
+                ? `Asked for clarification on ${voiceRoute.family || 'message'}`
+                : `Routed voice command to ${voiceConversationTool}`
+        });
+    }
+    if (voiceRoute.needsClarification) {
+        face.classList.remove('thinking');
+        await quickReply(voiceRoute.clarificationPrompt || 'Can you say that a different way?', 'happy');
+        return;
+    }
+    const naturalMessageFlow = voiceRoute.naturalMessageFlow;
+    if (naturalMessageFlow?.channel === 'gmail' && !voiceRoute.gmailCmd) {
         face.classList.remove('thinking');
         try {
             await emailFeature.handleVoiceCommand({
@@ -10110,7 +11573,7 @@ async function handleCommand(text) {
         }
     }
 
-    if (naturalMessageFlow?.channel === 'telegram' && !getTelegramVoiceCommand(cmd)) {
+    if (naturalMessageFlow?.channel === 'telegram' && !voiceRoute.telegramCmd) {
         face.classList.remove('thinking');
         try {
             await telegramFeature.handleVoiceCommand({
@@ -10128,61 +11591,7 @@ async function handleCommand(text) {
         }
     }
 
-    const gmailCmd = getGmailVoiceCommand(cmd);
-    const isFreshGmailComposeIntent = !!(
-        gmailCmd
-        && (
-            gmailCmd.action === 'compose'
-            || gmailCmd.action === 'sendDirect'
-            || gmailCmd.action === 'shareCurrent'
-            || gmailCmd.action === 'openDraft'
-            || gmailCmd.action === 'openInbox'
-            || gmailCmd.action === 'refreshInbox'
-            || gmailCmd.action === 'readIndex'
-            || gmailCmd.action === 'listContacts'
-            || gmailCmd.action === 'saveContact'
-            || gmailCmd.action === 'clearContacts'
-            || gmailCmd.action === 'setSubject'
-            || gmailCmd.action === 'connect'
-            || gmailCmd.action === 'disconnect'
-            || gmailCmd.action === 'close'
-        )
-    );
-
-    // Email draft follow-ups must run even if pendingEmailReview was cleared (e.g. after "yes"),
-    // as long as the Gmail panel is open with something in the compose fields — otherwise the LLM
-    // may "role-play" sending mail without calling the Gmail API.
-    // But if the user gives a fresh Gmail intent like "send email to my daughter", let that
-    // override the old draft instead of treating it like an update to the previous draft.
-    // Run before Telegram voice so phrases like "send it to name@example.com" update the draft
-    // instead of matching Telegram photo-share heuristics.
-    const hasVoiceEmailDraft = (() => {
-        const d = state.gmailComposeDraft || {};
-        return !!(String(d.to || '').trim() || String(d.subject || '').trim() || String(d.text || '').trim());
-    })();
-    const hasRecentGmailSend = !!(
-        state.currentSidePanelAction === 'gmail'
-        && state.lastGmailSendResult
-    );
-    const shouldHandleEmailDraftVoice = !isFreshGmailComposeIntent && (
-        state.pendingEmailReview
-        || (state.currentSidePanelAction === 'gmail' && hasVoiceEmailDraft)
-        || hasRecentGmailSend
-    );
-
-    if (shouldHandleEmailDraftVoice) {
-        face.classList.remove('thinking');
-        try {
-            const handled = await emailFeature.handlePendingVoiceFollowUp(cmd);
-            if (handled) return;
-        } catch (error) {
-            console.warn('Email draft follow-up failed:', error?.message || error);
-            await quickReply(error?.message || 'Could not update that email draft right now.', 'sad');
-            return;
-        }
-    }
-
-    const telegramCmd = getTelegramVoiceCommand(cmd);
+    const telegramCmd = voiceRoute.telegramCmd;
     if (telegramCmd) {
         face.classList.remove('thinking');
         try {
@@ -10196,6 +11605,62 @@ async function handleCommand(text) {
         }
     }
 
+    // Email draft follow-ups must run even if pendingEmailReview was cleared (e.g. after "yes"),
+    // as long as the Gmail panel is open with something in the compose fields — otherwise the LLM
+    // may "role-play" sending mail without calling the Gmail API.
+    // But if the user gives a fresh Gmail intent like "send email to my daughter", let that
+    // override the old draft instead of treating it like an update to the previous draft.
+    // Explicit Telegram commands run above so Gmail draft follow-up does not treat
+    // "send it to telegram" as an email recipient while the compose panel is open.
+    if (voiceRoute.shouldHandleEmailDraftVoice) {
+        face.classList.remove('thinking');
+        try {
+            const handled = await emailFeature.handlePendingVoiceFollowUp(cmd);
+            if (handled) return;
+        } catch (error) {
+            console.warn('Email draft follow-up failed:', error?.message || error);
+            await quickReply(error?.message || 'Could not update that email draft right now.', 'sad');
+            return;
+        }
+    }
+
+    const careCamHelpHandled = await handleCareCamHelpVoice(cmd);
+    if (careCamHelpHandled) {
+        return;
+    }
+
+    const careCamIntent = voiceRoute.careCamIntent;
+    if (careCamIntent?.kind === 'carecam' && careCamIntent.action === 'start_carecam') {
+        face.classList.remove('thinking');
+        try {
+            await startCareCamDemo();
+            await quickReply('Care Cam is on.', 'happy');
+            return;
+        } catch (error) {
+            console.warn('Start Care Cam failed:', error?.message || error);
+            await quickReply(error?.message || 'Could not start Care Cam right now.', 'sad');
+            return;
+        }
+    }
+    if (careCamIntent?.kind === 'carecam' && careCamIntent.action === 'stop_carecam') {
+        face.classList.remove('thinking');
+        try {
+            await stopCareCamDemo();
+            await quickReply('Care Cam is off.', 'happy');
+            return;
+        } catch (error) {
+            console.warn('Stop Care Cam failed:', error?.message || error);
+            await quickReply(error?.message || 'Could not stop Care Cam right now.', 'sad');
+            return;
+        }
+    }
+
+    const careCamFallWatchHandled = await handleCareCamFallWatchVoice(cmd);
+    if (careCamFallWatchHandled) {
+        return;
+    }
+
+    const gmailCmd = voiceRoute.gmailCmd;
     if (gmailCmd) {
         face.classList.remove('thinking');
         try {
@@ -10209,7 +11674,7 @@ async function handleCommand(text) {
         }
     }
 
-    const hasVoiceTelegramDraft = !!String(state.telegramDraft?.text || '').trim();
+    const hasVoiceTelegramDraft = Boolean(voiceRoute.messagingDrafts?.telegram?.hasDraft);
     const shouldHandleTelegramDraftVoice = !telegramCmd && (
         state.pendingTelegramReview
         || (state.currentSidePanelAction === 'telegram' && hasVoiceTelegramDraft)
@@ -10239,6 +11704,7 @@ async function handleCommand(text) {
             await quickReply('Learning Games closed.', 'happy');
             return;
         }
+
         state.isThinking = true;
         document.body.classList.remove('thinking-mode');
         face.classList.remove('thinking');
@@ -10247,7 +11713,38 @@ async function handleCommand(text) {
         try {
             setMode('games');
             renderLearningGamesPanel();
-            if (learningGamesCmd.action === 'startMath') {
+
+            const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+            const startEarTrainingFromVoice = async (mode) => {
+                await nextFrame();
+                const controller = state.earTrainingController;
+                if (mode === 'interval') {
+                    setLearningGamesDebug(`voice start interval, controller=${controller ? 'yes' : 'no'}`);
+                    if (controller?.startInterval) return controller.startInterval();
+                    document.getElementById('ear-training-btn-intervals')?.click();
+                    setLearningGamesDebug('interval button clicked via voice fallback');
+                    return null;
+                }
+                if (mode === 'harmony') {
+                    setLearningGamesDebug(`voice start harmony, controller=${controller ? 'yes' : 'no'}`);
+                    if (controller?.startHarmony) return controller.startHarmony();
+                    document.getElementById('ear-training-btn-harmony')?.click();
+                    setLearningGamesDebug('harmony button clicked via voice fallback');
+                    return null;
+                }
+                return null;
+            };
+
+            if (learningGamesCmd.action === 'open' && learningGamesCmd.mode === 'interval') {
+                setLearningGamesDebug('voice requested interval');
+                await quickReply('Intervals game open. What interval is this?', 'happy', '', false);
+                await startEarTrainingFromVoice('interval');
+            } else if (learningGamesCmd.action === 'open' && learningGamesCmd.mode === 'harmony') {
+                setLearningGamesDebug('voice requested harmony');
+                await quickReply('Harmony game open. What harmony is this?', 'happy', '', false);
+                await startEarTrainingFromVoice('harmony');
+            } else if (learningGamesCmd.action === 'startMath') {
+                setLearningGamesDebug('voice requested math');
                 await startMathGame();
             } else if (learningGamesCmd.action === 'answerMath') {
                 if (!state.mathGame.started) {
@@ -10256,9 +11753,10 @@ async function handleCommand(text) {
                     await handleMathAnswer(Number(learningGamesCmd.value));
                 }
             } else if (learningGamesCmd.action === 'nextMath') {
+                setLearningGamesDebug('voice requested next math');
                 await renderMathQuestion();
             } else {
-                await quickReply('Learning Games open. Say "start math game" when you want to play.', 'happy', '', false);
+                await quickReply('Learning Games open. I can do interval game, harmony game, or start math game.', 'happy', '', false);
             }
         } finally {
             state.isThinking = false;
@@ -10463,46 +11961,46 @@ async function handleCommand(text) {
             if (hubCmd.action === 'open') {
                 setMode('hub');
                 renderHub();
-                msg = state.hubItems.length ? `Hub open. ${state.hubItems.length} item${state.hubItems.length === 1 ? '' : 's'}.` : 'Hub open. Empty.';
+                msg = state.hubItems.length ? `Student Desk open. ${state.hubItems.length} item${state.hubItems.length === 1 ? '' : 's'}.` : 'Student Desk open. Empty.';
             } else if (hubCmd.action === 'close') {
                 if (state.currentMode === 'hub') setMode('core');
-                msg = 'Hub closed.';
+                msg = 'Student Desk closed.';
             } else if (hubCmd.action === 'review') {
                 setMode('hub');
                 renderHub();
                 if (!state.hubItems.length) {
-                    msg = 'Hub is empty.';
+                    msg = 'Student Desk is empty.';
                 } else {
                     const latest = state.hubItems[0];
                     const latestLabel = String(latest?.content || latest?.type || 'item').slice(0, 60);
-                    msg = `Hub has ${state.hubItems.length} items. Latest: ${latestLabel}.`;
+                    msg = `Student Desk has ${state.hubItems.length} items. Latest: ${latestLabel}.`;
                 }
             } else if (hubCmd.action === 'saveCurrent') {
                 if (state.pendingImage || state.currentImage) {
                     saveCurrentVisionToHub();
-                    msg = 'Saved to Hub.';
+                    msg = 'Saved to Student Desk.';
                 } else if (state.lastContext?.lastYoutubeUrl) {
                     addToHub('link', `🎬 Video: ${state.lastContext.lastYoutubeQuery || 'YouTube video'}`, { url: state.lastContext.lastYoutubeUrl });
-                    msg = 'Video saved to Hub.';
+                    msg = 'Video saved to Student Desk.';
                 } else if (state.lastContext?.lastLocation) {
                     const mapUrl = `https://www.google.com/maps/search/${encodeURIComponent(state.lastContext.lastLocation)}`;
                     addToHub('link', `🌍 Map: ${state.lastContext.lastLocation}`, { url: mapUrl });
-                    msg = 'Map saved to Hub.';
+                    msg = 'Map saved to Student Desk.';
                 } else {
-                    msg = 'Nothing ready to save to Hub.';
+                    msg = 'Nothing ready to save to Student Desk.';
                 }
             } else if (hubCmd.action === 'saveNote') {
-                addToHub('note', hubCmd.note, { source: 'hub' });
-                msg = 'Note saved to Hub.';
+                addToHub('note', hubCmd.note, { source: 'student' });
+                msg = 'Note saved to Student Desk.';
             } else if (hubCmd.action === 'removeLatest') {
                 const removed = removeLatestHubItem();
-                msg = removed ? 'Removed latest Hub item.' : 'Hub is already empty.';
+                msg = removed ? 'Removed latest Student Desk item.' : 'Student Desk is already empty.';
             } else if (hubCmd.action === 'removeMatch') {
                 const removed = removeMatchingHubItem(hubCmd.query);
-                msg = removed ? 'Removed matching Hub item.' : 'No matching Hub item found.';
+                msg = removed ? 'Removed matching Student Desk item.' : 'No matching Student Desk item found.';
             } else if (hubCmd.action === 'clear') {
                 const removedCount = clearHub();
-                msg = removedCount ? `Hub cleared. Removed ${removedCount} item${removedCount === 1 ? '' : 's'}.` : 'Hub is already empty.';
+                msg = removedCount ? `Student Desk cleared. Removed ${removedCount} item${removedCount === 1 ? '' : 's'}.` : 'Student Desk is already empty.';
             }
             if (msg) {
                 await quickReply(msg, 'happy');
@@ -10551,8 +12049,8 @@ async function handleCommand(text) {
                 openNotesPanel();
                 const count = getNoteItems().length;
                 msg = count
-                    ? `Notes open. ${count} note${count === 1 ? '' : 's'}. Dictate your note when ready.`
-                    : 'Notes open. Dictate your note.';
+                    ? `Notes open. ${count} note${count === 1 ? '' : 's'}. Dictate your note; say I am done with the note when you want to save.`
+                    : 'Notes open. Dictate your note; say I am done with the note when you want to save.';
             } else if (notesCmd.action === 'close') {
                 state.pendingNotesDraft = null;
                 const didClose = state.currentSidePanelAction === 'notes' ? !!closeSidePanel() : false;
@@ -10684,6 +12182,30 @@ async function handleCommand(text) {
                     ? (returnedToPhotos ? 'Photo saved. Back to media.' : 'Photo saved.')
                     : getMediaPersistFailureMessage('No photo to save.');
             }
+        if (msg) {
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+            state.history.push({ user: cmd, blip: msg });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                setBlipEmotion('happy');
+                setPersona('happy');
+                talkBtn.innerText = '🔊 SPEAKING...';
+                await speakWithGuard(msg, 'happy');
+                return;
+            }
+        }
+
+        const cameraDesignCmd = getCameraDesignTransferCommand(cmd);
+        if (cameraDesignCmd) {
+            face.classList.remove('thinking');
+            const result = await captureCameraPhotoToDesign(
+                cameraDesignCmd.title || 'Camera Photo',
+                {
+                    analyze: cameraDesignCmd.action === 'analyzeHomework',
+                    prompt: cmd
+                }
+            );
+            const msg = result.ok ? result.message : (result.message || 'I could not move that photo to Design.');
             if (msg) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
@@ -10863,30 +12385,43 @@ async function handleCommand(text) {
             }
         }
 
-        // Recovery shortcut: if user says they can't see it / where it opened, force media UI open.
-        if (wantsToSeeMediaAgain(cmd) && state.mediaItems.length > 0) {
-            face.classList.remove('thinking');
-            const lane = state.activeMediaBucket === MEDIA_BUCKET_CREATED ? 'created' : 'shots';
-            toggleMediaGallery(true, lane);
-            const lowerCmd = cmd.toLowerCase();
-            if (/\b(open|expand|zoom)\s+(it|this)\b/.test(lowerCmd)) {
-                openLatestMediaByBucket(lane === 'created' ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS);
+        // Recovery shortcut: only reopen gallery when the user was already in a media context.
+        if (wantsToSeeMediaAgain(cmd)) {
+            const inMediaContext = !!(
+                state.isMediaStripOpen ||
+                mediaLightbox?.classList.contains?.('active') ||
+                state.currentSidePanelAction === 'youtube' ||
+                state.currentSidePanelAction === 'creations' ||
+                state.activeMediaBucket === MEDIA_BUCKET_CREATED ||
+                state.activeMediaBucket === MEDIA_BUCKET_SHOTS
+            );
+            if (inMediaContext && state.mediaItems.length > 0) {
+                face.classList.remove('thinking');
+                const lane = state.activeMediaBucket === MEDIA_BUCKET_CREATED ? 'created' : 'shots';
+                toggleMediaGallery(true, lane);
+                const lowerCmd = cmd.toLowerCase();
+                if (/\b(open|expand|zoom)\s+(it|this)\b/.test(lowerCmd)) {
+                    openLatestMediaByBucket(lane === 'created' ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS);
+                }
+                const wantsLightbox = /\b(open|expand|zoom)\s+(it|this)\b/.test(lowerCmd);
+                const msg = getVerifiedOpenMessage({
+                    cmd,
+                    target: wantsLightbox ? 'media-lightbox' : 'media-strip',
+                    visible: wantsLightbox ? isMediaLightboxActuallyVisible() : isMediaStripActuallyVisible(),
+                    successMessage: 'Gallery open.'
+                });
+                transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+                state.history.push({ user: cmd, blip: msg });
+                if (state.history.length > HISTORY_MAX) state.history.shift();
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                setBlipEmotion('happy');
+                setPersona('happy');
+                talkBtn.innerText = '🔊 SPEAKING...';
+                await speakWithGuard(msg, 'happy');
+                return;
             }
-            const wantsLightbox = /\b(open|expand|zoom)\s+(it|this)\b/.test(lowerCmd);
-            const msg = getVerifiedOpenMessage({
-                cmd,
-                target: wantsLightbox ? 'media-lightbox' : 'media-strip',
-                visible: wantsLightbox ? isMediaLightboxActuallyVisible() : isMediaStripActuallyVisible(),
-                successMessage: 'Gallery open.'
-            });
-            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
-            state.history.push({ user: cmd, blip: msg });
-            if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-            setBlipEmotion('happy');
-            setPersona('happy');
-            talkBtn.innerText = '🔊 SPEAKING...';
-            await speakWithGuard(msg, 'happy');
+
+            await quickReply('I am not sure what to show. Try interval game, harmony game, math game, or tell me what you want open.', 'curious');
             return;
         }
 
@@ -13487,12 +15022,84 @@ function syncMiniBlipEmotion() {
         mini.classList.remove(...Array.from(mini.classList).filter(c => c.startsWith('emotion-')));
         mini.classList.add(emotionClass);
     }
+
+    const miniContainer = mini.closest('#face-container') || mini.parentElement;
+    if (miniContainer && faceContainer) {
+        const motionClass = Array.from(faceContainer.classList).find(c => c.startsWith('face-anim-'));
+        miniContainer.classList.remove(...Array.from(miniContainer.classList).filter(c => c.startsWith('face-anim-')));
+        if (motionClass) {
+            miniContainer.classList.add(motionClass);
+        }
+    }
+
+    styleMiniBlipFace(mini, state.videoCompanionSize);
+}
+
+function getBlipMiniEyeShadow(emotion = 'idle', sizeMode = 'mini') {
+    const isBig = sizeMode === 'big';
+    const base = isBig
+        ? '0 0 14px rgba(147, 197, 253, 0.48), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+        : '0 0 11px rgba(147, 197, 253, 0.42), inset 0 -3px 6px rgba(172, 208, 255, 0.12)';
+    const shadows = {
+        idle: base,
+        happy: isBig
+            ? '0 0 18px rgba(147, 197, 253, 0.76), 0 0 32px rgba(96, 165, 250, 0.32), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 15px rgba(147, 197, 253, 0.70), 0 0 26px rgba(96, 165, 250, 0.26), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        sad: isBig
+            ? '0 0 8px rgba(147, 197, 253, 0.24), 0 0 15px rgba(96, 165, 250, 0.08), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 7px rgba(147, 197, 253, 0.20), 0 0 12px rgba(96, 165, 250, 0.06), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        angry: isBig
+            ? '0 0 16px rgba(191, 219, 254, 0.68), 0 0 26px rgba(59, 130, 246, 0.26), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 13px rgba(191, 219, 254, 0.62), 0 0 22px rgba(59, 130, 246, 0.22), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        curious: isBig
+            ? '0 0 18px rgba(191, 219, 254, 0.74), 0 0 34px rgba(103, 232, 249, 0.22), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 15px rgba(191, 219, 254, 0.68), 0 0 28px rgba(103, 232, 249, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        surprised: isBig
+            ? '0 0 22px rgba(255, 255, 255, 0.82), 0 0 42px rgba(147, 197, 253, 0.34), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 18px rgba(255, 255, 255, 0.76), 0 0 34px rgba(147, 197, 253, 0.28), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        thinking: isBig
+            ? '0 0 13px rgba(147, 197, 253, 0.48), 0 0 24px rgba(59, 130, 246, 0.12), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 11px rgba(147, 197, 253, 0.40), 0 0 18px rgba(59, 130, 246, 0.10), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        sleepy: isBig
+            ? '0 0 6px rgba(147, 197, 253, 0.16), 0 0 10px rgba(96, 165, 250, 0.06), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 5px rgba(147, 197, 253, 0.12), 0 0 8px rgba(96, 165, 250, 0.04), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        excited: isBig
+            ? '0 0 22px rgba(191, 219, 254, 0.80), 0 0 40px rgba(147, 197, 253, 0.36), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 18px rgba(191, 219, 254, 0.72), 0 0 32px rgba(147, 197, 253, 0.30), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        serious: isBig
+            ? '0 0 11px rgba(147, 197, 253, 0.42), 0 0 20px rgba(96, 165, 250, 0.12), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 9px rgba(147, 197, 253, 0.36), 0 0 16px rgba(96, 165, 250, 0.08), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        playful: isBig
+            ? '0 0 19px rgba(147, 197, 253, 0.66), 0 0 36px rgba(34, 211, 238, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 15px rgba(147, 197, 253, 0.58), 0 0 28px rgba(34, 211, 238, 0.14), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        confident: isBig
+            ? '0 0 17px rgba(191, 219, 254, 0.72), 0 0 32px rgba(96, 165, 250, 0.26), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 14px rgba(191, 219, 254, 0.64), 0 0 26px rgba(96, 165, 250, 0.20), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        celebrate: isBig
+            ? '0 0 24px rgba(255, 255, 255, 0.90), 0 0 44px rgba(147, 197, 253, 0.34), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 20px rgba(255, 255, 255, 0.82), 0 0 38px rgba(147, 197, 253, 0.28), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        affectionate: isBig
+            ? '0 0 18px rgba(191, 219, 254, 0.68), 0 0 34px rgba(244, 114, 182, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 15px rgba(191, 219, 254, 0.60), 0 0 28px rgba(244, 114, 182, 0.14), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        focused: isBig
+            ? '0 0 14px rgba(147, 197, 253, 0.50), 0 0 28px rgba(59, 130, 246, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 12px rgba(147, 197, 253, 0.44), 0 0 22px rgba(59, 130, 246, 0.14), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        listening: isBig
+            ? '0 0 20px rgba(224, 242, 254, 0.80), 0 0 36px rgba(147, 197, 253, 0.22), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 16px rgba(224, 242, 254, 0.72), 0 0 28px rgba(147, 197, 253, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
+        despair: isBig
+            ? '0 0 7px rgba(147, 197, 253, 0.16), 0 0 12px rgba(59, 130, 246, 0.06), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+            : '0 0 6px rgba(147, 197, 253, 0.12), 0 0 10px rgba(59, 130, 246, 0.04), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
+    };
+    return shadows[emotion] || base;
 }
 
 /** Apply explicit companion-face styling so side Blip remains visible and can switch between mini and big. */
 function styleMiniBlipFace(faceEl, sizeMode = 'mini') {
     if (!faceEl) return;
     const isBig = sizeMode === 'big';
+    const emotionClass = Array.from(faceEl.classList).find((c) => c.startsWith('emotion-'));
+    const emotion = emotionClass ? emotionClass.slice('emotion-'.length) : 'idle';
     const s = isBig
         ? {
             face: 176, core: 144, eyeTop: 52, eye: 22, eyeOffset: 36, pupil: 8,
@@ -13533,8 +15140,8 @@ function styleMiniBlipFace(faceEl, sizeMode = 'mini') {
         el.style.width = `${s.eye}px`;
         el.style.height = `${s.eye}px`;
         el.style.borderRadius = '50%';
-        el.style.background = '#ffffff';
-        el.style.boxShadow = '0 0 7px rgba(255,255,255,0.55)';
+        el.style.background = 'var(--blip-eye-color, rgba(147, 197, 253, 0.72))';
+        el.style.boxShadow = getBlipMiniEyeShadow(emotion, sizeMode);
         el.style.overflow = 'hidden';
     });
     const leftEye = faceEl.querySelector('.eye-left');
@@ -13812,40 +15419,7 @@ function getReminderCancelVoiceCommand(cmd) {
 }
 
 function getHubVoiceCommand(cmd) {
-    if (!cmd || typeof cmd !== 'string') return null;
-    const lower = normalizeVoiceTokens(cmd);
-    const hubNoun = '(?:hub)';
-    if (/\b(close|hide|dismiss|exit)\s+(the\s+)?hub\b/.test(lower)) return { action: 'close' };
-    if (/\b(open|go to|enter)\s+(the\s+)?hub\b/.test(lower)) return { action: 'open' };
-    if (new RegExp(`\\b(clear|empty|wipe|reset|erase|trash|delete|remove)\\s+(?:the\\s+)?${hubNoun}\\b`).test(lower)) return { action: 'clear' };
-    if (/\b(show|review|read|list)\s+(?:me\s+)?(?:the\s+)?hub\b/.test(lower) ||
-        /\bwhat(?:'s| is)\s+(?:in|inside)\s+(?:the\s+)?hub\b/.test(lower)) return { action: 'review' };
-    if (/\b(save|store|keep)\s+(this|that|it|current)\b[\s\w]{0,18}\b(to|in)\s+(?:the\s+)?hub\b/.test(lower)) return { action: 'saveCurrent' };
-
-    const removeMatch = lower.match(new RegExp(`\\b(?:remove|delete|drop|erase|trash)\\s+(.+?)(?:\\s+from)?\\s+(?:the\\s+)?${hubNoun}\\b`));
-    if (removeMatch) {
-        const query = sanitizeVoiceQuery(removeMatch[1] || '')
-            .replace(/^(?:the\s+)?/, '')
-            .replace(/^(?:item|note|link|photo|image)\s+/, '')
-            .trim();
-        if (!query || /^(?:it|this|that|one|item|note|link|photo|image|last|latest|newest)$/.test(query)) {
-            return { action: 'removeLatest' };
-        }
-        return { action: 'removeMatch', query };
-    }
-
-    const notePatterns = [
-        /^(?:please\s+)?(?:save|add|put|store|remember)\s+(?:note\s+)?(?:to|in)\s+(?:the\s+)?hub[:\s,-]*(.+)$/,
-        /^(?:please\s+)?(?:save|add|put|store|remember)\s+(.+?)\s+(?:to|in)\s+(?:the\s+)?hub$/
-    ];
-    for (const re of notePatterns) {
-        const match = lower.match(re);
-        const note = sanitizeVoiceQuery(match?.[1] || '');
-        if (!note) continue;
-        if (/^(?:this|that|it|current)$/.test(note)) return { action: 'saveCurrent' };
-        return { action: 'saveNote', note };
-    }
-    return null;
+    return getStudentDeskVoiceCommand(cmd);
 }
 
 function getNotesVoiceCommand(cmd) {
@@ -16357,6 +17931,7 @@ function getSystemVoiceCommand(cmd) {
 
     if (/\b(close|hide|exit|dismiss)\s+(everything|all(?:\s+panels?)?|all\s+windows?)\b/.test(trimmed) && /\b(go to sleep|sleep(?:\s+mode)?)\b/.test(trimmed)) return 'closeAllSleep';
     if (/\b(close|hide|exit|dismiss)\s+(?:them\s+)?(?:it\s+)?(?:everything|all(?:\s+panels?)?|all\s+windows?)\b/.test(trimmed)) return 'closeAll';
+    if (/^(?:close(?:\s+(?:it|this|that|them|everything|all(?:\s+panels?)?|all\s+windows?))?)(?:\s+please)?$/.test(trimmed)) return 'closeAll';
     if (anythingOpen && /^(?:everything|all|all\s+of\s+it|them\s+all)$/i.test(stripped)) return 'closeAll';
     if (closeAlertIntent) return 'closeAlert';
     if (stopScrollIntent) return 'stopScroll';
@@ -16368,6 +17943,10 @@ function getSystemVoiceCommand(cmd) {
     if (/^(?:make|set)\s+(?:you|your)?\s*size\s+(?:bigger|larger|big|up)\b|^(?:size\s+(?:up|bigger|larger)|grow|be\s+bigger|bigger|larger)\b/.test(trimmed)) return 'sizeUp';
     if (/^(?:make|set)\s+(?:you|your)?\s*size\s+(?:smaller|small|down)\b|^(?:size\s+(?:down|smaller)|shrink|be\s+smaller|smaller)\b/.test(trimmed)) return 'sizeDown';
     if (/^(?:reset|normal(?:ize)?)\s+(?:you|your)?\s*size\b|^(?:size\s+(?:normal|default)|default\s+size)\b/.test(trimmed)) return 'sizeReset';
+    if (/\b(?:open|show|view|inspect|launch)\s+(?:the\s+|my\s+)?(?:conversation(?:\s+inspector)?|thread(?:\s+inspector)?|tool\s+conversation)\b/.test(trimmed) ||
+        /^(?:conversation(?:\s+inspector)?|thread(?:\s+inspector)?|tool\s+conversation|blip\s+thread)\b/.test(trimmed) ||
+        /\b(?:conversation(?:\s+inspector)?|tool\s+conversation)\b/.test(trimmed) && /\b(?:open|show|view|inspect|launch)\b/.test(trimmed)) return 'conversation';
+    if (/\b(?:close|hide|dismiss|exit)\s+(?:the\s+|my\s+)?(?:conversation(?:\s+inspector)?|thread(?:\s+inspector)?|tool\s+conversation|blip\s+thread)\b/.test(trimmed)) return 'closeConversation';
 
     return null;
 }
@@ -16445,11 +18024,19 @@ function getLearningGamesVoiceCommand(cmd) {
         return Number.isFinite(answerWords[cleaned]) ? answerWords[cleaned] : null;
     };
     const gamesNoun = '(?:learning\\s+games|learning\\s+game|kids\\s+games|math\\s+games|games|game\\s+panel)';
+    const intervalIntent = /\b(?:intervals?|ear\s+training)\b/.test(lower);
+    const harmonyIntent = /\b(?:harmony|chords?|triads?)\b/.test(lower);
     // If games is already open, bare "game/games" often means close (verb dropped).
     if (state.currentMode === 'games' && /^(?:game|games|learning\s+game|learning\s+games|math\s+game|math\s+games)$/.test(lower)) {
         return { action: 'close' };
     }
     if (/^(?:the\s+)?(?:learning\s+games|learning\s+game|kids\s+games|math\s+games|games)$/.test(lower)) return { action: 'open' };
+    if (intervalIntent && (/^(?:the\s+)?(?:intervals?|ear\s+training)(?:\s+game)?$/.test(lower) || /^(?:interval\s+game|ear\s+training\s+game)$/.test(lower) || /\b(?:open|show|play|start|launch|begin)\b/.test(lower))) {
+        return { action: 'open', mode: 'interval' };
+    }
+    if (harmonyIntent && (/^(?:the\s+)?(?:harmony|triads?|chords?)(?:\s+game)?$/.test(lower) || /^(?:harmony\s+game|triads?\s+game|chords?\s+game)$/.test(lower) || /\b(?:open|show|play|start|launch|begin)\b/.test(lower))) {
+        return { action: 'open', mode: 'harmony' };
+    }
     if ((wantsMathGame && /\b(start|play|open|launch|begin|do)\b/.test(lower)) ||
         /\b(start|play|open|launch|begin)\s+(?:the\s+)?math\s+games?\b/.test(lower) ||
         /^(?:math\s+games?|play\s+math|do\s+math)$/.test(lower) ||
@@ -17345,6 +18932,7 @@ function setFaceAnimation(name) {
     if (!faceContainer) return;
     FACE_ANIMATIONS.forEach(c => faceContainer.classList.remove(c));
     if (name && FACE_ANIMATIONS.includes(name)) faceContainer.classList.add(name);
+    syncMiniBlipEmotion();
 }
 
 function getReplyPersonaKey(emotion = 'happy') {
@@ -17536,6 +19124,175 @@ function stopDreamThoughts() {
         state.sleepDreamInterval = null;
     }
     if (dreamThoughts) dreamThoughts.innerHTML = '';
+}
+
+function queueSleepArcadeTimeout(callback, delay) {
+    const safeDelay = Math.max(0, Number(delay) || 0);
+    const timeoutId = setTimeout(() => {
+        state.sleepArcadeTimers = (state.sleepArcadeTimers || []).filter((id) => id !== timeoutId);
+        callback();
+    }, safeDelay);
+    state.sleepArcadeTimers.push(timeoutId);
+    return timeoutId;
+}
+
+function clearSleepArcadeTimers() {
+    if (Array.isArray(state.sleepArcadeTimers)) {
+        state.sleepArcadeTimers.forEach((id) => clearTimeout(id));
+        state.sleepArcadeTimers = [];
+    }
+    if (!spaceOverlay) return;
+    spaceOverlay.querySelectorAll('.sleep-fighter-jet, .sleep-laser, .sleep-burst').forEach((node) => node.remove());
+    getSleepArcadeUfos().forEach((ufo) => {
+        ufo.classList.remove('ufo-hit');
+        ufo.style.removeProperty('--sleep-arcade-hit-x');
+        ufo.style.removeProperty('--sleep-arcade-hit-y');
+    });
+}
+
+function getSleepArcadeUfos() {
+    return Array.from(document.querySelectorAll('#space-overlay .ufo-drift'));
+}
+
+function isSleepArcadeEnabled() {
+    return !!(
+        spaceOverlay &&
+        state.isActive &&
+        state.softSleepMode &&
+        !state.isThinking &&
+        !speech.isSpeaking &&
+        !state.activeAlert &&
+        !document.body.classList.contains('reduce-motion')
+    );
+}
+
+function spawnSleepArcadeBurst(x, y) {
+    if (!spaceOverlay) return;
+    const burst = document.createElement('div');
+    burst.className = 'sleep-burst';
+    burst.style.left = `${x}px`;
+    burst.style.top = `${y}px`;
+
+    const sparkCount = 6;
+    for (let i = 0; i < sparkCount; i += 1) {
+        const spark = document.createElement('span');
+        const angle = (360 / sparkCount) * i + (Math.random() * 22 - 11);
+        const distance = 16 + Math.random() * 28;
+        spark.className = 'sleep-burst-spark';
+        spark.style.setProperty('--spark-angle', `${angle}deg`);
+        spark.style.setProperty('--spark-distance', `${distance.toFixed(1)}px`);
+        spark.style.setProperty('--spark-delay', `${(Math.random() * 0.08).toFixed(2)}s`);
+        burst.appendChild(spark);
+    }
+
+    spaceOverlay.appendChild(burst);
+    queueSleepArcadeTimeout(() => burst.remove(), 900);
+}
+
+function spawnSleepArcadeLaser(startX, startY, endX, endY) {
+    if (!spaceOverlay) return;
+    const beam = document.createElement('div');
+    beam.className = 'sleep-laser';
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const distance = Math.max(64, Math.hypot(dx, dy));
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    beam.style.left = `${startX}px`;
+    beam.style.top = `${startY}px`;
+    beam.style.width = `${distance}px`;
+    beam.style.transform = `translate3d(0, 0, 0) rotate(${angle}deg)`;
+    spaceOverlay.appendChild(beam);
+    queueSleepArcadeTimeout(() => beam.remove(), SLEEP_ARCADE_BEAM_MS);
+}
+
+function hitSleepArcadeUfo(ufo) {
+    if (!ufo) return;
+    const rect = ufo.getBoundingClientRect();
+    const overlayRect = spaceOverlay?.getBoundingClientRect?.();
+    const localX = overlayRect ? (rect.left - overlayRect.left) + (rect.width / 2) : rect.left + (rect.width / 2);
+    const localY = overlayRect ? (rect.top - overlayRect.top) + (rect.height / 2) : rect.top + (rect.height / 2);
+
+    ufo.classList.add('ufo-hit');
+    spawnSleepArcadeBurst(localX, localY);
+    queueSleepArcadeTimeout(() => {
+        ufo.classList.remove('ufo-hit');
+    }, SLEEP_ARCADE_HIT_HOLD_MS + Math.random() * 900);
+}
+
+function runSleepArcadeEncounter() {
+    if (!isSleepArcadeEnabled()) return;
+    const ufos = getSleepArcadeUfos().filter((ufo) => !ufo.classList.contains('ufo-hit'));
+    if (!ufos.length) {
+        scheduleSleepArcadeEncounter(1200);
+        return;
+    }
+
+    const target = ufos[Math.floor(Math.random() * ufos.length)];
+    const overlayRect = spaceOverlay.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    if (!overlayRect.width || !overlayRect.height || !targetRect.width || !targetRect.height) {
+        scheduleSleepArcadeEncounter(1000);
+        return;
+    }
+
+    const targetCenterX = (targetRect.left - overlayRect.left) + (targetRect.width / 2);
+    const targetCenterY = (targetRect.top - overlayRect.top) + (targetRect.height / 2);
+    const fromLeft = Math.random() > 0.5;
+    const startX = fromLeft ? -120 : overlayRect.width + 120;
+    const startY = Math.max(34, Math.min(overlayRect.height - 42, targetCenterY + (Math.random() * 70 - 35)));
+    const endX = targetCenterX + (Math.random() * 28 - 14);
+    const endY = targetCenterY + (Math.random() * 18 - 9);
+    const angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+
+    const jet = document.createElement('div');
+    jet.className = 'sleep-fighter-jet';
+    jet.style.left = '0px';
+    jet.style.top = '0px';
+    jet.style.setProperty('--jet-start-x', `${startX}px`);
+    jet.style.setProperty('--jet-start-y', `${startY}px`);
+    jet.style.setProperty('--jet-end-x', `${endX}px`);
+    jet.style.setProperty('--jet-end-y', `${endY}px`);
+    jet.style.setProperty('--jet-angle', `${angle}deg`);
+    jet.style.setProperty('--jet-duration', `${SLEEP_ARCADE_JET_MS}ms`);
+    jet.style.setProperty('--jet-flip', fromLeft ? '1' : '-1');
+    jet.innerHTML = '<span class="sleep-jet-canopy"></span><span class="sleep-jet-wing sleep-jet-wing-left"></span><span class="sleep-jet-wing sleep-jet-wing-right"></span><span class="sleep-jet-tail"></span>';
+    spaceOverlay.appendChild(jet);
+
+    queueSleepArcadeTimeout(() => {
+        const beamStartX = startX + (fromLeft ? 58 : -6);
+        const beamStartY = startY - 2;
+        spawnSleepArcadeLaser(beamStartX, beamStartY, targetCenterX, targetCenterY);
+        hitSleepArcadeUfo(target);
+        jet.classList.add('is-firing');
+    }, 620);
+
+    queueSleepArcadeTimeout(() => {
+        jet.remove();
+    }, SLEEP_ARCADE_JET_MS + 160);
+
+    queueSleepArcadeTimeout(() => {
+        scheduleSleepArcadeEncounter(SLEEP_ARCADE_MIN_DELAY_MS + Math.random() * (SLEEP_ARCADE_MAX_DELAY_MS - SLEEP_ARCADE_MIN_DELAY_MS));
+    }, SLEEP_ARCADE_JET_MS + 420);
+}
+
+function scheduleSleepArcadeEncounter(delay = SLEEP_ARCADE_MIN_DELAY_MS) {
+    if (!isSleepArcadeEnabled()) return;
+    queueSleepArcadeTimeout(() => {
+        if (!isSleepArcadeEnabled()) return;
+        runSleepArcadeEncounter();
+    }, delay);
+}
+
+function syncSleepArcadeMode() {
+    const enabled = isSleepArcadeEnabled();
+    document.body.classList.toggle('sleep-arcade-mode', enabled);
+    if (!enabled) {
+        clearSleepArcadeTimers();
+        return;
+    }
+    if (!state.sleepArcadeTimers.length) {
+        scheduleSleepArcadeEncounter(280);
+    }
 }
 
 // Deprecated: Alias for backward compatibility
@@ -17899,6 +19656,29 @@ function setBlipTimer(text, ms, dueAt = null) {
 
     const timerEntry = { id: timerId, text, time: targetTime };
     state.timers.push(timerEntry);
+    recordConversationAction(state, {
+        tool: 'timer',
+        action_type: 'timer_created',
+        target_object: String(timerId),
+        previous_state: null,
+        new_state: { id: timerId, text, time: targetTime },
+        undo_strategy: 'cancel_timer',
+        undo_window: 'session',
+        user_visible_summary: `Set timer for ${text}`
+    });
+    setToolBranchState(state, 'timer', {
+        currentTask: 'timer active',
+        currentIntent: {
+            family: 'timer',
+            action: 'timer',
+            confidence: 0.95
+        },
+        activePanel: 'timer',
+        panelStack: ['timer'],
+        draft: { id: timerId, text, time: targetTime },
+        lastUtterance: text,
+        note: `Timer set for ${text}`
+    });
     persistTimers();
     renderCountdownDisplay();
     return timerEntry;
@@ -18400,8 +20180,7 @@ function renderActionInSidePanel(parsedResponse) {
                 <div id="blip-timer-panel-body"></div>
             `;
             sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
-                sidePanel.style.display = 'none';
-                clearSidePanelContext();
+                closeSidePanel();
             });
             startTimerPanelTicker({ focusId });
             break;
@@ -18542,7 +20321,7 @@ function renderActionInSidePanel(parsedResponse) {
                     ${buildYouTubeShellHtml(buildYouTubeLibraryHtml({ simple: true }), 'library')}
                 `;
                 sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
-                    closeYouTubePanel();
+                    closeSidePanel();
                 });
                 sidePanel.querySelectorAll('[data-yt-library]').forEach((btn) => {
                     btn.addEventListener('click', () => {
@@ -18657,7 +20436,7 @@ function renderActionInSidePanel(parsedResponse) {
                     `, isFocusedPlayer ? 'focus' : 'player')}
                 `;
                 sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
-                    closeYouTubePanel();
+                    closeSidePanel();
                 });
                 document.getElementById('blip-video-big-btn')?.addEventListener('click', () => {
                     setVideoBigMode(!state.videoBigMode);
@@ -18673,7 +20452,7 @@ function renderActionInSidePanel(parsedResponse) {
                     if (transcriptText) transcriptText.innerText = ok ? 'Sound on!' : 'No active video.';
                 });
                 document.getElementById('blip-yt-back-media-btn')?.addEventListener('click', () => {
-                    closeYouTubePanel();
+                    closeSidePanel();
                     toggleMediaGallery(true, focusedMediaView === 'Videos' ? 'videos' : 'music');
                 });
                 document.getElementById('blip-yt-player')?.addEventListener('click', () => {
@@ -18765,8 +20544,7 @@ function renderActionInSidePanel(parsedResponse) {
                     `, 'search')}
                 `;
                 sidePanel.querySelector('button')?.addEventListener('click', () => {
-                    sidePanel.style.display = 'none';
-                    clearSidePanelContext();
+                    closeSidePanel();
                 });
                 sidePanel.querySelectorAll('[data-yt-library]').forEach((btn) => {
                     btn.addEventListener('click', () => {
@@ -18968,17 +20746,27 @@ function renderActionInSidePanel(parsedResponse) {
             });
             break;
         }
+        case 'conversation': {
+            const snapshot = tool_params.snapshot && typeof tool_params.snapshot === 'object'
+                ? tool_params.snapshot
+                : getConversationSnapshot(state) || {};
+            sidePanel.innerHTML = `
+                ${buildSidePanelHeaderHtml({
+                    title: 'Conversation Inspector',
+                    summary: summaryText || 'Branch state, shared memory, recent actions, and undo history.',
+                    kicker: 'Thread'
+                })}
+                ${buildConversationInspectorHtml(snapshot)}
+            `;
+            bindConversationInspectorControls(sidePanel);
+            break;
+        }
         default:
             sidePanel.innerHTML += '<p class="blip-panel-empty">Handling action...</p>';
     }
 
     sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
-        sidePanel.style.display = 'none';
-        if (sidePanelChart) {
-            sidePanelChart.destroy();
-            sidePanelChart = null;
-        }
-        clearSidePanelContext();
+        closeSidePanel();
     });
 
     if (action === 'gmail') {

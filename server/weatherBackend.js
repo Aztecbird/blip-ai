@@ -42,12 +42,6 @@ const server = http.createServer(async (req, res) => {
     if (parsedUrl.pathname === '/api/weather/current' && req.method === 'GET') {
         const city = parsedUrl.query.city;
 
-        if (!WEATHER_API_KEY) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'WEATHER_API_KEY is missing from .env.local' }));
-            return;
-        }
-
         if (!city) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'City parameter is required' }));
@@ -55,33 +49,69 @@ const server = http.createServer(async (req, res) => {
         }
 
         try {
-            // Example using OpenWeatherMap API
-            const apiUrl = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${WEATHER_API_KEY}&units=metric`;
-            const response = await fetch(apiUrl);
-            
-            if (!response.ok) {
-                 throw new Error(`Weather API returned ${response.status}: ${response.statusText}`);
+            // Prefer OpenWeatherMap when configured.
+            // If WEATHER_API_KEY is missing (common for local dev), fall back to wttr.in.
+            if (WEATHER_API_KEY) {
+                const apiUrl = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${WEATHER_API_KEY}&units=metric`;
+                const response = await fetch(apiUrl);
+
+                if (!response.ok) {
+                    throw new Error(`Weather API returned ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const timezoneOffset = Number(data?.timezone);
+                const humidity = data?.main?.humidity;
+                const windSpeed = data?.wind?.speed;
+                const icon = String(data?.weather?.[0]?.icon || '');
+                const isDay = icon ? icon.endsWith('d') : true;
+                const description = data?.weather?.[0]?.description;
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    city: data.name,
+                    temp: data.main.temp,
+                    description,
+                    humidity,
+                    windSpeed,
+                    timezoneOffset,
+                    localTime: formatOffsetTime(timezoneOffset),
+                    isDay,
+                    provider: 'openweather',
+                    fetchTime: Date.now()
+                }));
+                return;
             }
 
-            const data = await response.json();
-            const timezoneOffset = Number(data?.timezone);
-            const humidity = data?.main?.humidity;
-            const windSpeed = data?.wind?.speed;
-            const icon = String(data?.weather?.[0]?.icon || '');
-            const isDay = icon ? icon.endsWith('d') : true;
-            const description = data?.weather?.[0]?.description;
-            
+            // wttr.in fallback (server-side; avoids browser CORS issues)
+            const wttrUrl = `https://wttr.in/${encodeURIComponent(city)}?format=j1`;
+            const wttrRes = await fetch(wttrUrl);
+            if (!wttrRes.ok) {
+                throw new Error(`wttr.in returned ${wttrRes.status}: ${wttrRes.statusText}`);
+            }
+            const wttr = await wttrRes.json();
+
+            const current = wttr?.current_condition?.[0] || {};
+            const cityName = wttr?.nearest_area?.[0]?.areaName?.[0]?.value || city;
+            const desc = current?.weatherDesc?.[0]?.value || current?.condition || '';
+            const temp = current?.temp_C;
+            const humidity = current?.humidity;
+            const windSpeed = current?.windspeedKmph ?? current?.windspeedMiles;
+            const localTime = String(current?.localObsDateTime || '').trim();
+            const isDay = String(current?.isday || 'yes').toLowerCase() === 'yes';
+
+            // timezoneOffset isn't provided reliably by wttr.in JSON; keep it null.
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
-                city: data.name,
-                temp: data.main.temp,
-                description,
+                city: cityName,
+                temp,
+                description: desc,
                 humidity,
                 windSpeed,
-                timezoneOffset,
-                localTime: formatOffsetTime(timezoneOffset),
+                timezoneOffset: null,
+                localTime,
                 isDay,
-                provider: 'weather-backend',
+                provider: 'wttr',
                 fetchTime: Date.now()
             }));
         } catch (error) {

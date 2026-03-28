@@ -53,7 +53,7 @@
         </svg>
 
         <main class="container">
-            <div id="version-tag">V6.7</div>
+            <div id="version-tag">V4.3.24</div>
 
             <!-- Hidden Compatibility Elements for Legacy JS -->
             <div style="display:none;">
@@ -111,6 +111,7 @@
                         <span class="btn-text">Ask Blip</span>
                     </button>
                     <button id="sleepBtn" class="secondary-orb-btn" type="button">Sleep</button>
+                    <button id="careCamQuickBtn" class="care-cam-quick-btn" type="button" aria-label="Start Care Cam Demo" title="Start Care Cam Demo"></button>
                     <div id="live-indicator">LIVE OBSERVER</div>
                 </div>
                 <div class="mic-meter" id="wake-meter" aria-live="polite" aria-label="Wake listening status">
@@ -146,7 +147,7 @@
                     <button id="mediaBtn" title="Media">🖼️</button>
                     <button id="gamesBtn" title="Learning Games">🎲</button>
                     <button id="cartBtn" title="Cart">🛒</button>
-                    <button id="hubBtn" title="Hub">📱</button>
+                    <button id="hubBtn" title="Student Desk">🎓</button>
                     <button id="gearBtn" title="Settings">⚙️</button>
                 </div>
 
@@ -364,28 +365,41 @@ http://127.0.0.1:8188</pre>
                         <button id="uploadBtn">📁 Upload</button>
                         <input type="file" id="fileInput" hidden accept="image/*">
                     </div>
+                    <p class="settings-section-label">Care Cam Demo</p>
+                    <div class="setting-group">
+                        <div class="setting-inline-row">
+                            <button id="careCamDemoBtn" class="secondary-btn">🍼 Start Care Cam Demo</button>
+                            <button id="copyCareCamLinkBtn" class="secondary-btn">📱 Copy Viewer Link</button>
+                        </div>
+                        <button id="openCareCamViewerBtn" class="secondary-btn">Open Viewer</button>
+                        <div id="careCamStatus" class="calendar-auth-status" aria-live="polite">No care cam session running.</div>
+                        <span class="setting-hint">This is the investor demo: the home device streams Blip’s camera to a second device and accepts talk-back commands.</span>
+                    </div>
                     <p class="settings-section-label">UI Debug</p>
                     <div class="setting-group">
-                        <button type="button" id="ui-debug-refresh-btn" class="secondary-btn">Refresh UI state</button>
+                        <div class="setting-inline-row">
+                            <button type="button" id="ui-debug-refresh-btn" class="secondary-btn">Refresh UI state</button>
+                            <button type="button" id="openConversationInspectorBtn" class="secondary-btn">Open Conversation Inspector</button>
+                        </div>
                         <span class="setting-hint">Dump current UI state below. Use when debugging panels, mode, or side panel.</span>
                         <pre id="ui-debug-dump" class="ui-debug-dump" aria-live="polite" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.4); border-radius:6px; font-size:0.7rem; max-height:240px; overflow:auto; white-space:pre-wrap; word-break:break-all;"></pre>
                     </div>
                 </div>
             </div>
-            <!-- Blip Hub (WhatsApp style) -->
+            <!-- Student Desk (shared workspace) -->
             <div id="hub-container" class="widget-panel hub-panel">
                 <div class="panel-header">
-                    <span>💬 Blip Hub</span>
-                    <button id="closeHubBtn" class="panel-close-btn" aria-label="Close hub">✕</button>
+                    <span>🎓 Student Desk</span>
+                    <button id="closeHubBtn" class="panel-close-btn" aria-label="Close student desk">✕</button>
                 </div>
                 <div id="hub-messages">
                     <!-- Items will be injected here -->
-                    <div class="hub-empty">Hub is empty. Save photos or notes here!</div>
+                    <div class="hub-empty">Student Desk is empty. Save homework photos, notes, and links here!</div>
                 </div>
                 <div class="hub-footer">
-                    <input type="text" id="hubInput" placeholder="Write a note or paste a link..."
-                        aria-label="Hub note">
-                    <button id="sendHubBtn" aria-label="Post to Hub">Post</button>
+                    <input type="text" id="hubInput" placeholder="Write a note or paste a homework link..."
+                        aria-label="Student desk note">
+                    <button id="sendHubBtn" aria-label="Post to Student Desk">Post</button>
                 </div>
             </div>
             <div id="cart-container" class="widget-panel cart-panel">
@@ -403,6 +417,7 @@ http://127.0.0.1:8188</pre>
                     <button id="closeGamesBtn" class="panel-close-btn" aria-label="Close learning games">✕</button>
                 </div>
                 <div id="games-panel-body" class="games-panel-body">
+                    <div id="learning-games-debug" class="learning-games-debug">Debug: waiting</div>
                     <div id="blip-math-game" class="blip-game-card">
                         <div class="blip-game-kicker">Game 1</div>
                         <h2>Blip Math Game</h2>
@@ -428,6 +443,7 @@ http://127.0.0.1:8188</pre>
                             <div class="ear-training-topline">
                                 <div class="ear-training-mode-label" id="ear-training-mode-label">Intervals</div>
                             </div>
+                            <div class="ear-training-tutorial" id="ear-training-tutorial"></div>
                             <div class="ear-training-prompt" id="ear-training-prompt"></div>
                             <div class="ear-training-options" id="ear-training-options"></div>
                             <div class="ear-training-feedback" id="ear-training-feedback"></div>
@@ -477,7 +493,32 @@ http://127.0.0.1:8188</pre>
             <div id="vision-preview-container" style="display:none;">
                 <img id="vision-preview" alt="Vision preview">
                 <button id="clear-image-btn" title="Clear image" aria-label="Clear image">✕</button>
-                <button id="save-to-hub-btn" class="mini-save-btn" aria-label="Save image to hub">Save</button>
+                <button id="save-to-hub-btn" class="mini-save-btn" aria-label="Save image to Student Desk">Save</button>
+            </div>
+
+            <div id="care-cam-viewer-shell" class="care-cam-viewer-shell hidden" aria-hidden="true">
+                <div class="care-cam-viewer-card">
+                    <div class="care-cam-viewer-topbar">
+                        <div>
+                            <div class="care-cam-viewer-eyebrow">Blip Care Cam</div>
+                            <h2 id="care-cam-viewer-title">Investor demo</h2>
+                        </div>
+                        <div id="care-cam-viewer-status" class="care-cam-viewer-status">Waiting for a live session...</div>
+                    </div>
+                    <div class="care-cam-viewer-screen">
+                        <img id="care-cam-frame" alt="Live care cam feed">
+                        <div id="care-cam-empty" class="care-cam-empty">
+                            <div class="care-cam-empty-title">Connect to Blip</div>
+                            <p>Open the viewer link from the home device and the live room feed will appear here.</p>
+                        </div>
+                    </div>
+                    <div class="care-cam-viewer-controls">
+                        <input id="care-cam-talk-input" type="text" placeholder="Talk back to Blip...">
+                        <button id="care-cam-talk-btn" type="button">Send</button>
+                        <button id="care-cam-alert-btn" type="button" class="secondary-btn">Alert</button>
+                    </div>
+                    <div class="care-cam-viewer-note" id="care-cam-viewer-note">Use this on your phone to view the live room and talk to Blip.</div>
+                </div>
             </div>
 
             <canvas id="capture-canvas" style="display: none;"></canvas>

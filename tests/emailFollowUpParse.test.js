@@ -1,14 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { canConfirmGmailSend } from '../src/features/email/emailFeature.js';
 import {
     isCorrectionIntentUtterance,
+    isGmailSendAffirmation,
     isImproveDraftIntent,
     isRecipientNoiseOnly,
+    isStrongEmailSendDraftCommand,
     isSubjectSlotNoiseOnly,
+    isVideoOpenVoiceRequest,
+    parseEmailOpenChoice,
     parseEmailDraftFollowUp,
     parseEmailStatusFollowUp
 } from '../src/services/voiceDialog/emailFollowUpParse.js';
+
+test('strong send commands include go send it and now send', () => {
+    assert.equal(parseEmailDraftFollowUp('go send it').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('go send').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('please go send it').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('now send it').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('go ahead send it').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('no i just send it').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('i just send it').action, 'sendDraft');
+    assert.equal(parseEmailDraftFollowUp('just send it').action, 'sendDraft');
+    assert.equal(isStrongEmailSendDraftCommand('go send it'), true);
+    assert.equal(isStrongEmailSendDraftCommand('send it in telegram'), false);
+});
 
 test('parseEmailDraftFollowUp recognizes cancel and append', () => {
     assert.equal(parseEmailDraftFollowUp('never mind').action, 'cancelDraft');
@@ -20,11 +38,24 @@ test('parseEmailDraftFollowUp recognizes cancel and append', () => {
     assert.equal(parseEmailDraftFollowUp('ya send it').action, 'sendDraft');
     assert.equal(parseEmailDraftFollowUp('send it for me').action, 'sendDraft');
     assert.equal(parseEmailDraftFollowUp('undo').action, 'undoDraft');
+    assert.equal(parseEmailDraftFollowUp('undo that sentence').action, 'undoDraft');
+    assert.equal(parseEmailDraftFollowUp('undo that edit').action, 'undoDraft');
+    assert.equal(parseEmailDraftFollowUp('change recipient').action, 'requestCorrection');
+    assert.equal(parseEmailDraftFollowUp('change the recipient').action, 'requestCorrection');
 });
 
 test('parseEmailDraftFollowUp does not treat to send as recipient update', () => {
     const u = parseEmailDraftFollowUp('to send');
     assert.notEqual(u?.action, 'updateRecipient');
+});
+
+test('parseEmailDraftFollowUp ignores telegram-specific send phrasing', () => {
+    assert.equal(parseEmailDraftFollowUp('send it in telegram'), null);
+    assert.equal(parseEmailDraftFollowUp('send the message in telegram'), null);
+});
+
+test('isRecipientNoiseOnly treats telegram as non recipient', () => {
+    assert.equal(isRecipientNoiseOnly('telegram'), true);
 });
 
 test('isRecipientNoiseOnly flags command words only', () => {
@@ -34,6 +65,7 @@ test('isRecipientNoiseOnly flags command words only', () => {
     assert.equal(isRecipientNoiseOnly('make it'), true);
     assert.equal(isRecipientNoiseOnly('know'), true);
     assert.equal(isRecipientNoiseOnly('you know'), true);
+    assert.equal(isRecipientNoiseOnly('no i just send it'), true);
     assert.equal(isRecipientNoiseOnly('mom'), false);
     assert.equal(isRecipientNoiseOnly('a@b.co'), false);
 });
@@ -79,4 +111,65 @@ test('parseEmailDraftFollowUp subject shorthand still works', () => {
     const u = parseEmailDraftFollowUp('subject dinner');
     assert.equal(u?.action, 'updateSubject');
     assert.equal(u?.subject, 'dinner');
+});
+
+test('canConfirmGmailSend only allows send in review mode', () => {
+    assert.equal(
+        canConfirmGmailSend({
+            pendingEmailReview: null,
+            currentSidePanelAction: 'gmail',
+            isGmailPanelVisible: true
+        }),
+        false
+    );
+    assert.equal(
+        canConfirmGmailSend({
+            pendingEmailReview: { stage: 'awaitingApproval' },
+            currentSidePanelAction: 'gmail',
+            isGmailPanelVisible: true
+        }),
+        true
+    );
+    assert.equal(
+        canConfirmGmailSend({
+            pendingEmailReview: { stage: 'awaitingApproval' },
+            currentSidePanelAction: 'gmail',
+            isGmailPanelVisible: false
+        }),
+        false
+    );
+    assert.equal(
+        canConfirmGmailSend({
+            pendingEmailReview: { stage: 'awaitingApproval' },
+            currentSidePanelAction: 'telegram',
+            isGmailPanelVisible: true
+        }),
+        false
+    );
+});
+
+test('parseEmailDraftFollowUp treats yes as send/confirm and not recipient text', () => {
+    assert.equal(isGmailSendAffirmation('yes'), true);
+    assert.equal(isGmailSendAffirmation('yes send it'), true);
+    assert.equal(isGmailSendAffirmation('send it'), true);
+    assert.equal(isGmailSendAffirmation('maybe later'), false);
+    assert.equal(parseEmailDraftFollowUp('yes')?.action, 'confirmDraft');
+    assert.equal(parseEmailDraftFollowUp('yes send it')?.action, 'confirmDraft');
+    assert.equal(parseEmailDraftFollowUp('send it')?.action, 'sendDraft');
+});
+
+test('isVideoOpenVoiceRequest lets open video route away from email follow-up', () => {
+    assert.equal(isVideoOpenVoiceRequest('open video'), true);
+    assert.equal(isVideoOpenVoiceRequest('show me the video'), true);
+    assert.equal(isVideoOpenVoiceRequest('open the latest video'), true);
+    assert.equal(isVideoOpenVoiceRequest('open email'), false);
+    assert.equal(isVideoOpenVoiceRequest('send the email'), false);
+});
+
+test('parseEmailOpenChoice understands create versus review', () => {
+    assert.deepEqual(parseEmailOpenChoice('create'), { action: 'create' });
+    assert.deepEqual(parseEmailOpenChoice('compose a new email'), { action: 'create' });
+    assert.deepEqual(parseEmailOpenChoice('review'), { action: 'review' });
+    assert.deepEqual(parseEmailOpenChoice('review the email list'), { action: 'review' });
+    assert.equal(parseEmailOpenChoice('maybe later'), null);
 });

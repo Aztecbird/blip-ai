@@ -4,6 +4,7 @@ import { normalizeVoiceUtterance } from './utterance.js';
 /** Single-word (or "to send"-style) mistakes that must never become the To field. */
 const EMAIL_RECIPIENT_NOISE_WORDS = new Set([
     'send', 'sends', 'sending', 'sent', 'mail', 'email', 'emails', 'gmail', 'inbox', 'draft', 'drafts',
+    'telegram',
     'subject', 'subjects', 'message', 'messages', 'body', 'to', 'from', 'cc', 'bcc',
     'yes', 'no', 'ok', 'okay', 'yeah', 'yep', 'sure', 'please', 'thanks', 'thank',
     'cancel', 'stop', 'undo', 'skip', 'next', 'previous', 'confirm', 'correction',
@@ -13,6 +14,7 @@ const EMAIL_RECIPIENT_NOISE_WORDS = new Set([
     'get', 'gets', 'got', 'give', 'gives', 'add', 'adds', 'use', 'uses', 'set', 'sets',
     // Pronouns / fillers — never a mailbox by themselves
     'it', 'this', 'that', 'these', 'those', 'not', 'so', 'well', 'um', 'uh',
+    'i', 'just', 'you', 'we',
     // Conversational scraps ("…you know…" → ASR often leaves "know")
     'know', 'knows', 'maybe', 'right', 'guess'
 ]);
@@ -38,6 +40,10 @@ export function isRecipientNoiseOnly(text = '') {
             || (a === 'you' && b === 'know')) {
             return true;
         }
+    }
+    // ASR: “no I just send it” / “go send it” scraps — every token is UI filler, not a name
+    if (parts.length >= 2 && parts.every((p) => EMAIL_RECIPIENT_NOISE_WORDS.has(p))) {
+        return true;
     }
     return false;
 }
@@ -85,6 +91,89 @@ export function isSubjectSlotNoiseOnly(text = '') {
     return false;
 }
 
+/**
+ * Whole-utterance “send now” commands for Gmail draft follow-up (normalized text).
+ * Kept strict (anchored) so short phrases win over accidental message text.
+ */
+function matchesStrongEmailSendDraftPatterns(lower = '') {
+    const t = String(lower || '').trim();
+    if (!t) return false;
+    return (
+        /^(?:send|send\s+it|send\s+now|send\s+that|send\s+the\s+email|send\s+this\s+email|yes\s+send|please\s+send|go\s+ahead|do\s+it|mail\s+it|mail\s+this|ship\s+it|fire\s+it\s+off)$/.test(t)
+        || /^(?:please\s+)?go\s+ahead(?:\s+and)?\s+send(?:\s+it)?$/.test(t)
+        || /^(?:go|now)\s+send(?:\s+it)?$/.test(t)
+        || /^go\s+on\s+send(?:\s+it)?$/.test(t)
+        || /^(?:please\s+)?go\s+(?:on\s+)?send(?:\s+it)?$/.test(t)
+        || /^(?:you|ya)\s+can\s+send(?:\s+it)?$/.test(t)
+        || /^(?:you|ya)\s+may\s+send(?:\s+it)?$/.test(t)
+        || /^(?:ok|okay|alright)[,\s]+(?:(?:you|ya)\s+)?can\s+send(?:\s+it)?$/.test(t)
+        || /^alright[,]?\s+send(?:\s+it)?$/.test(t)
+        || /^okay[,]?\s+send(?:\s+it)?$/.test(t)
+        || /^ok[,]?\s+send(?:\s+it)?$/.test(t)
+        || /^just\s+send(?:\s+it)?$/.test(t)
+        || /^(?:no\s+)?you\s+send(?:\s+it)?$/.test(t)
+        || /^(?:no\s+)?ya\s+send(?:\s+it)?$/.test(t)
+        || /^(?:no\s+)?you\s+can\s+send(?:\s+it)?$/.test(t)
+        || /^send\s+it\s+(?:yourself|for\s+me)$/.test(t)
+        || /^(?:yeah|yep|yup)\s+send(?:\s+it)?$/.test(t)
+        || /^(?:really|yes\s+really|for\s+real|definitely|absolutely)$/.test(t)
+        // ASR mis-hears around “send” as a person name
+        || /^(?:no\s+)?i\s+just\s+send(?:\s+it)?$/.test(t)
+        || /^no\s+just\s+send(?:\s+it)?$/.test(t)
+        || /^i\s+just\s+send(?:\s+it)?$/.test(t)
+        || /^(?:and\s+)?just\s+send(?:\s+it)?$/.test(t)
+    );
+}
+
+/** True when the utterance is a strong send command (excludes “… in telegram”). */
+export function isStrongEmailSendDraftCommand(text = '') {
+    const lower = normalizeVoiceUtterance(text);
+    if (!lower || /\btelegram\b/.test(lower)) return false;
+    return matchesStrongEmailSendDraftPatterns(lower);
+}
+
+export function isGmailSendAffirmation(text = '') {
+    const t = normalizeVoiceUtterance(text);
+    if (!t) return false;
+    if (matchesStrongEmailSendDraftPatterns(t)) return true;
+    return (
+        /^(?:yes|yeah|yep|ok|okay|sure|perfect|exactly|affirmative)$/.test(t)
+        || /^(?:yes|yeah|yep|ok|okay|sure|perfect)\s+(?:send|send\s+it|go\s+ahead|go\s+ahead\s+and\s+send)$/.test(t)
+        || /^(?:yes|yeah|yep|ok|okay|sure|perfect)\s+(?:you\s+)?can\s+send(?:\s+it)?$/.test(t)
+    );
+}
+
+export function isVideoOpenVoiceRequest(text = '') {
+    const t = normalizeVoiceUtterance(text);
+    if (!t) return false;
+    return (
+        /^(?:please\s+)?(?:open|show|view|resume|play)\s+(?:me\s+)?(?:the\s+)?(?:video|youtube|clip|recording)(?:\s+please)?$/.test(t)
+        || /^(?:please\s+)?(?:open|show|view|resume|play)\s+(?:me\s+)?(?:the\s+)?(?:last|latest|my)\s+(?:video|clip|recording)(?:\s+please)?$/.test(t)
+        || /^(?:please\s+)?(?:open|show|browse|view|pull\s+up|bring\s+up)\s+(?:the\s+)?youtube(?:\s+(?:library|menu|list))?(?:\s+please)?$/.test(t)
+    );
+}
+
+export function parseEmailOpenChoice(command = '') {
+    const t = normalizeVoiceUtterance(command);
+    if (!t) return null;
+    const hasCreateWord = ['create', 'compose', 'write', 'draft', 'make', 'new'].some((word) => t.includes(word));
+    const hasReviewWord = t.includes('review');
+    const hasMailWord = ['email', 'mail', 'message', 'inbox', 'list'].some((word) => t.includes(word));
+    if (t === 'create' || t === 'compose' || t === 'write' || t === 'draft' || t === 'make') {
+        return { action: 'create' };
+    }
+    if (t === 'review' || t === 'inbox' || t === 'list') {
+        return { action: 'review' };
+    }
+    if (hasCreateWord && hasMailWord) {
+        return { action: 'create' };
+    }
+    if (hasReviewWord && hasMailWord) {
+        return { action: 'review' };
+    }
+    return null;
+}
+
 function resolveRecipientFragment(raw = '') {
     const trimmed = String(raw || '').trim();
     if (!trimmed) return { recipient: '', recipientQuery: '' };
@@ -104,32 +193,18 @@ function resolveRecipientFragment(raw = '') {
 export function parseEmailDraftFollowUp(command = '') {
     const lower = normalizeVoiceUtterance(command);
     if (!lower) return null;
+    if (/\btelegram\b/.test(lower)) return null;
 
     if (
         // Do not use bare "correct" — it means “I want to change something,” not “confirmed.”
         /^(?:yes|yeah|yep|that s okay|thats okay|looks good|looks perfect|sounds perfect|ok|okay|perfect|exactly|that is okay|that is correct|that sounds perfect|that looks good)$/.test(lower)
         || /^(?:yes|yeah|yep|ok|okay|perfect)\s+(?:can\s+you\s+)?confirm(?:\s+when\s+you\s+send\s+it)?$/.test(lower)
+        || /^(?:yes|yeah|yep|ok|okay|sure|perfect)\s+(?:send|send\s+it|go\s+ahead(?:\s+and\s+send)?)$/.test(lower)
     ) {
         return { action: 'confirmDraft' };
     }
 
-    if (
-        /^(?:send|send it|send now|send that|send the email|send this email|yes send|please send|go ahead|go ahead and send|do it|mail it|mail this|ship it|fire it off)$/.test(lower)
-        || /^(?:you|ya)\s+can\s+send(?:\s+it)?$/.test(lower)
-        || /^(?:you|ya)\s+may\s+send(?:\s+it)?$/.test(lower)
-        || /^(?:ok|okay|alright)[,\s]+(?:(?:you|ya)\s+)?can\s+send(?:\s+it)?$/.test(lower)
-        || /^alright[,]?\s+send(?:\s+it)?$/.test(lower)
-        || /^okay[,]?\s+send(?:\s+it)?$/.test(lower)
-        || /^ok[,]?\s+send(?:\s+it)?$/.test(lower)
-        || /^just\s+send(?:\s+it)?$/.test(lower)
-        // confirmation phrases
-        || /^(?:no\s+)?you\s+send(?:\s+it)?$/.test(lower)
-        || /^(?:no\s+)?ya\s+send(?:\s+it)?$/.test(lower)
-        || /^(?:no\s+)?you\s+can\s+send(?:\s+it)?$/.test(lower)
-        || /^send\s+it\s+(?:yourself|for\s+me)$/.test(lower)
-        // After “Shall I send?” — short affirmations (not valid as subject/body)
-        || /^(?:really|yes\s+really|for\s+real|definitely|absolutely)$/.test(lower)
-    ) {
+    if (matchesStrongEmailSendDraftPatterns(lower)) {
         return { action: 'sendDraft' };
     }
 
@@ -140,8 +215,17 @@ export function parseEmailDraftFollowUp(command = '') {
     if (/^(?:never mind|nevermind|forget it|forget that|cancel|stop|let s not|lets not)$/.test(lower)) {
         return { action: 'cancelDraft' };
     }
-    if (/^(?:undo|scratch that|take that back|oops)$/i.test(lower)) {
+    if (
+        /^(?:undo|scratch that|take that back|oops)$/i.test(lower)
+        || /^undo\s+(?:that\s+)?(?:sentence|line|paragraph)\b/i.test(lower)
+        || /^undo\s+that\s+edit$/i.test(lower)
+        || /^undo\s+the\s+last\s+sentence$/i.test(lower)
+    ) {
         return { action: 'undoDraft' };
+    }
+
+    if (/^change\s+(?:the\s+)?recipient$/i.test(lower) || /^correct\s+(?:the\s+)?recipient$/i.test(lower)) {
+        return { action: 'requestCorrection' };
     }
 
     if (isImproveDraftIntent(lower)) {

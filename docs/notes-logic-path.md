@@ -121,7 +121,15 @@ That avoids a common failure where Blip correctly understands "this is a note co
 - reminders
 - personal
 
+## Multi-turn and freeform drafts
+
+- List-style drafts (`awaiting_items`) still use “save note” style completion.
+- Freeform dictation (`awaiting_freeform`) accumulates text until an explicit finish phrase; see [`src/services/notesDraftVoice.js`](../src/services/notesDraftVoice.js) and tests in `tests/notesDraftVoice.test.js`.
+- Broader rules for changing parsers: [parsing contract](./parsing-contract.md).
+
 ## File References
 
 - `src/main.js`
+- `src/services/notesDraftVoice.js`
 - `docs/notes-logic-path.md`
+- `docs/parsing-contract.md`

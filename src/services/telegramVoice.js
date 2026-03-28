@@ -1,9 +1,7 @@
+import { normalizeVoiceCommandText } from './textParsing.js';
+
 function normalizeTelegramVoiceText(value = '') {
-    return String(value || '')
-        .toLowerCase()
-        .replace(/[^\w\s@.-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+    return normalizeVoiceCommandText(value);
 }
 
 export function getTelegramVoiceCommand(command = '') {
@@ -16,6 +14,17 @@ export function getTelegramVoiceCommand(command = '') {
         action: verb === 'send' ? 'sendDirect' : 'compose',
         draft
     });
+
+    if (/^telegram\s+(?:send|write|compose)\b/.test(lower) && !/\b(?:to|for)\b/.test(lower)) {
+        return { action: 'compose', draft: { chatId: '', text: '' } };
+    }
+
+    if (
+        new RegExp(`^${politePrefix}(?:send|share)\\s+it\\s+to\\s+telegram(?:\\s+please)?$`).test(lower)
+        || new RegExp(`^${politePrefix}(?:send|share)\\s+(?:this|that)\\s+to\\s+telegram(?:\\s+please)?$`).test(lower)
+    ) {
+        return { action: 'compose', draft: { chatId: '', text: '' } };
+    }
 
     // Do not treat bare "send it to …" as Telegram: that phrase is used for Gmail drafts.
     // Photo shares must name the media, or say telegram (e.g. "send it to joy on telegram").
@@ -78,7 +87,11 @@ export function getTelegramVoiceCommand(command = '') {
         return { action: 'openPanel' };
     }
 
-    if (/^(?:close|hide|dismiss|exit)\s+telegram$/.test(lower)) {
+    if (
+        /^(?:close|hide|dismiss|exit)\s+(?:my\s+)?telegram$/.test(lower)
+        || /^(?:close|hide|dismiss|exit)\s+(?:my\s+)?telegram(?:\s+(?:messages?|chat|panel|screen|window))?$/.test(lower)
+        || /^(?:close|hide|dismiss|exit)\s+(?:the\s+)?telegram(?:\s+(?:messages?|chat|panel|screen|window))?$/.test(lower)
+    ) {
         return { action: 'close' };
     }
 

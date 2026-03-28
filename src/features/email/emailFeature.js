@@ -2,8 +2,12 @@ import { extractRecipientReference, extractSpokenEmailAddress } from '../../serv
 import { generateWithPrompt } from '../../services/geminiText.js';
 import {
     isCorrectionIntentUtterance,
+    isGmailSendAffirmation,
     isRecipientNoiseOnly,
+    isStrongEmailSendDraftCommand,
     isSubjectSlotNoiseOnly,
+    isVideoOpenVoiceRequest,
+    parseEmailOpenChoice,
     parseEmailDraftFollowUp,
     parseEmailStatusFollowUp
 } from '../../services/voiceDialog/emailFollowUpParse.js';
@@ -15,6 +19,18 @@ import {
     getGmailPanelStageTitle,
     getGmailVoicePills
 } from '../../services/voiceDialog/gmailPrompts.js';
+import {
+    recordConversationAction,
+    setToolBranchState
+} from '../../services/toolConversation.js';
+
+export function canConfirmGmailSend({
+    pendingEmailReview = null,
+    currentSidePanelAction = '',
+    isGmailPanelVisible = false,
+} = {}) {
+    return Boolean(pendingEmailReview && currentSidePanelAction === 'gmail' && isGmailPanelVisible);
+}
 
 export function createEmailFeature(env = {}) {
     const {
@@ -334,6 +350,29 @@ export function createEmailFeature(env = {}) {
             stage,
             source: String(options.source || 'email').trim() || 'email'
         };
+        setToolBranchState(state, 'gmail', {
+            currentTask: 'review draft',
+            currentIntent: {
+                family: 'gmail',
+                action: 'compose',
+                confidence: 0.9
+            },
+            activePanel: 'gmail',
+            panelStack: ['gmail'],
+            draft: cloneEmailDraft(state.gmailComposeDraft),
+            lastUtterance: String(options.source || 'email').trim() || 'email',
+            note: String(options.summary || 'Email draft ready.').trim()
+        });
+        recordConversationAction(state, {
+            tool: 'gmail',
+            action_type: 'draft_opened',
+            target_object: 'gmail-draft',
+            previous_state: null,
+            new_state: cloneEmailDraft(state.gmailComposeDraft),
+            undo_strategy: 'restore_previous_draft',
+            undo_window: 'session',
+            user_visible_summary: 'Opened an email draft'
+        });
         await openGmailInboxPanel({ summary: options.summary || 'Email draft ready.' });
         return buildDraftReviewReply(state.gmailComposeDraft, stage);
     }
@@ -367,6 +406,7 @@ export function createEmailFeature(env = {}) {
     }
 
     async function applyDraftUpdate(partial = {}, summary = 'Email draft updated.') {
+        const previousDraft = cloneEmailDraft(state.gmailComposeDraft);
         pushUndoDraftSnapshot();
         const prevStage = state.pendingEmailReview?.stage;
         resetGmailComposeDraft({
@@ -389,6 +429,29 @@ export function createEmailFeature(env = {}) {
             stage: nextStage,
             offerPolish
         };
+        setToolBranchState(state, 'gmail', {
+            currentTask: 'edit draft',
+            currentIntent: {
+                family: 'gmail',
+                action: nextStage === 'awaitingApproval' ? 'review' : 'compose',
+                confidence: 0.92
+            },
+            activePanel: 'gmail',
+            panelStack: ['gmail'],
+            draft: cloneEmailDraft(state.gmailComposeDraft),
+            lastUtterance: summary,
+            note: summary
+        });
+        recordConversationAction(state, {
+            tool: 'gmail',
+            action_type: 'draft_updated',
+            target_object: 'gmail-draft',
+            previous_state: previousDraft,
+            new_state: cloneEmailDraft(state.gmailComposeDraft),
+            undo_strategy: 'restore_previous_draft',
+            undo_window: 'session',
+            user_visible_summary: summary
+        });
         await openGmailInboxPanel({ summary });
         return buildDraftReviewReply(state.gmailComposeDraft, nextStage);
     }
@@ -425,7 +488,11 @@ export function createEmailFeature(env = {}) {
                 subjectSkipped: nextSubject ? false : !!draft.subjectSkipped
             }, 'Polished your draft.');
             if (state.pendingEmailReview) {
-                state.pendingEmailReview = { ...state.pendingEmailReview, offerPolish: false };
+                state.pendingEmailReview = {
+                    ...state.pendingEmailReview,
+                    offerPolish: false,
+                    stage: 'awaitingSendDecision'
+                };
             }
             await quickReply(reply, 'happy');
         } catch (err) {
@@ -436,7 +503,31 @@ export function createEmailFeature(env = {}) {
     }
 
     async function handlePendingVoiceFollowUp(command = '') {
-        const followUp = parseEmailDraftFollowUp(command);
+        if (isVideoOpenVoiceRequest(command)) {
+            return false;
+        }
+        const openChoice = parseEmailOpenChoice(command);
+        if (state.pendingEmailReview?.stage === 'awaitingOpenChoice' && openChoice) {
+            if (openChoice.action === 'create') {
+                state.pendingEmailReview = null;
+                const reply = await openDraftForReview({}, {
+                    summary: 'Email draft ready. Follow the steps: who to send to, subject, then message.',
+                    source: 'open-email-create'
+                });
+                await quickReply(reply, 'happy');
+                return true;
+            }
+            if (openChoice.action === 'review') {
+                state.pendingEmailReview = null;
+                await openGmailInboxPanel({ summary: 'Email list open.' });
+                await quickReply('Email list open. Say open inbox, read 1, or create a new email.', 'happy');
+                return true;
+            }
+        }
+        let followUp = parseEmailDraftFollowUp(command);
+        if (followUp?.action === 'raw' && isStrongEmailSendDraftCommand(command)) {
+            followUp = { action: 'sendDraft' };
+        }
         const statusFollowUp = parseEmailStatusFollowUp(command);
         const inGmailContext = !!(state.pendingEmailReview || state.currentSidePanelAction === 'gmail');
 
@@ -684,6 +775,29 @@ export function createEmailFeature(env = {}) {
             }, resolved.recipient ? 'Recipient updated.' : 'Recipient noted.');
             await quickReply(reply, 'happy');
             return true;
+        }
+
+        if (pending.stage === 'awaitingSendDecision') {
+            if (followUp.action === 'sendDraft' || followUp.action === 'confirmDraft' || isGmailSendAffirmation(command)) {
+                const result = await sendCurrentGmailDraft(state.gmailComposeDraft);
+                await quickReply(result.text, result.ok ? 'happy' : 'sad');
+                return true;
+            }
+            if (followUp.action === 'requestCorrection' || followUp.action === 'improveDraft') {
+                state.pendingEmailReview = { ...pending, stage: 'awaitingCorrection' };
+                await quickReply('Okay. Tell me what to change.', 'happy');
+                return true;
+            }
+            if (followUp.action === 'cancelDraft') {
+                clearPendingEmailReview();
+                state.gmailDraftUndoStack = [];
+                resetGmailComposeDraft({ to: '', subject: '', text: '', attachments: [] });
+                try {
+                    await openGmailInboxPanel({ summary: 'Draft cleared.' });
+                } catch (_) { /* panel optional */ }
+                await quickReply('Okay, I cleared that draft.', 'happy');
+                return true;
+            }
         }
 
         // "Send" / "really" while on subject or message step must send (or confirm), not become field text
@@ -1229,6 +1343,42 @@ export function createEmailFeature(env = {}) {
             threadId: String(sendResult?.threadId || '').trim(),
             verified
         };
+        setToolBranchState(state, 'gmail', {
+            currentTask: 'email sent',
+            currentIntent: {
+                family: 'gmail',
+                action: 'sendDirect',
+                confidence: 1
+            },
+            activePanel: 'gmail',
+            panelStack: ['gmail'],
+            draft: {
+                to,
+                subject,
+                text: '',
+                attachments: []
+            },
+            lastUtterance: String(options.summary || '').trim() || `Email sent to ${to}`,
+            note: verified ? `Sent email to ${to}` : `Gmail accepted email for ${to}`
+        });
+        recordConversationAction(state, {
+            tool: 'gmail',
+            action_type: 'email_sent',
+            target_object: sentId || to,
+            previous_state: {
+                to,
+                subject,
+                text,
+                attachments
+            },
+            new_state: {
+                id: sentId,
+                verified
+            },
+            undo_strategy: 'compensating_followup',
+            undo_window: 'session',
+            user_visible_summary: verified ? `Sent email to ${to}` : `Accepted email for ${to}`
+        });
 
         clearPendingEmailReview();
         resetGmailComposeDraft();
@@ -1321,6 +1471,17 @@ export function createEmailFeature(env = {}) {
             state.gmailSelectedMessage = null;
             updateGmailAuthUi();
             await quickReply('Gmail disconnected.', 'happy');
+            return;
+        }
+
+        if (gmailCmd.action === 'openEmail') {
+            state.pendingEmailReview = {
+                stage: 'awaitingOpenChoice',
+                source: 'email'
+            };
+            await openGmailInboxPanel({ summary: 'Email is open. Say create for a new email, or review for the email list.' });
+            updateGmailAuthUi();
+            await quickReply('Email is open. Do you want to create a new email or review the email list?', 'happy');
             return;
         }
 
@@ -1574,5 +1735,8 @@ export function createEmailFeature(env = {}) {
 
         // For other parts (optional wiring)
         buildEmailPayloadFromContext,
+
+        // Panel lifecycle
+        closePanel: clearPendingEmailReview,
     };
 }

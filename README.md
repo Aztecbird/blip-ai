@@ -172,3 +172,5 @@ curl -X POST http://127.0.0.1:8789/api/telegram/send-test
 - `.blip-data/` is ignored by git
 - If port `5173` is already in use, `start-dev.sh` reuses the existing frontend and only manages the local backends it started
 - If `kokoro_env` is missing, the dev stack still starts and warns instead of failing
+- Internal intent parsing now uses a shared command normalizer and parse-result helper so the routing modules stay in sync.
+- Voice routing now has a shared assistant router so Gmail, Telegram, and care-cam parsing are decided from one snapshot.

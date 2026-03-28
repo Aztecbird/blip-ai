@@ -1,11 +1,8 @@
+import { cleanText, normalizeVoiceCommandText } from './textParsing.js';
 import { isRecipientNoiseOnly } from './voiceDialog/emailFollowUpParse.js';
 
-function cleanText(text = '') {
-    return String(text || '').trim().replace(/\s+/g, ' ');
-}
-
 function normalizeText(text = '') {
-    let value = cleanText(text).toLowerCase();
+    let value = normalizeVoiceCommandText(text);
     value = value.replace(/\b(i\s+)wanna\b/g, '$1want to');
     const replacements = {
         'e-mail': 'email',
@@ -25,6 +22,20 @@ function normalizeText(text = '') {
 function extractEmail(text = '') {
     const match = String(text || '').match(/[\w.-]+@[\w.-]+\.\w+/);
     return match ? match[0] : '';
+}
+
+const TELEGRAM_RECIPIENT_NOISE = new Set([
+    'send', 'sending', 'sent', 'write', 'compose', 'message', 'messages', 'text', 'telegram',
+    'chat', 'photo', 'picture', 'image', 'shot', 'snapshot', 'help', 'didnt', 'didn',
+    'dont', 'don', 'want', 'need', 'go', 'open', 'close'
+]);
+
+function isTelegramRecipientNoise(value = '') {
+    const t = String(value || '').trim().toLowerCase();
+    if (!t) return true;
+    if (t.includes('@')) return false;
+    if (isRecipientNoiseOnly(t)) return true;
+    return TELEGRAM_RECIPIENT_NOISE.has(t) || t.length <= 2;
 }
 
 function stripLeadingSayTell(message = '') {
@@ -117,16 +128,17 @@ export function parseNaturalMessageFlow(rawText = '', context = {}) {
     ];
     const telegramTriggers = [
         'send telegram', 'compose telegram', 'send message',
-        'telegram', 'message ', 'text someone'
+        'telegram', 'text someone'
     ];
 
     const hasGmailIntent = text.includes('email') || gmailTriggers.some((trigger) => text.includes(trigger));
     const messageOnTelegramMatch = raw.match(/\bmessage\s+(\S+)\s+on\s+telegram(?:\s+(.+))?$/i);
+    const allowBareMessageTelegram = activePanel === 'telegram' || Boolean(context.telegramFlow);
     const hasTelegramIntent = !text.includes('email') && (
         Boolean(messageOnTelegramMatch)
         || text.includes('telegram')
         || text.includes('send message')
-        || /^message\s+/i.test(text)
+        || (allowBareMessageTelegram && /^message\s+/i.test(text))
         || telegramTriggers.some((trigger) => text.includes(trigger))
     );
 
@@ -171,6 +183,10 @@ export function parseNaturalMessageFlow(rawText = '', context = {}) {
     }
 
     if (hasTelegramIntent) {
+        if (/^telegram\s+(?:send|write|compose)\b/i.test(raw) && !/\b(?:to|for)\b/i.test(raw)) {
+            return { channel: 'telegram', action: 'compose', draft: { chatId: '', text: '' } };
+        }
+
         let recipient = parseRecipientAfterTo(raw);
         let message = parseMessageFromCommand(raw);
 
@@ -190,12 +206,22 @@ export function parseNaturalMessageFlow(rawText = '', context = {}) {
         if (!recipient) {
             const compactMatch = raw.match(/(?:telegram|message)\s+([a-zA-Z0-9._-]+)\s+(.+)/i);
             if (compactMatch?.[1] && compactMatch?.[2]) {
-                recipient = cleanText(compactMatch[1]);
-                message = stripLeadingSayTell(compactMatch[2]);
+                const compactRecipient = cleanText(compactMatch[1]);
+                if (!isTelegramRecipientNoise(compactRecipient)) {
+                    recipient = compactRecipient;
+                    message = stripLeadingSayTell(compactMatch[2]);
+                }
             }
         }
 
         if (!recipient && !message && /^(?:send|write|compose)\s+telegram$/i.test(text)) {
+            return { channel: 'telegram', action: 'compose', draft: { chatId: '', text: '' } };
+        }
+
+        if (
+            !recipient && !message
+            && /\b(?:send|share|push)\s+(?:it|this|that)\s+to\s+telegram\b/i.test(raw)
+        ) {
             return { channel: 'telegram', action: 'compose', draft: { chatId: '', text: '' } };
         }
 

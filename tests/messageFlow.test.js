@@ -34,3 +34,20 @@ test('parseRecipientAfterTo ignores email to send and command words', () => {
     assert.equal(parseRecipientAfterTo('send email to send'), '');
     assert.equal(parseRecipientAfterTo('send email to bob@example.com'), 'bob@example.com');
 });
+
+test('parseNaturalMessageFlow does not turn telegram command words into a recipient', () => {
+    const a = parseNaturalMessageFlow('telegram send message', {});
+    assert.equal(a?.channel, 'telegram');
+    assert.equal(a?.draft?.chatId, '');
+    assert.equal(a?.draft?.text, '');
+
+    const b = parseNaturalMessageFlow("telegram didn't want to send message", {});
+    assert.equal(b, null);
+});
+
+test('parseNaturalMessageFlow send it to telegram opens telegram compose without bogus chat id', () => {
+    const r = parseNaturalMessageFlow('send it to telegram', {});
+    assert.equal(r?.channel, 'telegram');
+    assert.equal(r?.draft?.chatId, '');
+    assert.equal(r?.draft?.text, '');
+});

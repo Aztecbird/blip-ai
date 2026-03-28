@@ -9,6 +9,7 @@ export default defineConfig({
     },
     server: {
         port: 5173,
+        host: true,
         cors: true,
         // Avoid stale UI when the browser caches dev responses aggressively.
         headers: { 'Cache-Control': 'no-store' },
@@ -33,6 +34,14 @@ export default defineConfig({
                 target: 'http://127.0.0.1:8791',
                 changeOrigin: true
             },
+            '/api/care-cam': {
+                target: 'http://127.0.0.1:8794',
+                changeOrigin: true
+            },
+            '/api/hub': {
+                target: 'http://127.0.0.1:8795',
+                changeOrigin: true
+            },
             '/api/openai-image': {
                 target: 'http://127.0.0.1:8790',
                 changeOrigin: true
@@ -52,5 +61,8 @@ export default defineConfig({
                 }
             }
         }
+    },
+    preview: {
+        host: true
     }
 })

@@ -1,7 +1,7 @@
 {
     "name": "blip-ai",
     "private": true,
-    "version": "6.7",
+    "version": "4.3.24",
     "type": "module",
     "scripts": {
         "dev": "bash ./start-dev.sh",
@@ -17,6 +17,8 @@
         "dev:gmail-backend": "node server/googleGmailBackend.js",
         "dev:telegram-backend": "node server/telegramBackend.js",
         "dev:media-backend": "node server/mediaActionsBackend.js",
+        "dev:care-cam-backend": "node server/careCamBackend.js",
+        "dev:hub-backend": "node server/hubBackend.js",
         "dev:openai-image-backend": "node server/openaiImageBackend.js",
         "dev:weather-backend": "node server/weatherBackend.js",
         "dev:gemini-backend": "node server/geminiBackend.js",

@@ -1,6 +1,7 @@
+import { normalizeVoiceCommandText } from './textParsing.js';
+
 function normalizeText(value = '') {
-    let s = String(value || '')
-        .toLowerCase()
+    let s = normalizeVoiceCommandText(value)
         .replace(/\b(i\s+)wanna\b/g, '$1want to')
         .replace(/\b(i\s+)gonna\b/g, '$1going to')
         .replace(/\be-mail\b/g, 'email');
@@ -19,10 +20,12 @@ function isValidEmail(value = '') {
 }
 
 function cleanRecipientReference(fragment = '') {
-    return String(fragment || '')
+    let s = String(fragment || '')
         .toLowerCase()
         .replace(/[!?,'"()]/g, ' ')
         .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\.+$/g, '')
         .trim()
         .replace(/^(?:send|mail|email)\s+(?:it|this|that)\s+(?:to\s+)?/g, '')
         .replace(/^(?:send|mail|email)\s+to\s+/g, '')
@@ -30,6 +33,37 @@ function cleanRecipientReference(fragment = '') {
         .replace(/^(?:to\s+)?(?:(?:the\s+)?(?:mail|email)\s+)+/, '')
         .replace(/\s+(?:please|pls|thanks|thank you|for me|now)\s*$/g, '')
         .trim();
+
+    // ASR often merges "no / I / just / send it" into a bogus recipient fragment.
+    const sendOnlyWhole = /^(?:no\s+)?(?:i\s+)?just\s+send(?:\s+it)?$/;
+    if (sendOnlyWhole.test(s)) return '';
+    if (/^no\s+just\s+send(?:\s+it)?$/.test(s)) return '';
+    if (/^i\s+just\s+send(?:\s+it)?$/.test(s)) return '';
+    if (/^(?:and\s+)?just\s+send(?:\s+it)?$/.test(s)) return '';
+    if (/^send(?:\s+it)?$/.test(s)) return '';
+    if (/^go\s+(?:on\s+)?send(?:\s+it)?$/.test(s)) return '';
+    if (/^now\s+send(?:\s+it)?$/.test(s)) return '';
+
+    let prev;
+    do {
+        prev = s;
+        s = s
+            .replace(/^(?:no\s+)?(?:i\s+)?just\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
+            .replace(/^no\s+just\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
+            .replace(/^i\s+just\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
+            .replace(/^(?:and\s+)?just\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
+            .replace(/^(?:please\s+)?go\s+(?:on\s+)?send(?:\s+it)?(?:\s+to\s+)?/, '')
+            .replace(/^now\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
+            .trim();
+    } while (s !== prev);
+
+    s = s
+        .replace(/\s+(?:no\s+)?(?:i\s+)?just\s+send(?:\s+it)?$/, '')
+        .replace(/\s+(?:and\s+)?just\s+send(?:\s+it)?$/, '')
+        .replace(/\s+just\s+send(?:\s+it)?$/, '')
+        .trim();
+
+    return s;
 }
 
 export function extractSpokenEmailAddress(fragment = '') {
@@ -157,6 +191,18 @@ export function extractGmailShareRecipientRequest(command = '') {
     } else if (rest) {
         recipientQuery = extractRecipientReference(rest);
         recipient = extractSpokenEmailAddress(recipientQuery);
+    }
+
+    // Bare "send it" / "share that" with no thing to share, no recipient, no subject — not a new
+    // context share (prevents shareCurrent from re-opening compose when the user means send/confirm).
+    if (
+        shareType === 'auto'
+        && !recipient
+        && !recipientQuery
+        && !subject
+        && !String(rest || '').trim()
+    ) {
+        return null;
     }
 
     return {
@@ -349,9 +395,11 @@ export function getGmailVoiceCommand(command = '') {
         || /^(?:check\s+my\s+email|check\s+email)$/.test(lower)
         || /^(?:can\s+you\s+)?(?:please\s+)?(?:open|show|check|view)\s+(?:my\s+)?(?:gmail|email|mail|inbox)\b/.test(lower)
         || (/\b(?:open|show|check|view)\b/.test(lower) && /\b(?:gmail|email|mail|inbox|mail tool|email tool|mail client|email client)\b/.test(lower))
-        || /^(?:email|mail|inbox)$/.test(lower)
     ) {
-        return { action: 'openInbox' };
+        if (/\b(?:verify|verify it|check|read|show me|see|look at|list)\b/.test(lower) || /\binbox\b/.test(lower)) {
+            return { action: 'openInbox' };
+        }
+        return { action: 'openEmail' };
     }
     if (
         /^(?:open|show|check|read|view)\s+(?:my\s+)?sent(?:\s+mail|\s+emails?|\s+folder)?$/.test(lower)
@@ -359,7 +407,10 @@ export function getGmailVoiceCommand(command = '') {
     ) {
         return { action: 'openSent' };
     }
-    if (/^(?:close|hide|dismiss|exit)\s+(?:my\s+)?(?:gmail|email|mail|inbox)$/.test(lower)) {
+    if (
+        /^(?:close|hide|dismiss|exit)\s+(?:my\s+)?(?:gmail|google\s+mail|email|mail|inbox|sent|draft|drafts)$/.test(lower)
+        || /^(?:close|hide|dismiss|exit)\s+(?:my\s+)?(?:sent\s+mail|sent\s+emails?|sent\s+folder)$/.test(lower)
+    ) {
         return { action: 'close' };
     }
     if (/^(?:refresh|reload)\s+(?:my\s+)?(?:gmail|email|mail|inbox)$/.test(lower)) {
@@ -396,6 +447,26 @@ export function getGmailVoiceCommand(command = '') {
         }
     }
 
+    const bareEmailTo = lower.match(/^email\s+(.+)$/);
+    if (bareEmailTo) {
+        const tail = String(bareEmailTo[1] || '').trim();
+        if (tail && !/^(please|thanks|thank you|now|ok|okay|blip)$/i.test(tail)) {
+            const recipientQuery = extractRecipientReference(tail);
+            const to = extractSpokenEmailAddress(recipientQuery);
+            if (to || recipientQuery) {
+                return {
+                    action: 'compose',
+                    draft: {
+                        to: to,
+                        recipientQuery: to ? '' : recipientQuery,
+                        subject: '',
+                        text: ''
+                    }
+                };
+            }
+        }
+    }
+
     const listContacts = extractGmailListContactsRequest(lower);
     if (listContacts) return listContacts;
 
@@ -419,7 +490,16 @@ export function getGmailVoiceCommand(command = '') {
     }
 
     const shareRequest = extractGmailShareRecipientRequest(lower);
-    if (shareRequest && (shareRequest.recipient || shareRequest.recipientQuery || shareRequest.shareType || shareRequest.subject)) {
+    const hasShareTarget = Boolean(
+        shareRequest
+        && (
+            shareRequest.recipient
+            || shareRequest.recipientQuery
+            || shareRequest.subject
+            || (shareRequest.shareType && shareRequest.shareType !== 'auto')
+        )
+    );
+    if (hasShareTarget) {
         return { action: 'shareCurrent', ...shareRequest };
     }
 

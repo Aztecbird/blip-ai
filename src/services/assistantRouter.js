@@ -3,16 +3,32 @@ import { parseBlipIntent } from './blipIntent.js';
 import { getGmailVoiceCommand } from './gmailVoice.js';
 import { parseNaturalMessageFlow } from './messageFlow.js';
 import { getTelegramVoiceCommand } from './telegramVoice.js';
+import { isStrongEmailSendDraftCommand } from './voiceDialog/emailFollowUpParse.js';
 import { getVoiceRoutingContext } from './voiceDialog/context.js';
 import { resolveStructuredVoiceIntent } from './voiceIntentSchema.js';
+import {
+    getCachedStructuredVoiceIntent,
+    setCachedStructuredVoiceIntent,
+    shouldCacheStructuredVoiceIntent
+} from './voiceRoutingCache.js';
+import { buildMessagingDraftSnapshot } from './messagingDraftSnapshot.js';
+import { getVoiceMessagingFocus } from './voiceSession.js';
 
-function hasVoiceDraft(draft = {}) {
-    return Boolean(
-        String(draft.to || '').trim()
-        || String(draft.subject || '').trim()
-        || String(draft.text || '').trim()
-        || String(draft.chatId || '').trim()
-    );
+function buildStructuredVoiceIntentContext(state = {}, baseRoute = {}) {
+    const drafts = buildMessagingDraftSnapshot(state);
+    return {
+        activePanel: String(state.currentSidePanelAction || ''),
+        gmailFlow: Boolean(baseRoute.routingContext?.gmailFlow),
+        telegramFlow: Boolean(baseRoute.routingContext?.telegramFlow),
+        pendingEmailReview: Boolean(state.pendingEmailReview),
+        pendingTelegramReview: Boolean(state.pendingTelegramReview),
+        careCamActive: Boolean(state.careCamRunning || state.careCamViewerMode || state.careCamSessionId),
+        lastMessagingFocus: getVoiceMessagingFocus(state) || '',
+        hasGmailDraft: drafts.gmail.hasDraft,
+        hasTelegramDraft: drafts.telegram.hasDraft,
+        gmailHasBody: drafts.gmail.hasBody,
+        telegramHasBody: drafts.telegram.hasBody,
+    };
 }
 
 function isGenericMessagingPrompt(lower = '') {
@@ -23,6 +39,77 @@ function isGenericMessagingPrompt(lower = '') {
         || /^(?:send|write|compose)\s+it(?:\s+.*)?$/.test(lower)
         || /^(?:message|text|email|mail)\s+(?:.+)$/.test(lower) && !/\b(?:gmail|telegram|email|mail|inbox)\b/.test(lower)
     );
+}
+
+function isBareSendAffirmation(lower = '') {
+    if (!lower) return false;
+    return /^(?:send|send it|send now|please send|go ahead and send|go ahead|go on)$/.test(lower);
+}
+
+function isBareSendRoutingCommand(command = '', normalized = '') {
+    const norm = String(normalized || '').trim();
+    if (isBareSendAffirmation(norm)) return true;
+    return isStrongEmailSendDraftCommand(command);
+}
+
+/**
+ * Routes bare “send” / strong-send phrases to Gmail or Telegram without always preferring Gmail
+ * when both drafts exist (uses short-lived messaging focus from voiceSession).
+ */
+function resolveBareSendRoute(command = '', normalized = '', state = {}, routingContext = {}, messagingDrafts = null) {
+    if (!isBareSendRoutingCommand(command, normalized)) return null;
+
+    const drafts = messagingDrafts || buildMessagingDraftSnapshot(state);
+    const gmailDraft = drafts.gmail.hasDraft;
+    const telegramDraft = drafts.telegram.hasDraft;
+    const panel = String(state.currentSidePanelAction || '');
+    const gf = Boolean(routingContext.gmailFlow);
+    const tf = Boolean(routingContext.telegramFlow);
+
+    if (panel === 'gmail' && (gf || gmailDraft)) {
+        return { family: 'gmail', action: 'sendDirect', confidence: 0.92 };
+    }
+    if (panel === 'telegram' && (tf || telegramDraft)) {
+        return { family: 'telegram', action: 'sendDirect', confidence: 0.92 };
+    }
+
+    if (gmailDraft && !telegramDraft) {
+        return { family: 'gmail', action: 'sendDirect', confidence: 0.9 };
+    }
+    if (telegramDraft && !gmailDraft) {
+        return { family: 'telegram', action: 'sendDirect', confidence: 0.9 };
+    }
+
+    if (gmailDraft && telegramDraft) {
+        const focus = getVoiceMessagingFocus(state);
+        if (focus === 'gmail') return { family: 'gmail', action: 'sendDirect', confidence: 0.86 };
+        if (focus === 'telegram') return { family: 'telegram', action: 'sendDirect', confidence: 0.86 };
+        return {
+            family: 'message',
+            action: 'clarify',
+            confidence: 0.48,
+            needsClarification: true,
+            clarificationPrompt: 'Do you want to send the Gmail draft or the Telegram message?'
+        };
+    }
+
+    if (gf && tf) {
+        const focus = getVoiceMessagingFocus(state);
+        if (focus === 'gmail') return { family: 'gmail', action: 'sendDirect', confidence: 0.78 };
+        if (focus === 'telegram') return { family: 'telegram', action: 'sendDirect', confidence: 0.78 };
+        return {
+            family: 'message',
+            action: 'clarify',
+            confidence: 0.42,
+            needsClarification: true,
+            clarificationPrompt: 'Do you want Gmail or Telegram?'
+        };
+    }
+
+    if (gf) return { family: 'gmail', action: 'sendDirect', confidence: 0.82 };
+    if (tf) return { family: 'telegram', action: 'sendDirect', confidence: 0.82 };
+
+    return null;
 }
 
 function buildClarificationPrompt(lower = '', routingContext = {}, state = {}) {
@@ -52,7 +139,9 @@ export function buildVoiceRoutingSnapshot(command = '', state = {}) {
         careCamHelpActive: state.careCamFallWatchActive
     });
 
-    const hasVoiceEmailDraft = hasVoiceDraft(state.gmailComposeDraft);
+    const messagingDrafts = buildMessagingDraftSnapshot(state);
+    const hasVoiceEmailDraft = messagingDrafts.gmail.hasDraft;
+    const hasVoiceTelegramDraft = messagingDrafts.telegram.hasDraft;
     const hasRecentGmailSend = Boolean(state.currentSidePanelAction === 'gmail' && state.lastGmailSendResult);
     const isFreshGmailComposeIntent = Boolean(
         gmailCmd
@@ -105,12 +194,21 @@ export function buildVoiceRoutingSnapshot(command = '', state = {}) {
         family = 'telegram';
         action = telegramCmd.action || 'none';
         confidence = 0.84;
-    } else if (isGenericMessagingPrompt(normalized)) {
-        family = 'message';
-        action = 'clarify';
-        confidence = 0.35;
-        needsClarification = true;
-        clarificationPrompt = buildClarificationPrompt(normalized, routingContext, state);
+    } else {
+        const bareSend = resolveBareSendRoute(command, normalized, state, routingContext, messagingDrafts);
+        if (bareSend) {
+            family = bareSend.family;
+            action = bareSend.action;
+            confidence = bareSend.confidence;
+            needsClarification = Boolean(bareSend.needsClarification);
+            clarificationPrompt = bareSend.clarificationPrompt || '';
+        } else if (isGenericMessagingPrompt(normalized)) {
+            family = 'message';
+            action = 'clarify';
+            confidence = 0.35;
+            needsClarification = true;
+            clarificationPrompt = buildClarificationPrompt(normalized, routingContext, state);
+        }
     }
 
     return {
@@ -125,6 +223,8 @@ export function buildVoiceRoutingSnapshot(command = '', state = {}) {
         telegramCmd,
         careCamIntent,
         hasVoiceEmailDraft,
+        hasVoiceTelegramDraft,
+        messagingDrafts,
         hasRecentGmailSend,
         shouldHandleEmailDraftVoice,
         isFreshGmailComposeIntent
@@ -215,6 +315,23 @@ function mergeStructuredVoiceIntent(baseRoute = {}, structuredIntent = null) {
     };
 }
 
+function finalizeStructuredVoiceRoute(baseRoute, structuredIntent) {
+    if (!structuredIntent) return baseRoute;
+    if (structuredIntent.needsClarification && !structuredIntent.clarificationPrompt) {
+        return {
+            ...baseRoute,
+            structuredVoiceIntent: structuredIntent,
+        };
+    }
+    if (structuredIntent.family === 'none' && structuredIntent.action === 'none') {
+        return {
+            ...baseRoute,
+            structuredVoiceIntent: structuredIntent,
+        };
+    }
+    return mergeStructuredVoiceIntent(baseRoute, structuredIntent);
+}
+
 export async function resolveVoiceRoutingSnapshot(command = '', state = {}, options = {}) {
     const baseRoute = buildVoiceRoutingSnapshot(command, state);
     const normalized = normalizeVoiceCommandText(command);
@@ -227,38 +344,30 @@ export async function resolveVoiceRoutingSnapshot(command = '', state = {}, opti
         return baseRoute;
     }
 
+    const cachedIntent = getCachedStructuredVoiceIntent(state, normalized);
+    if (cachedIntent) {
+        return finalizeStructuredVoiceRoute(baseRoute, cachedIntent);
+    }
+
     try {
-        const structuredIntent = await resolveStructuredVoiceIntent(command, {
-            activePanel: state.currentSidePanelAction || '',
-            gmailFlow: Boolean(baseRoute.routingContext?.gmailFlow),
-            telegramFlow: Boolean(baseRoute.routingContext?.telegramFlow),
-            pendingEmailReview: Boolean(state.pendingEmailReview),
-            pendingTelegramReview: Boolean(state.pendingTelegramReview),
-            careCamActive: Boolean(state.careCamRunning || state.careCamViewerMode || state.careCamSessionId),
-        }, {
-            apiKey,
-            model: options.model,
-        });
+        const structuredIntent = await resolveStructuredVoiceIntent(
+            command,
+            buildStructuredVoiceIntentContext(state, baseRoute),
+            {
+                apiKey,
+                model: options.model,
+            }
+        );
 
         if (!structuredIntent) {
             return baseRoute;
         }
 
-        if (structuredIntent.needsClarification && !structuredIntent.clarificationPrompt) {
-            return {
-                ...baseRoute,
-                structuredVoiceIntent: structuredIntent,
-            };
+        const resolved = finalizeStructuredVoiceRoute(baseRoute, structuredIntent);
+        if (shouldCacheStructuredVoiceIntent(structuredIntent)) {
+            setCachedStructuredVoiceIntent(state, normalized, structuredIntent);
         }
-
-        if (structuredIntent.family === 'none' && structuredIntent.action === 'none') {
-            return {
-                ...baseRoute,
-                structuredVoiceIntent: structuredIntent,
-            };
-        }
-
-        return mergeStructuredVoiceIntent(baseRoute, structuredIntent);
+        return resolved;
     } catch (error) {
         console.warn('Structured voice intent parsing failed:', error?.message || error);
         return baseRoute;

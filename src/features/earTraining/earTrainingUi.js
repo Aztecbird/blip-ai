@@ -15,6 +15,7 @@ const UI_IDS = {
     menuIntervalsBtn: 'ear-training-btn-intervals',
     menuHarmonyBtn: 'ear-training-btn-harmony',
     modeLabel: 'ear-training-mode-label',
+    tutorialEl: 'ear-training-tutorial',
     promptEl: 'ear-training-prompt',
     scoreEl: 'ear-training-score',
     optionsWrap: 'ear-training-options',
@@ -48,10 +49,11 @@ function clearElement(el) {
     el.innerHTML = '';
 }
 
-export function mountEarTrainingGame(rootEl) {
+export function mountEarTrainingGame(rootEl, options = {}) {
     if (!rootEl) return null;
 
     const audio = createEarTrainingAudio();
+    const speakLine = typeof options.speakLine === 'function' ? options.speakLine : null;
     let question = null;
     let mode = null; // 'interval'|'harmony'
     let answered = false;
@@ -74,6 +76,7 @@ export function mountEarTrainingGame(rootEl) {
         menuIntervalsBtn: byId(rootEl, UI_IDS.menuIntervalsBtn),
         menuHarmonyBtn: byId(rootEl, UI_IDS.menuHarmonyBtn),
         modeLabel: byId(rootEl, UI_IDS.modeLabel),
+        tutorialEl: byId(rootEl, UI_IDS.tutorialEl),
         promptEl: byId(rootEl, UI_IDS.promptEl),
         scoreEl: byId(rootEl, UI_IDS.scoreEl),
         optionsWrap: byId(rootEl, UI_IDS.optionsWrap),
@@ -93,6 +96,11 @@ export function mountEarTrainingGame(rootEl) {
         if (els.menuWrap) els.menuWrap.style.display = 'none';
         if (els.exerciseWrap) els.exerciseWrap.style.display = 'block';
         if (els.modeLabel) els.modeLabel.textContent = nextMode === 'interval' ? 'Intervals' : 'Harmony';
+        if (els.tutorialEl) {
+            els.tutorialEl.textContent = nextMode === 'interval'
+                ? 'Blip will play two notes. Listen and choose the interval.'
+                : 'Blip will play a triad. Listen and choose major or minor.';
+        }
 
         // Reset UI bits
         if (els.feedbackEl) {
@@ -118,6 +126,7 @@ export function mountEarTrainingGame(rootEl) {
         if (els.menuWrap) els.menuWrap.style.display = 'block';
         if (els.exerciseWrap) els.exerciseWrap.style.display = 'none';
         if (els.modeLabel) els.modeLabel.textContent = 'Intervals';
+        if (els.tutorialEl) els.tutorialEl.textContent = '';
 
         if (els.feedbackEl) {
             els.feedbackEl.textContent = '';
@@ -206,7 +215,7 @@ export function mountEarTrainingGame(rootEl) {
         }
     }
 
-    function submitAnswer(answerId) {
+    async function submitAnswer(answerId) {
         if (!question) return;
         if (playing) return;
         if (answered) return;
@@ -227,8 +236,15 @@ export function mountEarTrainingGame(rootEl) {
 
         if (isCorrect) {
             setFeedback('Correct!', 'correct');
+            if (typeof speakLine === 'function') {
+                await speakLine('Correct. Nice work.', 'happy');
+            }
         } else {
-            setFeedback(`Not quite. It was ${correctLabel}.`, 'wrong');
+            const message = `Not quite. It was ${correctLabel}. Try this one.`;
+            setFeedback(message, 'wrong');
+            if (typeof speakLine === 'function') {
+                await speakLine(message, 'gentle');
+            }
         }
 
         if (els.nextBtn) els.nextBtn.disabled = false;
@@ -244,6 +260,14 @@ export function mountEarTrainingGame(rootEl) {
 
         if (els.promptEl) els.promptEl.textContent = question.prompt;
         buildOptions(question);
+        if (typeof speakLine === 'function') {
+            void speakLine(
+                mode === 'interval'
+                    ? `What interval is this?`
+                    : 'What harmony is this?',
+                'curious'
+            );
+        }
 
         // Immediately play the new question (Next is clicked by the student).
         // Audio is initialized from this user gesture path.
@@ -254,6 +278,20 @@ export function mountEarTrainingGame(rootEl) {
         if (!question) return;
         if (playing) return;
         void playQuestion(question);
+    }
+
+    function startMode(nextMode) {
+        if (nextMode !== 'interval' && nextMode !== 'harmony') return;
+        setMode(nextMode);
+        if (typeof speakLine === 'function') {
+            void speakLine(
+                nextMode === 'interval'
+                    ? 'I will play two notes. Tell me the interval.'
+                    : 'I will play a triad. Tell me if it is major or minor.',
+                'curious'
+            );
+        }
+        nextQuestion();
     }
 
     // Event handlers (menu)
@@ -300,8 +338,9 @@ export function mountEarTrainingGame(rootEl) {
         getExpectedAnswerId: () => question?.correctAnswerId || null,
         getCurrentMode: () => mode,
         resetToMenu,
+        startInterval: () => startMode('interval'),
+        startHarmony: () => startMode('harmony'),
         replay: replayCurrent,
         next: nextQuestion
     };
 }
-

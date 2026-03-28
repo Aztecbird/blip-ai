@@ -8,6 +8,10 @@ test('getTelegramVoiceCommand opens the Telegram panel for compose prompts', () 
         getTelegramVoiceCommand('can you send a telegram'),
         { action: 'compose', draft: { chatId: '', text: '' } }
     );
+    assert.deepEqual(
+        getTelegramVoiceCommand('open telegram messages'),
+        { action: 'openPanel' }
+    );
 });
 
 test('getTelegramVoiceCommand parses direct Telegram message drafts', () => {
@@ -15,6 +19,15 @@ test('getTelegramVoiceCommand parses direct Telegram message drafts', () => {
         getTelegramVoiceCommand('send telegram message hello from blip'),
         { action: 'sendDirect', draft: { text: 'hello from blip' } }
     );
+    assert.deepEqual(
+        getTelegramVoiceCommand('telegram send message'),
+        { action: 'compose', draft: { chatId: '', text: '' } }
+    );
+});
+
+test('getTelegramVoiceCommand closes telegram from common close phrasing', () => {
+    assert.deepEqual(getTelegramVoiceCommand('close telegram'), { action: 'close' });
+    assert.deepEqual(getTelegramVoiceCommand('close my telegram panel'), { action: 'close' });
 });
 
 test('getTelegramVoiceCommand detects photo-share requests', () => {
@@ -58,6 +71,17 @@ test('getTelegramVoiceCommand still allows send it to on telegram for photos', (
     assert.deepEqual(
         getTelegramVoiceCommand('send it to joy on telegram'),
         { action: 'sharePhoto', quickSend: true, draft: { chatId: 'joy' } }
+    );
+});
+
+test('getTelegramVoiceCommand routes send it to telegram to compose not Gmail', () => {
+    assert.deepEqual(
+        getTelegramVoiceCommand('send it to telegram'),
+        { action: 'compose', draft: { chatId: '', text: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('please send this to telegram'),
+        { action: 'compose', draft: { chatId: '', text: '' } }
     );
 });
 
