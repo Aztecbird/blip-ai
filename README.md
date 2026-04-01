@@ -19,6 +19,8 @@ Blip is a local-first voice assistant with a Vite frontend and a small set of lo
   Handles Telegram bot sends for text and photos
 - `server/openaiImageBackend.js`
   Handles OpenAI image requests with server-side API key
+- `server/humeBackend.js`
+  Mints short-lived Hume access tokens for browser-side companion sensing
 - `server/mediaActionsBackend.js`
   Handles local desktop-only actions like wallpaper
 - `kokoro_server.py`
@@ -87,6 +89,10 @@ Important values:
 - `TELEGRAM_BOT_TOKEN=...`
 - `TELEGRAM_CHAT_ID=...`
 - `OPENAI_API_KEY=...`
+- `HUME_COMPANION_ENABLED=false`
+- `HUME_API_KEY=...`
+- `HUME_SECRET_KEY=...`
+- `HUME_CONFIG_ID=...`
 
 Service toggles:
 - `BLIP_ENABLE_KOKORO=1`
@@ -95,6 +101,7 @@ Service toggles:
 - `BLIP_ENABLE_TELEGRAM_BACKEND=0`
 - `BLIP_ENABLE_MEDIA_BACKEND=1`
 - `BLIP_ENABLE_OPENAI_IMAGE_BACKEND=0`
+- `BLIP_ENABLE_HUME_BACKEND=`
 
 ## Python backend setup
 
@@ -151,8 +158,14 @@ https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
 ```bash
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
+# Optional: name shortcuts voice/UI can use, e.g. joy:123456789
+TELEGRAM_CHAT_ALIASES=joy:123456789
+# Optional: when Blip sends with an empty chat id (common for voice), use this alias first
+TELEGRAM_DEFAULT_ALIAS=joy
 BLIP_ENABLE_TELEGRAM_BACKEND=1
 ```
+
+If you only define `joy` in `TELEGRAM_CHAT_ALIASES`, Blip also accepts **Blip Joy** / `blip joy` as the same chat. Set `TELEGRAM_DEFAULT_ALIAS=joy` when messages should go to Joy by default instead of whatever numeric id is in `TELEGRAM_CHAT_ID` alone.
 
 6. Start the backend:
 

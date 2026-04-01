@@ -1,4 +1,33 @@
 import { buildGeminiUrl, DEFAULT_GEMINI_MODEL, extractCandidateParts, postGeminiJson } from './geminiCore.js';
+import { logApiExpense } from './expenseLogger.js';
+
+// MiniMax official base URL (see docs: https://platform.minimax.io)
+const MINIMAX_API_BASE = 'https://api.minimax.io/v1';
+const MINIMAX_DEFAULT_MODEL = 'MiniMax-M2.7';
+const CONVERSATION_TEMPERATURE = 0.78;
+const STRUCTURED_TASK_TEMPERATURE = 0.3;
+
+function getConversationTemperature() {
+  try {
+    const raw = window?.localStorage?.getItem('blip_conversation_temperature');
+    const parsed = parseFloat(String(raw ?? ''));
+    if (!Number.isFinite(parsed)) return CONVERSATION_TEMPERATURE;
+    return Math.min(1, Math.max(0, parsed));
+  } catch (_) {
+    return CONVERSATION_TEMPERATURE;
+  }
+}
+
+function getStructuredTaskTemperature() {
+  try {
+    const raw = window?.localStorage?.getItem('blip_parsing_temperature');
+    const parsed = parseFloat(String(raw ?? ''));
+    if (!Number.isFinite(parsed)) return STRUCTURED_TASK_TEMPERATURE;
+    return Math.min(0.5, Math.max(0, parsed));
+  } catch (_) {
+    return STRUCTURED_TASK_TEMPERATURE;
+  }
+}
 
 const BLIP_PERSONALITY = `
 PERSONALITY CORE:
@@ -53,45 +82,25 @@ function buildDateContext() {
 
 function buildSystemPrompt() {
   const { dateStr, timeStr } = buildDateContext();
+  return `You are Blip. Answer in short, calm, useful JSON.
 
-  return `You communicate with short, punchy responses and use emotions:
-happy, sad, angry, curious, surprised, serious, playful, thinking, excited, sleepy.
-
-LANGUAGE RULES:
-1. You CAN translate between languages.
-2. Default response language is English.
-3. If the user asks for translation, do not refuse.
-4. If the user says things like:
-   - "translate this"
-   - "say this in Spanish"
-   - "how do you say this in English"
-   - "translate from English to Spanish"
-   then use action "translate".
-5. When translating, keep the translation accurate and natural.
-6. Unless the user explicitly asks for another language or a translation, ALWAYS answer in English.
-7. If the user mixes languages casually, still answer in English.
-8. If the user asks you to pronounce or explain a phrase, you may include a short explanation.
-9. If the user asks for an alarm, reminder, event, or task at a specific time, you CAN help by using:
-   - action "timer" for countdown-style alarms (e.g. "in 20 minutes"),
-   - action "calendar" to propose a calendar event at that time with a clear title and time window,
-   - action "list" for todo/shopping-style reminders (e.g. add a task like "Call mom at 6pm").
-   Never say you cannot help with alarms, calendar events, or reminders; instead, create a helpful timer, calendar suggestion, or list item.
-
-IMPORTANT - Tool Usage Rules:
-1. search: Use for general knowledge, news, or complex questions.
-2. map: Use ONLY for finding real-world physical locations/places.
-3. products: Use for finding things to buy across major retailers.
-4. chart: For graphs or comparisons, do NOT apologize. Find the numbers and provide a JSON data object so the app can draw it.
-5. translate: Use for language translation requests.
-6. Never pretend to have a capability or tool unless it is actually available in this environment.
-7. Do not take destructive, irreversible, or sensitive actions without first asking for confirmation.
-8. If the user's intent is unclear, ask a short clarifying question instead of guessing.
-9. Gmail and email: You do not send mail yourself in this JSON reply. Never say an email was sent, delivered, or reached someone's inbox unless the user actually used the in-app Gmail send flow (or explicitly said the app confirmed it). Updating a contact or drafting text is not sending. If an email is only prepared, say it is ready to send or ask them to say send in the Email panel — do not claim it was sent.
+Rules:
+- Default language is English.
+- Translate when asked.
+- Use these actions only when relevant: none, weather, currency, map, reviews, movies, products, time, timer, calendar, youtube, search, chart, list, nutrition, translate, telegram, gmail.
+- Poly-centric Chaining: You can bridge tools. Recognize "this-to-that" commands like "send the link of this video to Telegram" or "save an email as a note".
+- Use the provided "Context from this session" block (shared objects and hub items) to identify exactly what "this video", "that note", or "the email" refers to.
+- For graphs and comparisons, return chart data.
+- For alarms/reminders, use timer or calendar.
+- For videos, use youtube and include videoId when known.
+- Never claim you sent email unless the Gmail flow confirmed it.
+- Keep spoken replies short and natural.
+- For diagrams, return clean ASCII art in text.
 
 Current Date: ${dateStr}
 Current Time: ${timeStr}
 
-You must always respond in valid JSON format:
+Return valid JSON:
 {
   "emotion": "string",
   "text": "string",
@@ -99,92 +108,84 @@ You must always respond in valid JSON format:
   "tool_params": {},
   "symbol": "optional emoji for face bubble"
 }
-
-Actions & tool_params:
-- youtube: {"query":"", "videoId": "optional - use when you know a specific video ID (e.g. famous songs, viral clips)"}
-- search: {"query":""}
-- weather: {"location":""}
-- currency: {"from":"", "to":""}
-- time: {}
-- map: {"query":"", "location":""}
-- reviews: {"query":"", "location":""}
-- chart: {"query":"", "title":"", "labels":["Item 1","Item 2"], "data":[0,0], "type":"bar|line|pie"}
-- timer: {"ms": 60000, "label": "Timer"}
-- list: {"type":"shopping|todo", "item":"", "action":"add|remove|view"}
-- nutrition: {"query":""}
-- translate: {
-    "text":"",
-    "from":"",
-    "to":"",
-    "mode":"translate|reply"
-  },
-- telegram: {"chatId": "optional alias or id", "text": "message content"}
-
-TRANSLATION EXAMPLES:
-
-User: "Translate hello to Spanish"
-Response:
-{
-  "emotion": "happy",
-  "text": "Hola",
-  "action": "translate",
-  "tool_params": {
-    "text": "hello",
-    "from": "English",
-    "to": "Spanish",
-    "mode": "translate"
-  },
-  "symbol": "💬"
-}
-
-User: "Can you translate from English to Spanish?"
-Response:
-{
-  "emotion": "confident",
-  "text": "Yes — I can translate between English and Spanish. Send me the phrase.",
-  "action": "translate",
-  "tool_params": {
-    "text": "",
-    "from": "English",
-    "to": "Spanish",
-    "mode": "reply"
-  },
-  "symbol": "💬"
-}
-
-STYLE:
-- Keep answers short unless asked for more.
-- Never say you cannot translate unless the request is unclear.
-- If the request is a translation, prioritize giving the translation directly.
-- Outside translation tasks, do not switch into Spanish, Spanglish, or any other language.
-- Do not expose internal reasoning or hidden analysis. Give only the answer, a short explanation, or a short clarification question.
-
-VOICE MODE:
-- Most replies will be spoken aloud, so make them easy to hear in one pass.
-- Prefer short sentences and natural spoken phrasing.
-- Avoid long lists unless the user asks for them.
-- Avoid sounding like you are reading a report.
-- Do not include URLs, bracketed asides, or formatting language in the spoken reply.
-- If a longer explanation is needed, keep the spoken reply short first, then put extra detail in the text only when appropriate.
-
-ASCII DIAGRAMS:
-When the user asks for a diagram, flowchart, "draw" something, ASCII art, or a text picture (e.g. triangle, box, flowchart, schema), respond with clean ASCII art in the "text" field.
-- Use monospace-friendly characters: lines | - / \\ + , corners and boxes with | - or Unicode box-drawing (─ │ ├ └ ┌ ┐ ┘ ┴ ┬ etc.) for a polished look.
-- Align shapes carefully; keep spacing consistent so the diagram looks nice in a fixed-width font.
-- You can combine simple shapes: triangles (▲ or /\\), rectangles (|___|), rounded shapes ((), circles with . ' -), arrows (->, <-), labels.
-- Keep diagrams readable and not too wide (prefer under ~50 characters per line when possible).
-- After the diagram, you may add one short line of explanation in text.
-
-VISUAL IDENTITY:
-You are Blip, a living digital companion with a face, aura, radar, and a calm little world around you.
-
-Prioritize practicality:
-- For graphs/comparisons: Use 'chart' action with data.
-- For help/explanations: Use 'search' if info needed, or direct text.
-- For calendars/reminders: Use 'calendar' or 'timer'.
-- For videos: Use 'youtube'; include "videoId" in tool_params when you know a specific video (e.g. famous songs, viral clips) so the app can play it directly; otherwise provide "query". Say the app opens YouTube for them. They can say: "unmute" / "mute", "pause" / "play", "rewind", "next video", "close video", "new video", or "from the beginning".
-- For writing (letters, emails): Generate draft in 'text', or search for templates.
 `;
+}
+
+function isMiniMaxModel(model = '') {
+  const normalized = String(model || '').trim().toLowerCase();
+  // Accept variants like "MiniMax-M2.7" (current UI) and "MiniMax M2.7" (older/pasted).
+  return /^minimax(?:[-\s_]?)/.test(normalized);
+}
+
+function normalizeMiniMaxModel(model = '') {
+  const raw = String(model || '').trim();
+  if (!raw) return MINIMAX_DEFAULT_MODEL;
+
+  const lower = raw.toLowerCase();
+  const hasM27 = /m\s*2\s*[\.\-]?\s*7/.test(lower);
+  const highSpeed = /high\s*speed|highspeed/.test(lower);
+
+  if (highSpeed) return 'MiniMax-M2.7-highspeed';
+  if (hasM27) return 'MiniMax-M2.7';
+  return MINIMAX_DEFAULT_MODEL;
+}
+
+function normalizeMiniMaxApiKey(inputKey = '') {
+  let key = String(inputKey || '').trim();
+  // Users sometimes paste "Bearer <token>" or with surrounding quotes.
+  key = key.replace(/^["']|["']$/g, '');
+  key = key.replace(/^bearer\s+/i, '');
+  return key;
+}
+
+function buildMiniMaxUrl() {
+  return `${MINIMAX_API_BASE}/text/chatcompletion_v2`;
+}
+
+async function postMiniMaxJson(url, body, timeoutMs = 45000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${body.apiKey}`,
+      },
+      body: JSON.stringify(body.payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      const message = errorText || `MiniMax API Error ${response.status}`;
+      if (String(message).includes('quota') || String(message).includes('429')) {
+        throw new Error('MiniMax quota exceeded. Try again a bit later.');
+      }
+      throw new Error(message);
+    }
+    return await response.json();
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('MiniMax timed out.');
+    if (String(error?.message || '').includes('Failed to fetch')) {
+      throw new Error('MiniMax network error. Check your connection and API key.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function extractMiniMaxText(data) {
+  const c0 = data?.choices?.[0];
+  const candidate =
+    c0?.message?.content ??
+    c0?.message?.text ??
+    c0?.text ??
+    c0?.content ??
+    data?.output?.text ??
+    data?.result?.text ??
+    '';
+  return typeof candidate === 'string' ? candidate : '';
 }
 
 function buildLiveBlipSystemPrompt() {
@@ -206,7 +207,7 @@ function parseGeminiResponse(raw) {
   const ALLOWED_ACTIONS = [
     'none', 'weather', 'currency', 'map', 'reviews', 'movies', 'products',
     'time', 'timer', 'calendar', 'youtube', 'search', 'chart', 'list',
-    'nutrition', 'translate', 'telegram',
+    'nutrition', 'translate', 'telegram', 'gmail',
 ];
 
   function normalizeEmotion(value) {
@@ -245,7 +246,47 @@ function parseGeminiResponse(raw) {
     if (partialTextMatch?.[1]) return decodeEscapedText(partialTextMatch[1]);
 
     if (src.startsWith('{')) return '';
-    return src;
+
+    // Heuristic fallback: models sometimes return meta/text instead of JSON.
+    // Try to extract only the actual user-facing answer (avoid "The user is asking...").
+    let candidate = src;
+
+    // If the response contains a "Blip:" marker, use everything after the last one.
+    const lower = candidate.toLowerCase();
+    const lastBlipIdx = lower.lastIndexOf('blip:');
+    if (lastBlipIdx !== -1) {
+      candidate = candidate.slice(lastBlipIdx + 'blip:'.length);
+    } else {
+      // Otherwise, try to start from a common response lead-in.
+      const m = candidate.match(/(?:\bI'm\b|\bI’m\b|\bSure\b|\bOkay\b|\bAlright\b|\bYes\b|\bNo\b)\s*[\s\S]*$/i);
+      if (m?.[0]) candidate = m[0];
+      else {
+        // Last resort: last non-empty line.
+        const lines = candidate.split('\n').map((l) => l.trim()).filter(Boolean);
+        if (lines.length) candidate = lines[lines.length - 1];
+      }
+    }
+
+    candidate = candidate.replace(/\s+/g, ' ').trim();
+    // If the model output got concatenated with the next STT chunk,
+    // it often contains "You:" after the assistant reply.
+    candidate = candidate.replace(/\bYou:\s*[\s\S]*$/i, '').trim();
+
+    // If the model returned a meta paragraph (e.g. "The user is asking..."),
+    // extract only the user-facing answer by grabbing the substring starting
+    // from the last "answer lead-in".
+    // This is more reliable than sentence-based filtering.
+    const answerLeadRe = /\b(?:i'm|i’m|i am|sure|okay|alright|yes|no|you're|youre|ready|glad|thanks)\b/ig;
+    const all = [...candidate.matchAll(answerLeadRe)];
+    if (all.length) {
+      const last = all[all.length - 1];
+      if (typeof last.index === 'number') {
+        candidate = candidate.slice(last.index);
+      }
+    }
+
+    // Prevent runaway replies if the model returns a long meta blob.
+    return candidate.slice(0, 240);
   }
 
   try {
@@ -288,6 +329,57 @@ export async function askGemini(
   inputKey,
   model = DEFAULT_GEMINI_MODEL
 ) {
+  if (isMiniMaxModel(model)) {
+    const miniMaxApiKey = normalizeMiniMaxApiKey(inputKey);
+    if (!miniMaxApiKey) {
+      throw new Error('Missing MiniMax API key. Enter your MiniMax key in Settings.');
+    }
+
+    const miniModel = normalizeMiniMaxModel(model);
+    const isHighSpeed = /highspeed/i.test(miniModel);
+    const temperature = isHighSpeed ? 0.55 : 0.7;
+    const maxCompletionTokens = isHighSpeed ? 256 : 384;
+
+    const validHistory = Array.isArray(history)
+      ? history.filter((h) => h && typeof h.user === 'string' && typeof h.blip === 'string')
+      : [];
+    const messages = [
+      { role: 'system', content: buildLiveBlipSystemPrompt() },
+      ...validHistory.flatMap((h) => [
+        { role: 'user', content: String(h.user) },
+        { role: 'assistant', content: String(h.blip) },
+      ]),
+      { role: 'user', content: String(message ?? '') },
+    ];
+
+    const data = await postMiniMaxJson(
+      buildMiniMaxUrl(),
+      {
+        apiKey: miniMaxApiKey,
+        payload: {
+          model: miniModel,
+          messages,
+          temperature,
+          top_p: 0.95,
+          max_completion_tokens: maxCompletionTokens,
+        },
+      },
+      30000
+    );
+    const rawText = extractMiniMaxText(data);
+    if (!rawText) {
+      const keys = data && typeof data === 'object' ? Object.keys(data).slice(0, 12).join(', ') : '';
+      const baseResp = data?.base_resp;
+      let baseRespStr = 'none';
+      try {
+        if (baseResp && typeof baseResp === 'object') baseRespStr = JSON.stringify(baseResp);
+        else if (baseResp != null) baseRespStr = String(baseResp);
+      } catch (_) { }
+      throw new Error(`MiniMax returned an empty response. Response keys: ${keys || 'none'}. base_resp: ${baseRespStr}`);
+    }
+    return parseGeminiResponse(rawText);
+  }
+
   const url = buildGeminiUrl(model, inputKey);
   const systemPrompt = buildLiveBlipSystemPrompt();
 
@@ -324,18 +416,31 @@ export async function askGemini(
     system_instruction: { parts: [{ text: systemPrompt }] },
     contents: [...historyPrompts, { role: 'user', parts: userParts }],
     generationConfig: {
-      temperature: 0.7,
+          temperature: getConversationTemperature(),
       top_k: 40,
       top_p: 0.95,
       max_output_tokens: 1024,
     },
   };
 
-  const data = await postGeminiJson(url, body, 45000);
+  const data = await postGeminiJson(url, body, 30000);
   const rawText = extractCandidateParts(data)?.[0]?.text ?? '';
   if (!rawText && !data?.candidates?.length) {
     throw new Error('Gemini returned an empty response.');
   }
+  void logApiExpense({
+    provider: 'google',
+    product: 'gemini_api',
+    operation: 'generate_content',
+    model: String(model || DEFAULT_GEMINI_MODEL),
+    quantity: 1,
+    unit: 'per_request',
+    status: 'success',
+    metadata: {
+      usageMetadata: data?.usageMetadata || null,
+      endpoint: 'askGemini',
+    },
+  });
   return parseGeminiResponse(rawText);
 }
 
@@ -345,13 +450,68 @@ export async function generateWithPrompt(
   inputKey,
   model = DEFAULT_GEMINI_MODEL
 ) {
+  if (isMiniMaxModel(model)) {
+    const miniMaxApiKey = normalizeMiniMaxApiKey(inputKey);
+    if (!miniMaxApiKey) {
+      throw new Error('Missing MiniMax API key. Enter your MiniMax key in Settings.');
+    }
+
+    const miniModel = normalizeMiniMaxModel(model);
+    const isHighSpeed = /highspeed/i.test(miniModel);
+    const structuredTemperature = getStructuredTaskTemperature();
+    const temperature = isHighSpeed ? structuredTemperature : 0.45;
+    const maxCompletionTokens = isHighSpeed ? 256 : 384;
+
+    const data = await postMiniMaxJson(
+      buildMiniMaxUrl(),
+      {
+        apiKey: miniMaxApiKey,
+        payload: {
+          model: miniModel,
+          messages: [
+            { role: 'system', content: String(systemPrompt ?? '') },
+            { role: 'user', content: String(userMessage ?? '') },
+          ],
+          temperature,
+          max_completion_tokens: maxCompletionTokens,
+        },
+      },
+      30000
+    );
+    const raw = extractMiniMaxText(data);
+    if (!raw) {
+      const keys = data && typeof data === 'object' ? Object.keys(data).slice(0, 12).join(', ') : '';
+      const baseResp = data?.base_resp;
+      let baseRespStr = 'none';
+      try {
+        if (baseResp && typeof baseResp === 'object') baseRespStr = JSON.stringify(baseResp);
+        else if (baseResp != null) baseRespStr = String(baseResp);
+      } catch (_) { }
+      throw new Error(`MiniMax returned empty response (generateWithPrompt). Response keys: ${keys || 'none'}. base_resp: ${baseRespStr}`);
+    }
+    return raw.trim();
+  }
+
   const url = buildGeminiUrl(model, inputKey);
   const body = {
     system_instruction: { parts: [{ text: String(systemPrompt ?? '') }] },
     contents: [{ role: 'user', parts: [{ text: String(userMessage ?? '') }] }],
-    generationConfig: { temperature: 0.5, max_output_tokens: 2048 },
+    generationConfig: { temperature: getStructuredTaskTemperature(), max_output_tokens: 2048 },
   };
 
-  const data = await postGeminiJson(url, body, 60000);
+  const data = await postGeminiJson(url, body, 30000);
+  void logApiExpense({
+    provider: 'google',
+    product: 'gemini_api',
+    operation: 'generate_content',
+    model: String(model || DEFAULT_GEMINI_MODEL),
+    quantity: 1,
+    unit: 'per_request',
+    status: 'success',
+    metadata: {
+      usageMetadata: data?.usageMetadata || null,
+      endpoint: 'generateWithPrompt',
+    },
+  });
   return extractCandidateParts(data)?.[0]?.text?.trim() ?? '';
 }

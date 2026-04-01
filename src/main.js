@@ -1,6 +1,5 @@
 import './style.css'
-import './features/earTraining/earTrainingPanel.css'
-import { askOllama, checkOllamaStatus, warmUpModel, cancelCurrentRequest, generateWithOllama } from './services/ollama'
+import { askOllama, checkOllamaStatus, warmUpModel, cancelCurrentRequest } from './services/ollama'
 import { askGemini, generateWithPrompt } from './services/geminiText'
 import { generateSpeech } from './services/geminiTts'
 import { generateImage } from './services/imageProvider'
@@ -37,56 +36,26 @@ import {
     onGoogleGmailAuthStateChange,
     sendGoogleGmailMessage
 } from './services/googleGmail.js'
-import { getStudentDeskVoiceCommand } from './services/studentDeskVoice.js'
+import { getGmailVoiceCommand } from './services/gmailVoice.js'
 import {
+    getTelegramBackendConfig,
     getTelegramAuthState,
     initTelegram,
     onTelegramAuthStateChange,
+    saveTelegramBackendConfig,
     sendTelegramMessage,
     sendTelegramPhoto,
+    sendTelegramVideo,
     sendTelegramTest
 } from './services/telegram.js'
-import { getCameraDesignTransferCommand } from './services/cameraDesignVoice.js'
-import { analyzeHomeworkPhoto } from './services/homeworkVision.js'
-import { parseBlipIntent } from './services/blipIntent.js'
-import { resolveVoiceRoutingSnapshot } from './services/assistantRouter.js'
-import {
-    createToolConversationState,
-    getConversationSnapshot,
-    isGlobalUndoVoiceCommand,
-    recordConversationAction,
-    undoLastConversationAction,
-    setToolBranchState
-} from './services/toolConversation.js'
-import {
-    buildCareCamViewerUrl,
-    createCareCamSession,
-    getCareCamCommands,
-    getCareCamFrame,
-    getCareCamModeFromUrl,
-    getCareCamSessionStatus,
-    postCareCamCommand,
-    pushCareCamFrame
-} from './services/careCam.js'
+import { getTelegramVoiceCommand } from './services/telegramVoice.js'
 /* Blip face emotions: setBlipEmotion(emotion) applies .emotion-{name} to #blip-face; used in setPersona and after synthesis. */
 import { setBlipEmotion } from './services/emotions.js'
 import * as notesStore from './services/notesStore.js'
-import {
-    advanceFreeformNotesDraft,
-    isNotesDraftFinishIntent,
-    parseFreeformNoteBody
-} from './services/notesDraftVoice.js'
-import {
-    addStudentDeskItem,
-    clearStudentDeskItems,
-    loadStudentDeskBackendItems,
-    normalizeStudentDeskItems,
-    readStudentDeskFallbackItems,
-    removeStudentDeskItem,
-    syncStudentDeskItems
-} from './services/studentDeskStore.js'
 import { executeTimerFire } from './services/timerFireEffect.js'
 import { buildTimerPanelBodyHtml } from './services/panelTimerBody.js'
+import { createCompanionModeController } from './services/companionModeController.js'
+import { getDefaultCompanionSnapshot } from './services/companionStateAdapter.js'
 import {
     classifyYouTubeContentType,
     DEFAULT_VIDEO_PLAYLIST,
@@ -103,20 +72,14 @@ import {
 } from './services/youtubeLibrary.js'
 import { createEmailFeature } from './features/email/emailFeature.js'
 import { createTelegramFeature } from './features/telegram/telegramFeature.js'
-import { mountEarTrainingGame } from './features/earTraining/earTrainingUi.js'
+import { getToolLearningHint, recordToolOutcome, getLearningSummary } from './services/mistakeLearner.js'
 import {
-    mountCalendarAgendaPanel,
-    closeCalendarAgendaPanelUi,
-    isCalendarAgendaDomVisible
-} from './features/calendar/calendarPanelUi.js'
-import {
-    isPriorityOpenLocalPhotosIntentFromLower,
-    clearVoiceToolFollowUpLock,
-    setVoiceToolFollowUpLock
-} from './voice/voiceToolIntent.js'
-import { isStrongEmailSendDraftCommand } from './services/voiceDialog/emailFollowUpParse.js'
-
-import { getBlipQaAnswer } from './services/blipQa.js'
+    publishConversationObject,
+    recordConversationAction,
+    getConversationSnapshot
+} from './services/toolConversation.js';
+import { Connector } from './services/connector.js'
+import { tryHandleTaskVoiceCommand } from './services/taskVoiceBridge.js'
 
 // ── UI: DOM ELEMENTS ─────────────────────────────────────────────────────────
 const face = document.getElementById('blip-face');
@@ -125,7 +88,6 @@ const faceFrame = document.querySelector('.face-frame');
 const blipStage = document.getElementById('blip-stage');
 const weatherLayer = document.getElementById('weather-layer');
 const dreamThoughts = document.getElementById('dream-thoughts');
-const spaceOverlay = document.getElementById('space-overlay');
 const mouth = document.querySelector('#blip-face .mouth');
 const talkBtn = document.getElementById('talkBtn');
 const sleepBtn = document.getElementById('sleepBtn');
@@ -133,6 +95,7 @@ const transcriptText = document.getElementById('transcript');
 const meterLevel = document.getElementById('meter-level');
 const meterBox = document.querySelector('.mic-meter');
 const meterLabel = document.getElementById('meter-label');
+const companionIndicator = document.getElementById('companion-indicator');
 const chatBtn = document.getElementById('chatBtn');
 const notesBtn = document.getElementById('notesBtn');
 const emailBtn = document.getElementById('emailBtn');
@@ -153,22 +116,7 @@ const kokoroStatusDot = document.getElementById('kokoro-status');
 
 // Vision Elements
 const cameraBtn = document.getElementById('cameraBtn');
-const closeCameraBtn = document.getElementById('closeCameraBtn');
 const watchBtn = document.getElementById('watchBtn');
-const careCamQuickBtn = document.getElementById('careCamQuickBtn');
-const careCamDemoBtn = document.getElementById('careCamDemoBtn');
-const openCareCamViewerBtn = document.getElementById('openCareCamViewerBtn');
-const copyCareCamLinkBtn = document.getElementById('copyCareCamLinkBtn');
-const careCamStatus = document.getElementById('careCamStatus');
-const careCamViewerShell = document.getElementById('care-cam-viewer-shell');
-const careCamViewerTitle = document.getElementById('care-cam-viewer-title');
-const careCamViewerStatus = document.getElementById('care-cam-viewer-status');
-const careCamViewerNote = document.getElementById('care-cam-viewer-note');
-const careCamFrame = document.getElementById('care-cam-frame');
-const careCamEmpty = document.getElementById('care-cam-empty');
-const careCamTalkInput = document.getElementById('care-cam-talk-input');
-const careCamTalkBtn = document.getElementById('care-cam-talk-btn');
-const careCamAlertBtn = document.getElementById('care-cam-alert-btn');
 const uploadBtn = document.getElementById('uploadBtn');
 const fileInput = document.getElementById('fileInput');
 const visionPreviewContainer = document.getElementById('vision-preview-container');
@@ -182,7 +130,7 @@ const snapBtn = document.getElementById('snapBtn');
 const recordBtn = document.getElementById('recordBtn');
 const stopCameraBtn = document.getElementById('stopCameraBtn');
 
-// Student Desk Elements
+// Hub Elements
 const mediaBtn = document.getElementById('mediaBtn');
 const creationsBtn = document.getElementById('creationsBtn');
 const mediaStrip = document.getElementById('media-strip');
@@ -221,7 +169,6 @@ const hubContainer = document.getElementById('hub-container');
 const hubMessages = document.getElementById('hub-messages');
 const closeHubBtn = document.getElementById('closeHubBtn');
 const gamesContainer = document.getElementById('games-container');
-const learningGamesDebug = document.getElementById('learning-games-debug');
 const closeGamesBtn = document.getElementById('closeGamesBtn');
 const mathIntro = document.getElementById('math-intro');
 const mathQuestion = document.getElementById('math-question');
@@ -253,7 +200,13 @@ const saveChartBtn = document.getElementById('saveChartBtn');
 const gearBtn = document.getElementById('gearBtn');
 const underTheHood = document.getElementById('under-the-hood');
 const closePanelBtn = document.getElementById('closePanelBtn');
+const settingsLockToggleBtn = document.getElementById('settingsLockToggleBtn');
+const settingsLockStatus = document.getElementById('settingsLockStatus');
+const openConversationInspectorBtn = document.getElementById('openConversationInspectorBtn');
+const closeConversationInspectorBtn = document.getElementById('closeConversationInspectorBtn');
 const geminiKeyInput = document.getElementById('geminiKeyInput');
+const copyGeminiKeyBtn = document.getElementById('copyGeminiKeyBtn');
+const minimaxKeyInput = document.getElementById('minimaxKeyInput');
 const youtubeKeyInput = document.getElementById('youtubeKeyInput');
 const weatherKeyInput = document.getElementById('weatherKeyInput');
 const googleCalendarClientIdInput = document.getElementById('googleCalendarClientIdInput');
@@ -264,18 +217,32 @@ const connectGmailBtn = document.getElementById('connectGmailBtn');
 const openGmailInboxBtn = document.getElementById('openGmailInboxBtn');
 const disconnectGmailBtn = document.getElementById('disconnectGmailBtn');
 const gmailAuthStatus = document.getElementById('gmailAuthStatus');
-const openConversationInspectorBtn = document.getElementById('openConversationInspectorBtn');
 const openTelegramBtn = document.getElementById('openTelegramBtn');
 const sendTelegramTestBtn = document.getElementById('sendTelegramTestBtn');
 const telegramAuthStatus = document.getElementById('telegramAuthStatus');
+const telegramBotTokenInput = document.getElementById('telegramBotTokenInput');
+const telegramChatIdInput = document.getElementById('telegramChatIdInput');
+const telegramChatAliasesInput = document.getElementById('telegramChatAliasesInput');
+const telegramBackendPortInput = document.getElementById('telegramBackendPortInput');
+const applyTelegramSettingsBtn = document.getElementById('applyTelegramSettingsBtn');
+const copyTelegramEnvBtn = document.getElementById('copyTelegramEnvBtn');
+const refreshApiUsageBtn = document.getElementById('refreshApiUsageBtn');
+const apiUsageStatus = document.getElementById('apiUsageStatus');
+const apiUsageSummary = document.getElementById('apiUsageSummary');
 const voiceEngineSelect = document.getElementById('voiceEngineSelect');
 const voiceEngineStatus = document.getElementById('voiceEngineStatus');
 const browserVoiceSelect = document.getElementById('browserVoiceSelect');
 const browserVoiceGroup = document.getElementById('browser-voice-group');
 const kokoroHintGroup = document.getElementById('kokoro-hint-group');
+const companionModeToggle = document.getElementById('companionModeToggle');
+const companionSettingsStatus = document.getElementById('companionSettingsStatus');
 const speechVolumeInput = document.getElementById('speechVolumeInput');
 const speechVolumeValue = document.getElementById('speechVolumeValue');
 const modelSelect = document.getElementById('modelSelect');
+const conversationTemperatureInput = document.getElementById('conversationTemperatureInput');
+const conversationTemperatureValue = document.getElementById('conversationTemperatureValue');
+const parsingTemperatureInput = document.getElementById('parsingTemperatureInput');
+const parsingTemperatureValue = document.getElementById('parsingTemperatureValue');
 const usageTierSelect = document.getElementById('usageTierSelect');
 const imageModelSelect = document.getElementById('imageModelSelect');
 const imageEngineSelect = document.getElementById('imageEngineSelect');
@@ -291,24 +258,6 @@ const idleSoundVolumeInput = document.getElementById('idleSoundVolumeInput');
 const idleSoundVolumeValue = document.getElementById('idleSoundVolumeValue');
 const weatherDisplay = document.getElementById('weather-display');
 const countdownDisplay = document.getElementById('countdown-display');
-const careCamRoute = getCareCamModeFromUrl();
-
-function initButtonTooltips() {
-    const tooltipTargets = document.querySelectorAll(
-        '.mini-actions button, .care-cam-quick-btn, .secondary-btn, .panel-close-btn, .action-link, #watchBtn, #uploadBtn, #snapBtn, #recordBtn, #stopCameraBtn, #save-to-hub-btn, #clear-image-btn, #careCamDemoBtn, #copyCareCamLinkBtn, #openCareCamViewerBtn'
-    );
-
-    tooltipTargets.forEach((btn) => {
-        if (!btn || btn.dataset.tooltip) return;
-        const label = String(btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.textContent || '')
-            .replace(/\s+/g, ' ')
-            .trim();
-        if (!label) return;
-        btn.dataset.tooltip = label;
-    });
-}
-
-initButtonTooltips();
 
 // ── APP STATE ────────────────────────────────────────────────────────────────
 const isGitHub = window.location.hostname.includes('github.io');
@@ -316,10 +265,81 @@ const isGitHub = window.location.hostname.includes('github.io');
 /** Single source of truth for app version — update here (and package.json) when releasing. */
 const BLIP_VERSION = '4.3.24';
 console.log('--- BLIP_VERSION 4.3.24 ACTIVE ---');
+const SETTINGS_LOCKED_STORAGE_KEY = 'blip_settings_locked';
+const SETTINGS_LOCK_PIN_STORAGE_KEY = 'blip_settings_lock_pin';
 const WAKE_GREETING_ENABLED = true;
+const EXPENSE_TRACKER_BACKEND_PORT = Number(window.localStorage?.getItem('blip_expense_tracker_backend_port') || 8797);
+const EXPENSE_TRACKER_BASE = (() => {
+    const configured = String(window.localStorage?.getItem('blip_expense_tracker_backend_url') || '').trim();
+    if (configured) return configured.replace(/\/$/, '');
+    return `http://127.0.0.1:${EXPENSE_TRACKER_BACKEND_PORT}/api/expense-tracker`;
+})();
+
+/** 🛡️ Safety Hub for Mobile: prevents crashes on storage-limit or incognito. */
+function safeStorageSet(key, value) {
+    if (typeof localStorage === 'undefined') return false;
+    try {
+        localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+        return true;
+    } catch (err) {
+        console.warn(`[Blip Armor] Storage limit hit for ${key}:`, err.message);
+        return false;
+    }
+}
 
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
 const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emotional Intelligence', 'Ethics & Responsibility'];
+
+// Dev banner: show which provider/model is active while Blip is thinking.
+const devBrainBanner = document.getElementById('dev-brain-banner');
+
+function getChatBrainLabel(model = '') {
+    const m = String(model || '').trim();
+    const lower = m.toLowerCase();
+    if (/^minimax/i.test(lower)) {
+        return /high\s*speed|highspeed/i.test(lower) ? 'MiniMax M2.7 HS' : 'MiniMax M2.7';
+    }
+    if (lower.startsWith('gemini-')) {
+        return m;
+    }
+    if (lower.includes('gemini')) {
+        return 'Gemini';
+    }
+    if (lower.includes('ollama') || lower.startsWith('qwen') || lower.startsWith('llama')) {
+        return 'Ollama';
+    }
+    return m || 'Unknown';
+}
+
+function getVoiceBrainLabel(engine = '') {
+    if (engine === 'kokoro') return 'Voice: Kokoro';
+    if (engine === 'gemini') return 'Voice: Gemini';
+    if (engine === 'web') return 'Voice: Browser';
+    return 'Voice: -';
+}
+
+function updateDevBrainBanner({ thinking = false, reasoningMode = '', reason = '' } = {}) {
+    if (!devBrainBanner) return;
+    if (isGitHub) {
+        devBrainBanner.style.display = 'none';
+        devBrainBanner.textContent = '';
+        return;
+    }
+
+    if (!thinking) {
+        const chatBrain = getChatBrainLabel(state.selectedModel);
+        const voiceBrain = getVoiceBrainLabel(state.voiceEngine);
+        devBrainBanner.textContent = `${chatBrain} | ${voiceBrain}`;
+        return;
+    }
+
+    const chatBrain = getChatBrainLabel(state.selectedModel);
+    const voiceBrain = getVoiceBrainLabel(state.voiceEngine);
+    const brainMode = reasoningMode ? `${reasoningMode}` : '';
+    const reasonPart = reason ? ` • ${String(reason).slice(0, 80)}` : '';
+    devBrainBanner.textContent = `${chatBrain} | ${voiceBrain}${brainMode ? ` | ${brainMode}` : ''}${reasonPart}`;
+    devBrainBanner.style.display = '';
+}
 
 const CAPABILITY_SCENERY_OBJECTS = [
     { id: 'capability-chat', emoji: '💬', label: 'chat', size: '1.15rem', orbitOffset: 0, duration: 20, direction: 'normal', delay: '-3s' },
@@ -354,11 +374,6 @@ const SLEEP_DREAM_QUOTES = [
     'I am kind and grateful.',
     'I am growing every day.'
 ];
-const SLEEP_ARCADE_MIN_DELAY_MS = 2200;
-const SLEEP_ARCADE_MAX_DELAY_MS = 5200;
-const SLEEP_ARCADE_JET_MS = 1700;
-const SLEEP_ARCADE_BEAM_MS = 320;
-const SLEEP_ARCADE_HIT_HOLD_MS = 1600;
 
 // Backward compatibility: older runtime paths may still reference this name.
 const EXTRA_SCENERY_OBJECTS = CAPABILITY_SCENERY_OBJECTS;
@@ -462,99 +477,6 @@ body {
     gap: 1rem !important;
   }
 }
-
-/* Gmail / Telegram: panel fixed on BODY (sibling of #app). Reserve space + stop 100vw children ignoring #app padding. */
-body.blip-gmail-panel-open #app {
-  padding-right: calc(min(400px, calc(100vw - 24px)) + 12px) !important;
-  padding-left: 0 !important;
-  box-sizing: border-box !important;
-}
-body.blip-telegram-panel-open #app {
-  padding-right: calc(min(380px, calc(100vw - 24px)) + 12px) !important;
-  padding-left: 0 !important;
-  box-sizing: border-box !important;
-}
-
-body.blip-gmail-panel-open #blip-face.blip-face,
-body.blip-telegram-panel-open #blip-face.blip-face {
-  width: clamp(150px, 28vw, 240px) !important;
-  height: clamp(150px, 28vw, 240px) !important;
-}
-
-body.blip-gmail-panel-open .container,
-body.blip-telegram-panel-open .container {
-  width: 100% !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
-  padding-left: 0.5rem !important;
-  padding-right: 0.5rem !important;
-}
-body.blip-gmail-panel-open #face-area,
-body.blip-telegram-panel-open #face-area {
-  width: 100% !important;
-  max-width: 100% !important;
-  position: relative;
-  z-index: 1100;
-}
-body.blip-gmail-panel-open .face-frame,
-body.blip-telegram-panel-open .face-frame {
-  width: 100% !important;
-  max-width: 100% !important;
-}
-body.blip-gmail-panel-open #transcript-area,
-body.blip-telegram-panel-open #transcript-area {
-  width: 100% !important;
-  max-width: 100% !important;
-}
-@media (max-width: 520px) {
-  body.blip-gmail-panel-open #app {
-    padding-right: calc(min(400px, calc(100vw - 16px)) + 8px) !important;
-  }
-  body.blip-telegram-panel-open #app {
-    padding-right: calc(min(380px, calc(100vw - 16px)) + 8px) !important;
-  }
-  body.blip-gmail-panel-open #blip-face.blip-face,
-  body.blip-telegram-panel-open #blip-face.blip-face {
-    width: clamp(130px, 42vw, 180px) !important;
-    height: clamp(130px, 42vw, 180px) !important;
-  }
-}
-/* Bottom-right dock: keeps center column (face) clear; Gmail dock is larger so inbox + body fit */
-body.blip-gmail-panel-open #blip-side-panel.blip-gmail-dock,
-body.blip-telegram-panel-open #blip-side-panel.blip-telegram-dock {
-  position: fixed !important;
-  z-index: 900 !important;
-  left: auto !important;
-  right: max(10px, env(safe-area-inset-right, 0px)) !important;
-  top: auto !important;
-  bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
-  transform: none !important;
-  box-sizing: border-box !important;
-  background: rgba(4, 10, 26, 0.72) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-}
-body.blip-telegram-panel-open #blip-side-panel.blip-telegram-dock {
-  width: min(380px, calc(100vw - 24px)) !important;
-  max-width: min(380px, calc(100vw - 24px)) !important;
-  height: min(72vh, 720px) !important;
-  max-height: min(72vh, 720px) !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-  padding: 10px 12px !important;
-}
-body.blip-gmail-panel-open #blip-side-panel.blip-gmail-dock {
-  width: min(400px, calc(100vw - 24px)) !important;
-  max-width: min(400px, calc(100vw - 24px)) !important;
-  height: min(78vh, 820px) !important;
-  max-height: min(78vh, 820px) !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
-  padding: 10px 12px !important;
-}
 `;
 
 const SCENERY_SUPPRESSION_CSS = `
@@ -582,6 +504,9 @@ const USER_PROFILE_STORAGE_KEY = 'blip_user_profile_v1';
 const VIDEO_PLAYLISTS_STORAGE_KEY = 'blip_video_playlists_v1';
 const EMAIL_CONTACTS_STORAGE_KEY = 'blip_email_contacts_v1';
 const MEDIA_MAX = 80;
+const HUB_MAINTENANCE_THROTTLE_DAYS = 7;
+const HUB_MAX_AGE_DAYS = 30;
+const HUB_LAST_CHECK_STORAGE_KEY = 'blip_hub_last_maintenance_check';
 const MEDIA_BUCKET_SHOTS = 'shots';
 const MEDIA_BUCKET_CREATED = 'created';
 const MEDIA_ACTIONS_BACKEND_URL = '/api/media-actions';
@@ -592,12 +517,12 @@ const BLIP_PERSONALIZATION_STORAGE_KEY = 'blip_personalization_v1';
 const BLIP_DEFAULT_PERSONALIZATION = Object.freeze({
     hat: 'none',       // none | cap | beanie | crown
     glasses: 'none',   // none | round | visor
-    eyeColor: 'blue', // white | blue | green | amber | purple | pink | cyan
+    eyeColor: 'white', // white | blue | green | amber | purple | pink | cyan
     auraColor: 'default' // default | blue | green | gold | pink | purple | cyan
 });
 const BLIP_EYE_COLOR_MAP = Object.freeze({
     white: '#ffffff',
-    blue: 'rgba(147, 197, 253, 0.72)',
+    blue: '#93c5fd',
     green: '#86efac',
     amber: '#fcd34d',
     purple: '#c4b5fd',
@@ -688,67 +613,6 @@ function parseExplicitPercentFromText(lower = '') {
     return Math.max(0, Math.min(100, Math.round(n)));
 }
 
-function parseStandaloneDurationMs(text = '') {
-    const lower = normalizeVoiceTokens(String(text || '')).replace(/\bcounter\b/g, 'countdown');
-    const match = lower.match(/\b(\d{1,4})(?:\s*)(seconds?|secs?|sec|s|minutes?|mins?|min|m|hours?|hrs?|hr|h)\b/);
-    if (!match) return null;
-    const amount = Number(match[1]);
-    if (!Number.isFinite(amount) || amount <= 0) return null;
-    const unit = String(match[2] || '').toLowerCase();
-    const msPerUnit = /^(?:seconds?|secs?|sec|s)$/.test(unit)
-        ? 1000
-        : /^(?:minutes?|mins?|min|m)$/.test(unit)
-            ? 60000
-            : 3600000;
-    const prettyUnit = msPerUnit === 1000
-        ? (amount === 1 ? 'second' : 'seconds')
-        : msPerUnit === 60000
-            ? (amount === 1 ? 'minute' : 'minutes')
-            : (amount === 1 ? 'hour' : 'hours');
-    return { ms: amount * msPerUnit, amount, prettyUnit, label: 'Timer' };
-}
-
-function clearPendingNaturalConversation() {
-    state.pendingNaturalConversation = null;
-}
-
-function beginPendingNaturalConversation(kind = '', meta = {}) {
-    state.pendingNaturalConversation = {
-        kind: String(kind || '').trim(),
-        meta: meta && typeof meta === 'object' ? { ...meta } : {},
-        createdAt: Date.now()
-    };
-}
-
-function getNaturalPlayQuery(cmd = '') {
-    const lower = normalizeVoiceTokens(String(cmd || ''));
-    const match = lower.match(/^(?:please\s+)?(?:play|watch|open|show)\s+(.+)$/);
-    if (!match?.[1]) return '';
-    const query = sanitizeVoiceQuery(match[1])
-        .replace(/\s+(?:please|now)\s*$/, '')
-        .trim();
-    if (!query) return '';
-    if (/^(?:it|this|that|the video|video|music|youtube|yt|gmail|email|telegram|calendar|map|chart|settings|chat|games|camera|cart|notes|hub|photos?|fotos?|pictures?|shots?|snapshots?)$/.test(query)) return '';
-    if (/\b(?:email|gmail|telegram|calendar|map|chart|settings|chat|games|camera|cart|notes|hub|photos?|fotos?|pictures?|shots?|snapshots?)\b/.test(query)) return '';
-    if (/^(?:the\s+)?(?:video|music)\s+(?:big|bigger|small|smaller|full(?:\s+screen)?)$/.test(query)) return '';
-    return query;
-}
-
-function resolveNaturalOpenIntent(cmd = '') {
-    const lower = normalizeVoiceTokens(String(cmd || ''));
-    if (!/^(?:please\s+)?(?:open|show|view|play)\s+(?:it|this|that)(?:\s+again)?(?:\s+please)?$/.test(lower)) return null;
-    if (state.lastContext?.lastYoutubeUrl) return { type: 'youtube' };
-    if (state.lastContext?.lastChartData) return { type: 'chart' };
-    if (state.lastContext?.lastLocation) return { type: 'map' };
-    if (state.mediaItems?.length) {
-        return {
-            type: 'media',
-            bucket: state.activeMediaBucket === MEDIA_BUCKET_CREATED ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS
-        };
-    }
-    return null;
-}
-
 /** Return explicit target YouTube volume (0-100) or null. */
 function getYouTubeVolumeSetCommand(cmd) {
     if (!cmd || typeof cmd !== 'string') return null;
@@ -814,7 +678,7 @@ const storedVoiceEngine = localStorage.getItem('blip_voice_engine');
 const storedVoiceEngineOverridden = localStorage.getItem('blip_voice_engine_overridden');
 const storedVoiceEngineOverrideSource = localStorage.getItem('blip_voice_engine_override_source');
 const DISPLAY_LUMA_OPTIONS = Object.freeze(['low', 'medium', 'high']);
-const IDLE_WEATHER_REFRESH_MS = 15 * 60 * 1000;
+const IDLE_WEATHER_REFRESH_MS = 8 * 60 * 60 * 1000;
 const WEATHER_DISPLAY_TICK_MS = 15 * 1000;
 const BLIP_HOME_LOCATION = 'Valencia, Spain';
 
@@ -831,6 +695,18 @@ function clampIdleAmbientVolume(value) {
     return Math.min(1, Math.max(0.1, parsed));
 }
 
+function clampConversationTemperature(value) {
+    const parsed = parseFloat(value);
+    if (!Number.isFinite(parsed)) return 0.78;
+    return Math.min(1, Math.max(0, parsed));
+}
+
+function clampParsingTemperature(value) {
+    const parsed = parseFloat(value);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.min(0.5, Math.max(0, parsed));
+}
+
 const state = {
     isActive: false,
     isThinking: false,
@@ -839,7 +715,6 @@ const state = {
     sensitivity: 20,
     selectedVoice: null,
     currentEmotion: 'serious',
-    conversation: createToolConversationState(),
     history: [], // Loaded from localStorage in init
     timers: [],
     activeAlert: null,
@@ -853,30 +728,19 @@ const state = {
     lastScheduledReminder: null,
     pendingImage: null, // Base64 string
     cameraStream: null,
-    careCamSessionId: '',
-    careCamViewerUrl: '',
-    careCamRelayTimer: null,
-    careCamPollTimer: null,
-    careCamCommandCursor: 0,
-    careCamViewerMode: false,
-    careCamRunning: false,
-    careCamFallWatchActive: false,
-    careCamFallWatchTimer: null,
-    careCamFallWatchStartedAt: 0,
-    careCamFallWatchLocation: 'living room',
-    careCamFallWatchPhase: 'idle',
-    careCamFallAnalysisInFlight: false,
-    careCamLastFallAnalysisAt: 0,
-    careCamLastFallAnalysisResult: null,
-    careCamLocalOnly: false,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
+    minimaxKey: localStorage.getItem('blip_minimax_key') || '',
     youtubeApiKey: localStorage.getItem('blip_youtube_key') || '', // optional: for in-panel video playback (YouTube Data API v3)
     weatherApiKey: localStorage.getItem('blip_weather_key') || '',
     googleCalendarClientId: localStorage.getItem('blip_google_calendar_client_id') || '',
     usageTier: initialUsageTier,
     displayLuma: DISPLAY_LUMA_OPTIONS.includes(localStorage.getItem('blip_display_luma')) ? localStorage.getItem('blip_display_luma') : 'medium',
     idleWeatherLocation: normalizeIdleWeatherLocation(localStorage.getItem('blip_idle_weather_location')),
+    humeConfigId: '',
+    companionModeEnabled: localStorage.getItem('blip_companion_mode_enabled') !== '0',
     selectedModel: localStorage.getItem('blip_selected_model') || initialTierPreset.selectedModel,
+    conversationTemperature: clampConversationTemperature(localStorage.getItem('blip_conversation_temperature') || 0.78),
+    parsingTemperature: clampParsingTemperature(localStorage.getItem('blip_parsing_temperature') || 0),
     voiceEngine: storedVoiceEngine || initialTierPreset.voiceEngine,
     voiceEngineOverridden: storedVoiceEngineOverridden === '1' || (!!storedVoiceEngine && storedVoiceEngine !== initialTierPreset.voiceEngine),
     voiceEngineOverrideSource: storedVoiceEngineOverrideSource || ((storedVoiceEngineOverridden === '1' || (!!storedVoiceEngine && storedVoiceEngine !== initialTierPreset.voiceEngine)) ? 'manual' : 'tier'),
@@ -892,6 +756,8 @@ const state = {
     idleAmbientEnabled: localStorage.getItem('blip_idle_ambient_enabled') === '1',
     idleAmbientFxEnabled: localStorage.getItem('blip_idle_ambient_fx_enabled') !== '0',
     idleAmbientVolume: clampIdleAmbientVolume(localStorage.getItem('blip_idle_ambient_volume') || 0.35),
+    settingsLocked: localStorage.getItem(SETTINGS_LOCKED_STORAGE_KEY) === '1',
+    settingsLockPin: String(localStorage.getItem(SETTINGS_LOCK_PIN_STORAGE_KEY) || '').trim(),
     passiveWakeEnabled: localStorage.getItem('blip_passive_wake_enabled') !== '0',
     passiveWakePrimed: localStorage.getItem('blip_passive_wake_primed') === '1',
     passiveWakeListening: false,
@@ -942,10 +808,6 @@ const state = {
     telegramDraft: { chatId: '', text: '' },
     lastTelegramSendResult: null,
     pendingTelegramReview: false,
-    voiceSession: {
-        lastMessagingTool: '',
-        lastMessagingToolAtMs: 0
-    },
     emailContacts: (() => {
         try {
             const parsed = JSON.parse(localStorage.getItem(EMAIL_CONTACTS_STORAGE_KEY) || '{}');
@@ -955,20 +817,21 @@ const state = {
         }
     })(),
     pendingEmailReview: null,
-    gmailVoiceMergeBuffer: '',
-    gmailVoiceMergeTimer: null,
-    gmailVoiceMergeWindowUntil: 0,
-    listeningRestartTimer: null,
-    listeningRestartSuppressedUntil: 0,
-    gmailDraftUndoStack: [],
-    pendingNaturalConversation: null,
     pendingCalendarDraft: null,
     pendingNotesDraft: null,
     pendingProfileDraft: null,
     activeCalendarViewRequest: null,
     calendarDisplayMode: normalizeCalendarDisplayMode(localStorage.getItem('blip_calendar_display_mode') || 'month'),
     calendarAnchorDate: normalizeCalendarAnchorDate(localStorage.getItem('blip_calendar_anchor_date') || '').toISOString(),
-    hubItems: readStudentDeskFallbackItems(),
+    pendingHubMaintenanceNotice: null, // { reason, count }
+    hubItems: (() => {
+        try {
+            const raw = JSON.parse(localStorage.getItem('blip_hub') || 'null');
+            return Array.isArray(raw) ? raw : [];
+        } catch (_) {
+            return [];
+        }
+    })(),
     cartItems: JSON.parse(localStorage.getItem('blip_cart') || '[]'),
     // Per-session overrides for media display (not persisted).
     // Prevents edits like "darken photo" from sticking forever unless explicitly baked into a data URL.
@@ -1036,7 +899,6 @@ const state = {
     recordingStartedAt: 0,
     recordingStopReason: null,
     sleepDreamInterval: null,
-    sleepArcadeTimers: [],
     isMediaStripOpen: false,
     mediaStripLane: 'shots', // 'shots' | 'created' | 'all'
     activeMediaIndex: -1, // 0-based index of currently expanded media item
@@ -1050,6 +912,7 @@ const state = {
     softSleepMode: false,
     currentWeatherScene: 'clear',
     currentWeatherSceneIntensity: 'active',
+    companion: getDefaultCompanionSnapshot(),
     weatherSceneShowcaseTimer: null,
     weatherSceneShowcaseIndex: -1,
     idleWeatherRefreshTimer: null,
@@ -1099,28 +962,172 @@ const state = {
     }
 };
 
-const sidePanelToolRegistry = new Map();
-
-function normalizeSidePanelAction(action = '') {
-    return String(action || '').trim().toLowerCase();
+function renderCompanionIndicator() {
+    if (!companionIndicator) return;
+    const snapshot = state.companion || getDefaultCompanionSnapshot();
+    let status = String(snapshot.status || 'off');
+    if (!snapshot.available) status = 'unavailable';
+    else if (!state.companionModeEnabled) status = 'off';
+    else if (status === 'off') status = (!state.isActive || state.softSleepMode) ? 'ready' : 'off';
+    companionIndicator.className = `companion-indicator companion-indicator-${status}`;
+    const labelEl = companionIndicator.querySelector('.companion-indicator-label');
+    const heartEl = companionIndicator.querySelector('.companion-indicator-heart');
+    const isOn = snapshot.available && state.companionModeEnabled;
+    if (labelEl) labelEl.textContent = isOn ? 'on' : 'off';
+    if (heartEl) heartEl.textContent = '♥';
+    const title = !snapshot.available
+        ? 'Companion unavailable'
+        : !state.companionModeEnabled
+            ? 'Companion mode off'
+            : status === 'active'
+                ? `Companion on: ${String(snapshot.mode || 'neutral').replace(/_/g, ' ')}`
+                : status === 'listening'
+                    ? 'Companion on: listening'
+                    : status === 'fallback'
+                        ? 'Companion on: fallback mode'
+                        : 'Companion on';
+    companionIndicator.setAttribute('aria-label', title);
+    companionIndicator.setAttribute('title', title);
 }
 
-function registerSidePanelTool(action, handlers = {}) {
-    const key = normalizeSidePanelAction(action);
-    if (!key) return null;
-    const registration = {
-        isOpen: typeof handlers.isOpen === 'function' ? handlers.isOpen : null,
-        closePanel: typeof handlers.closePanel === 'function' ? handlers.closePanel : null
+function renderCompanionSettingsStatus() {
+    if (!companionSettingsStatus) return;
+    const snapshot = state.companion || getDefaultCompanionSnapshot();
+    if (!snapshot.available) {
+        companionSettingsStatus.textContent = snapshot.hasCredentials
+            ? 'Hume backend is installed but companion mode is disabled in .env.local.'
+            : 'Hume backend is unavailable. Add Hume credentials in .env.local.';
+        return;
+    }
+    if (!state.companionModeEnabled) {
+        companionSettingsStatus.textContent = 'Companion mode is available and currently off in Blip.';
+        return;
+    }
+    if (snapshot.status === 'active') {
+        companionSettingsStatus.textContent = `Companion mode active: ${String(snapshot.mode || 'neutral').replace(/_/g, ' ')}.`;
+        return;
+    }
+    if (snapshot.status === 'listening') {
+        companionSettingsStatus.textContent = 'Companion mode is listening during voice input.';
+        return;
+    }
+    if (snapshot.status === 'fallback') {
+        companionSettingsStatus.textContent = 'Companion mode fell back to normal voice handling.';
+        return;
+    }
+    companionSettingsStatus.textContent = state.isActive && !state.softSleepMode
+        ? 'Companion mode is ready and will join Blip while listening.'
+        : 'Companion mode is ready for the next wake/listening session.';
+}
+
+function getCompanionBehavior() {
+    return state.companion?.behavior || getDefaultCompanionSnapshot().behavior;
+}
+
+function getCompanionSpeechRate(baseRate = 1) {
+    const behavior = getCompanionBehavior();
+    if (behavior.replyPacing === 'faster') return Math.min(1.18, baseRate + 0.08);
+    if (behavior.replyPacing === 'slower') return Math.max(0.82, baseRate - 0.1);
+    return baseRate;
+}
+
+function getCompanionPromptBlock() {
+    const snapshot = state.companion || getDefaultCompanionSnapshot();
+    if (!snapshot.available || !state.companionModeEnabled || snapshot.status === 'off' || snapshot.mode === 'neutral' || snapshot.confidence < 0.22) {
+        return '';
+    }
+
+    const behavior = getCompanionBehavior();
+    const promptLines = [
+        'Companion sensing hint: treat the user\'s vocal delivery as uncertain context only.',
+        'Do not say what the user feels or claim certainty.'
+    ];
+
+    if (behavior.replyPacing === 'faster') {
+        promptLines.push('Prefer brisk replies with the key point first.');
+    } else if (behavior.replyPacing === 'slower') {
+        promptLines.push('Prefer slower, gentler wording with a calm cadence.');
+    }
+
+    if (behavior.replyLength === 'short') {
+        promptLines.push('Keep the reply concise unless the user asks for more.');
+    }
+
+    if (behavior.replySoftness >= 0.6) {
+        promptLines.push('Use soft, reassuring phrasing.');
+    }
+
+    if (behavior.shouldConfirmActions) {
+        promptLines.push('For non-trivial actions or changes, gently confirm before pushing ahead.');
+    }
+
+    return `${promptLines.join(' ')}\n`;
+}
+
+function adaptReplyToCompanionMode(text = '') {
+    const message = sanitizeBlipReplyText(String(text || '').trim());
+    if (!message) return message;
+
+    const behavior = getCompanionBehavior();
+    if (behavior.replyLength !== 'short') return message;
+
+    const sentences = message.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const firstSentence = sentences[0] || message;
+    const words = firstSentence.split(/\s+/).filter(Boolean);
+    if (words.length <= 18) return firstSentence;
+    return `${words.slice(0, 18).join(' ')}.`;
+}
+
+function syncCompanionSnapshot(snapshot = {}) {
+    state.companion = {
+        ...(state.companion || getDefaultCompanionSnapshot()),
+        ...(snapshot && typeof snapshot === 'object' ? snapshot : {})
     };
-    sidePanelToolRegistry.set(key, registration);
-    return registration;
+    renderCompanionIndicator();
+    renderCompanionSettingsStatus();
 }
 
-function getSidePanelRegistration(action = '') {
-    const key = normalizeSidePanelAction(action);
-    if (!key) return null;
-    return sidePanelToolRegistry.get(key) || null;
+async function refreshCompanionAvailability() {
+    try {
+        const response = await fetch('/api/hume/health');
+        if (!response.ok) throw new Error(`Hume health failed (${response.status}).`);
+        const payload = await response.json();
+        state.humeConfigId = String(payload?.configId || '').trim();
+        syncCompanionSnapshot({
+            ...(state.companion || {}),
+            available: Boolean(payload?.available ?? payload?.enabled),
+            enabled: Boolean(payload?.available ?? payload?.enabled),
+            hasCredentials: Boolean(payload?.hasCredentials),
+            integrationEnabled: Boolean(payload?.integrationEnabled),
+            status: 'off'
+        });
+    } catch (_) {
+        syncCompanionSnapshot({
+            ...(state.companion || {}),
+            available: false,
+            enabled: false,
+            hasCredentials: false,
+            status: 'off'
+        });
+    }
 }
+
+const companionModeController = createCompanionModeController({
+    isEnabled: () => Boolean(state.companion?.available && state.companionModeEnabled),
+    getConfigId: () => state.humeConfigId,
+    onSnapshot: (snapshot) => {
+        syncCompanionSnapshot(snapshot);
+        if (
+            state.isListening
+            && !state.isThinking
+            && !speech.isSpeaking
+            && snapshot?.status === 'active'
+            && snapshot?.behavior?.faceEmotion
+        ) {
+            setBlipEmotion(snapshot.behavior.faceEmotion);
+        }
+    }
+});
 
 // ── Features: Email (Gmail) ──────────────────────────────────────────────────
 const emailFeature = createEmailFeature({
@@ -1151,6 +1158,7 @@ const emailFeature = createEmailFeature({
         quickReply: (...args) => featureQuickReply(...args),
         getNoteItems,
         getEmailPhotoAttachmentPayload,
+        getEmailVideoAttachmentPayload,
         isMediaLightboxActuallyVisible,
         normalizeMediaLane,
         getSelectedCalendarDate,
@@ -1170,14 +1178,23 @@ const telegramFeature = createTelegramFeature({
     elements: {
         openTelegramBtn,
         sendTelegramTestBtn,
-        telegramAuthStatus
+        telegramAuthStatus,
+        telegramBotTokenInput,
+        telegramChatIdInput,
+        telegramChatAliasesInput,
+        telegramBackendPortInput,
+        applyTelegramSettingsBtn,
+        copyTelegramEnvBtn
     },
     services: {
+        getTelegramBackendConfig,
         getTelegramAuthState,
         initTelegram,
         onTelegramAuthStateChange,
+        saveTelegramBackendConfig,
         sendTelegramMessage,
         sendTelegramPhoto,
+        sendTelegramVideo,
         sendTelegramTest
     },
     helpers: {
@@ -1187,44 +1204,9 @@ const telegramFeature = createTelegramFeature({
         closeSidePanel,
         quickReply: (...args) => featureQuickReply(...args),
         getEmailPhotoAttachmentPayload,
+        getEmailVideoAttachmentPayload,
+        buildContextSharePayload: (...args) => emailFeature.buildEmailPayloadFromContext(...args),
     }
-});
-
-registerSidePanelTool('gmail', {
-    isOpen: () => state.currentSidePanelAction === 'gmail' && isSidePanelVisible(),
-    closePanel: () => {
-        emailFeature.closePanel?.();
-        return true;
-    }
-});
-
-registerSidePanelTool('telegram', {
-    isOpen: () => state.currentSidePanelAction === 'telegram' && isSidePanelVisible(),
-    closePanel: () => {
-        telegramFeature.closePanel?.();
-        return true;
-    }
-});
-
-registerSidePanelTool('youtube', {
-    isOpen: () => state.currentSidePanelAction === 'youtube' && (isSidePanelVisible() || !!blipYtPlayer),
-    closePanel: () => {
-        closeYouTubePanel();
-        return true;
-    }
-});
-
-registerSidePanelTool('calendaragenda', {
-    isOpen: () => state.currentSidePanelAction === 'calendaragenda' && isCalendarAgendaDomVisible(),
-    closePanel: () => {
-        closeCalendarPanel();
-        return true;
-    }
-});
-
-registerSidePanelTool('conversation', {
-    isOpen: () => state.currentSidePanelAction === 'conversation' && isSidePanelVisible(),
-    closePanel: () => true
 });
 
 function triggerEmailSendConfirm(options = {}) {
@@ -1250,7 +1232,7 @@ async function featureQuickReply(message, emotion = 'happy', extraHtml = '', res
     if (heard && cleanMessage) {
         state.history.push({ user: heard, blip: cleanMessage });
         if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+        safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
     }
     setBlipEmotion(emotion);
     setPersona(getReplyPersonaKey(emotion));
@@ -1267,15 +1249,15 @@ async function featureQuickReply(message, emotion = 'happy', extraHtml = '', res
 }
 
 function persistUsageTierState() {
-    try { localStorage.setItem('blip_usage_tier', state.usageTier); } catch (e) { }
-    try { localStorage.setItem('blip_selected_model', state.selectedModel); } catch (e) { }
-    try { localStorage.setItem('blip_voice_engine', state.voiceEngine); } catch (e) { }
-    try { localStorage.setItem('blip_voice_engine_overridden', state.voiceEngineOverridden ? '1' : '0'); } catch (e) { }
-    try { localStorage.setItem('blip_voice_engine_override_source', state.voiceEngineOverrideSource || 'tier'); } catch (e) { }
-    try { localStorage.setItem('blip_image_model', state.imageModel); } catch (e) { }
-    try { localStorage.setItem('blip_image_engine', state.imageEngine); } catch (e) { }
-    try { localStorage.setItem('blip_comfyui_base_url', state.comfyuiBaseUrl || ''); } catch (e) { }
-    try { localStorage.setItem('blip_comfyui_checkpoint', state.comfyuiCheckpoint || ''); } catch (e) { }
+    safeStorageSet('blip_usage_tier', state.usageTier);
+    safeStorageSet('blip_selected_model', state.selectedModel);
+    safeStorageSet('blip_voice_engine', state.voiceEngine);
+    safeStorageSet('blip_voice_engine_overridden', state.voiceEngineOverridden ? '1' : '0');
+    safeStorageSet('blip_voice_engine_override_source', state.voiceEngineOverrideSource || 'tier');
+    safeStorageSet('blip_image_model', state.imageModel);
+    safeStorageSet('blip_image_engine', state.imageEngine);
+    safeStorageSet('blip_comfyui_base_url', state.comfyuiBaseUrl || '');
+    safeStorageSet('blip_comfyui_checkpoint', state.comfyuiCheckpoint || '');
 }
 
 function getVoiceEngineLabel(engine = '') {
@@ -1351,30 +1333,30 @@ function normalizeCalendarAnchorDate(value) {
 }
 
 function persistDisplayLuma() {
-    try { localStorage.setItem('blip_display_luma', state.displayLuma); } catch (e) { }
+    safeStorageSet('blip_display_luma', state.displayLuma);
 }
 
 function persistIdleWeatherLocation() {
     state.idleWeatherLocation = normalizeIdleWeatherLocation(state.idleWeatherLocation);
-    try { localStorage.setItem('blip_idle_weather_location', state.idleWeatherLocation || ''); } catch (e) { }
+    safeStorageSet('blip_idle_weather_location', state.idleWeatherLocation || '');
 }
 
 function persistIdleAudioPreferences() {
-    try { localStorage.setItem('blip_idle_ambient_enabled', state.idleAmbientEnabled ? '1' : '0'); } catch (e) { }
-    try { localStorage.setItem('blip_idle_ambient_fx_enabled', state.idleAmbientFxEnabled ? '1' : '0'); } catch (e) { }
-    try { localStorage.setItem('blip_idle_ambient_volume', String(state.idleAmbientVolume)); } catch (e) { }
+    safeStorageSet('blip_idle_ambient_enabled', state.idleAmbientEnabled ? '1' : '0');
+    safeStorageSet('blip_idle_ambient_fx_enabled', state.idleAmbientFxEnabled ? '1' : '0');
+    safeStorageSet('blip_idle_ambient_volume', String(state.idleAmbientVolume));
 }
 
 function persistUserProfile() {
-    try { localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(normalizeUserProfile(state.userProfile))); } catch (e) { }
+    safeStorageSet(USER_PROFILE_STORAGE_KEY, normalizeUserProfile(state.userProfile));
 }
 
 function persistEmailContacts() {
-    try { localStorage.setItem(EMAIL_CONTACTS_STORAGE_KEY, JSON.stringify(state.emailContacts || {})); } catch (e) { }
+    safeStorageSet(EMAIL_CONTACTS_STORAGE_KEY, state.emailContacts || {});
 }
 
 function persistVideoPlaylists() {
-    try { localStorage.setItem(VIDEO_PLAYLISTS_STORAGE_KEY, JSON.stringify(normalizeVideoPlaylists(state.videoPlaylists))); } catch (e) { }
+    safeStorageSet(VIDEO_PLAYLISTS_STORAGE_KEY, normalizeVideoPlaylists(state.videoPlaylists));
 }
 
 function normalizeYouTubeLibraryView(view = 'Music') {
@@ -1384,7 +1366,7 @@ function normalizeYouTubeLibraryView(view = 'Music') {
 function setYouTubeLibraryView(view = 'Music') {
     state.youtubeLibraryView = normalizeYouTubeLibraryView(view);
     state.youtubeLibraryBrowseIndex = 0;
-    try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
+    safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
     return state.youtubeLibraryView;
 }
 
@@ -2019,6 +2001,16 @@ function getActiveMediaLightboxImageItem() {
     return null;
 }
 
+function getActiveMediaLightboxVideoItem() {
+    if (!mediaLightbox?.classList.contains('active')) return null;
+    if (mediaLightboxVideo?.style.display === 'none') return null;
+    if (Number.isFinite(state.activeMediaIndex) && state.activeMediaIndex >= 0) {
+        const item = state.mediaItems?.[state.activeMediaIndex] || null;
+        if (item?.kind === 'video') return item;
+    }
+    return null;
+}
+
 function getActiveMediaLightboxFilename() {
     const item = getActiveMediaLightboxImageItem();
     const title = normalizeMediaItemTitle(item || {});
@@ -2036,6 +2028,15 @@ async function getActiveMediaLightboxImageBlob() {
     if (!imageUrl) throw new Error('Open a photo first.');
     const response = await fetch(imageUrl);
     if (!response.ok) throw new Error('Could not read that photo.');
+    return response.blob();
+}
+
+async function getActiveMediaLightboxVideoBlob() {
+    const item = getActiveMediaLightboxVideoItem();
+    const videoUrl = String(item?.url || mediaLightboxVideo?.getAttribute('src') || mediaLightboxVideo?.src || '').trim();
+    if (!videoUrl) throw new Error('Open a video first.');
+    const response = await fetch(videoUrl);
+    if (!response.ok) throw new Error('Could not read that video.');
     return response.blob();
 }
 
@@ -2087,6 +2088,35 @@ async function getEmailPhotoAttachmentPayload() {
         attachments: [{
             filename: getActiveMediaLightboxImageItem() ? getActiveMediaLightboxFilename() : `${String(normalizeMediaItemTitle(item || {}) || 'blip-photo').toLowerCase().replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'blip-photo'}.png`,
             mimeType: blob.type || 'image/png',
+            contentBase64: await blobToBase64(blob)
+        }]
+    };
+}
+
+async function getEmailVideoAttachmentPayload() {
+    let item = getActiveMediaLightboxVideoItem();
+    let blob = null;
+    if (item) {
+        blob = await getActiveMediaLightboxVideoBlob();
+    } else {
+        const latestVideoIdx = findLatestVideoMediaIndex();
+        const latestItem = latestVideoIdx >= 0 ? state.mediaItems?.[latestVideoIdx] : null;
+        item = latestItem?.kind === 'video' ? latestItem : null;
+        if (!item?.url) throw new Error('Open a video first or record one in Media.');
+        const response = await fetch(item.url);
+        if (!response.ok) throw new Error('Could not read that video.');
+        blob = await response.blob();
+    }
+    const title = normalizeMediaItemTitle(item || {}) || 'blip-video';
+    const safeBase = String(title).toLowerCase().replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'blip-video';
+    const ext = (blob.type || item?.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
+    return {
+        kind: 'video',
+        subject: title,
+        text: `Video from Blip: ${title}`,
+        attachments: [{
+            filename: `${safeBase}.${ext}`,
+            mimeType: blob.type || item?.mimeType || `video/${ext}`,
             contentBase64: await blobToBase64(blob)
         }]
     };
@@ -2205,7 +2235,7 @@ function renameYouTubePlaylist(oldName = '', newName = '') {
 }
 
 function persistPassiveWakePreference() {
-    try { localStorage.setItem('blip_passive_wake_enabled', state.passiveWakeEnabled ? '1' : '0'); } catch (e) { }
+    safeStorageSet('blip_passive_wake_enabled', state.passiveWakeEnabled ? '1' : '0');
 }
 
 const SLEEP_BUTTON_LABEL = 'Wake Blip';
@@ -2230,7 +2260,7 @@ async function syncPassiveWakePermission() {
 function markPassiveWakePrimed() {
     if (state.passiveWakePrimed) return;
     state.passiveWakePrimed = true;
-    try { localStorage.setItem('blip_passive_wake_primed', '1'); } catch (e) { }
+    safeStorageSet('blip_passive_wake_primed', '1');
 }
 
 function getWakeWordSimilarity(rawToken = '') {
@@ -2294,7 +2324,6 @@ function syncSleepButtonUI() {
     sleepBtn.textContent = resting ? 'Wake' : 'Sleep';
     sleepBtn.setAttribute('aria-label', resting ? 'Wake Blip' : 'Put Blip to sleep');
     sleepBtn.classList.toggle('wake-mode', resting);
-    syncSleepArcadeMode();
 }
 
 function parseWakePhrase(text = '', options = {}) {
@@ -2348,26 +2377,6 @@ function parseWakePhrase(text = '', options = {}) {
     return { matched: true, command, score: wakeScore };
 }
 
-function parseWakeOrEmergencyWakePhrase(text = '', options = {}) {
-    const wakeInfo = parseWakePhrase(text, options);
-    if (wakeInfo.matched) {
-        return wakeInfo;
-    }
-    const emergencyInfo = parseBlipIntent(text, {
-        careCamActive: true,
-        careCamHelpActive: false
-    });
-    if (emergencyInfo?.kind === 'carecam' && emergencyInfo.action === 'start_and_send_help') {
-        return {
-            matched: true,
-            command: String(text || '').trim(),
-            score: 1,
-            emergency: true
-        };
-    }
-    return wakeInfo;
-}
-
 function stopPassiveWakeLoop() {
     if (state.passiveWakeLoopTimer) {
         clearTimeout(state.passiveWakeLoopTimer);
@@ -2375,6 +2384,7 @@ function stopPassiveWakeLoop() {
     }
     if (state.passiveWakeListening) {
         state.passiveWakeListening = false;
+        companionModeController.stop();
         speech.stopListening();
     }
     syncWakeReadinessUI();
@@ -2422,11 +2432,9 @@ async function wakeBlipHandsFree(spokenText = '') {
     syncChatEngagementState();
     syncWakeReadinessUI();
     syncSleepButtonUI();
-    syncSleepArcadeMode();
 
     const wakeInfo = parseWakePhrase(spokenText);
-    const emergencyWakeInfo = parseWakeOrEmergencyWakePhrase(spokenText);
-    if (wakeInfo.command || emergencyWakeInfo.emergency) {
+    if (wakeInfo.command) {
         transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${spokenText}</i>`;
         await handleCommand(spokenText);
         return;
@@ -2448,9 +2456,10 @@ function startPassiveWakeLoop() {
     const started = speech.startListening(
         (result) => {
             if (!result?.isFinal) return;
-            const wakeInfo = parseWakeOrEmergencyWakePhrase(result.text || '', { confidence: result.confidence });
+            const wakeInfo = parseWakePhrase(result.text || '', { confidence: result.confidence });
             if (!wakeInfo.matched) return;
             state.passiveWakeListening = false;
+            companionModeController.stop();
             speech.stopListening();
             syncWakeReadinessUI();
             wakeBlipHandsFree(result.text || '').catch((error) => {
@@ -2691,20 +2700,20 @@ function syncIdleAmbience({ immediate = false } = {}) {
 }
 
 function persistCalendarCache() {
-    try { localStorage.setItem(CALENDAR_CACHE_STORAGE_KEY, JSON.stringify(state.calendarCache || [])); } catch (e) { }
+    safeStorageSet(CALENDAR_CACHE_STORAGE_KEY, state.calendarCache || []);
 }
 
 function persistPendingCalendarEvents() {
-    try { localStorage.setItem(CALENDAR_PENDING_STORAGE_KEY, JSON.stringify(state.pendingCalendarEvents || [])); } catch (e) { }
+    safeStorageSet(CALENDAR_PENDING_STORAGE_KEY, state.pendingCalendarEvents || []);
 }
 
 function persistPendingCalendarDeletes() {
-    try { localStorage.setItem(CALENDAR_PENDING_DELETE_STORAGE_KEY, JSON.stringify(state.pendingCalendarDeletes || [])); } catch (e) { }
+    safeStorageSet(CALENDAR_PENDING_DELETE_STORAGE_KEY, state.pendingCalendarDeletes || []);
 }
 
 function persistCalendarDisplayPreferences() {
-    try { localStorage.setItem('blip_calendar_display_mode', normalizeCalendarDisplayMode(state.calendarDisplayMode)); } catch (e) { }
-    try { localStorage.setItem('blip_calendar_anchor_date', normalizeCalendarAnchorDate(state.calendarAnchorDate).toISOString()); } catch (e) { }
+    safeStorageSet('blip_calendar_display_mode', normalizeCalendarDisplayMode(state.calendarDisplayMode));
+    safeStorageSet('blip_calendar_anchor_date', normalizeCalendarAnchorDate(state.calendarAnchorDate).toISOString());
 }
 
 function normalizeCachedCalendarEvent(event = {}) {
@@ -2993,7 +3002,7 @@ function syncUsageTierControls() {
 function applyUsageTier(tier, options = {}) {
     const normalizedTier = normalizeUsageTier(tier);
     const preset = getUsageTierPreset(normalizedTier);
-    const preserveManual = options.preserveManual === true;
+    const preserveManual = options.preserveManual === true || isMiniMaxModel(state.selectedModel);
 
     state.usageTier = normalizedTier;
     if (!preserveManual) {
@@ -3008,6 +3017,100 @@ function applyUsageTier(tier, options = {}) {
     syncUsageTierControls();
     syncVoiceEngineUi();
     persistUsageTierState();
+}
+
+function isMiniMaxModel(model) {
+    const normalized = String(model || '').trim().toLowerCase();
+    // Accept variants like "MiniMax-M2.7" (current UI) and older/pasted values
+    // like "MiniMax M2.7" (space) or "MiniMax_M2.7" (underscore).
+    return /^minimax(?:[-\s_]?)/.test(normalized);
+}
+
+function getActiveTextApiKey(model = state.selectedModel) {
+    return isMiniMaxModel(model) ? state.minimaxKey : state.geminiKey;
+}
+
+function getActiveTextProviderLabel(model = state.selectedModel) {
+    return isMiniMaxModel(model) ? 'MiniMax' : 'Gemini';
+}
+
+async function copyTextToClipboard(text) {
+    const value = String(text || '').trim();
+    if (!value) {
+        throw new Error('Nothing to copy.');
+    }
+
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return;
+    }
+
+    const fallback = document.createElement('textarea');
+    fallback.value = value;
+    fallback.setAttribute('readonly', 'true');
+    fallback.style.position = 'fixed';
+    fallback.style.opacity = '0';
+    fallback.style.left = '-9999px';
+    document.body.appendChild(fallback);
+    fallback.select();
+    const ok = document.execCommand('copy');
+    fallback.remove();
+    if (!ok) {
+        throw new Error('Clipboard copy failed.');
+    }
+}
+
+function buildTelegramEnvBlockFromInputs() {
+    const botToken = String(telegramBotTokenInput?.value || '').trim();
+    const chatId = String(telegramChatIdInput?.value || '').trim();
+    const chatAliases = String(telegramChatAliasesInput?.value || '').trim();
+    const backendPort = String(telegramBackendPortInput?.value || '8789').trim() || '8789';
+    return [
+        '# Telegram backend',
+        `TELEGRAM_BOT_TOKEN=${botToken}`,
+        `TELEGRAM_CHAT_ID=${chatId}`,
+        `TELEGRAM_CHAT_ALIASES=${chatAliases}`,
+        `TELEGRAM_BACKEND_PORT=${backendPort}`
+    ].join('\n');
+}
+
+function bindTelegramSettingsQuickActions() {
+    if (applyTelegramSettingsBtn && !applyTelegramSettingsBtn.dataset.boundFallback) {
+        applyTelegramSettingsBtn.dataset.boundFallback = '1';
+        applyTelegramSettingsBtn.addEventListener('click', async () => {
+            try {
+                const result = await saveTelegramBackendConfig({
+                    botToken: telegramBotTokenInput?.value || '',
+                    chatId: telegramChatIdInput?.value || '',
+                    chatAliases: telegramChatAliasesInput?.value || '',
+                    backendPort: telegramBackendPortInput?.value || '8789'
+                });
+                telegramFeature.updateTelegramAuthUi(result?.authState || getTelegramAuthState());
+                const ready = Boolean(result?.authState?.backendConfigured);
+                if (transcriptText) {
+                    transcriptText.innerText = ready
+                        ? 'Telegram settings applied and backend is ready.'
+                        : 'Telegram settings saved, but backend is still not configured.';
+                }
+            } catch (error) {
+                console.warn('Fallback apply Telegram settings failed:', error?.message || error);
+                if (transcriptText) transcriptText.innerText = error?.message || 'Could not apply Telegram settings.';
+            }
+        });
+    }
+
+    if (copyTelegramEnvBtn && !copyTelegramEnvBtn.dataset.boundFallback) {
+        copyTelegramEnvBtn.dataset.boundFallback = '1';
+        copyTelegramEnvBtn.addEventListener('click', async () => {
+            try {
+                await copyTextToClipboard(buildTelegramEnvBlockFromInputs());
+                if (transcriptText) transcriptText.innerText = 'Telegram .env.local block copied.';
+            } catch (error) {
+                console.warn('Fallback copy Telegram env block failed:', error?.message || error);
+                if (transcriptText) transcriptText.innerText = error?.message || 'Could not copy Telegram env block.';
+            }
+        });
+    }
 }
 // V4.3.4 - The Deep UI & Animation Restoration
 
@@ -3040,19 +3143,19 @@ const PERSONAS = {
 };
 
 function injectAppStyle(id, cssText) {
-    let style = document.getElementById(id);
-    if (!style) {
-        style = document.createElement('style');
-        style.id = id;
-        document.head.appendChild(style);
-    }
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
     style.textContent = cssText;
+    document.head.appendChild(style);
 }
 
 // ── UI: INITIALIZATION ───────────────────────────────────────────────────────
 async function init() {
     try {
         console.log(`🚀 Blip V${BLIP_VERSION} initializing...`);
+        renderCompanionIndicator();
+        await refreshCompanionAvailability();
 
         // Fill the browser real estate by default.
         injectAppStyle('blip-full-browser-layout', FULL_BROWSER_LAYOUT_CSS);
@@ -3066,11 +3169,6 @@ async function init() {
         if (personaLabelEl) personaLabelEl.textContent = "BLIP";
         if (PERSONAS.idle) PERSONAS.idle.label = "BLIP";
 
-        if (await initCareCamMode()) {
-            return;
-        }
-        updateCareCamHomeControls();
-
         // Restore conversation history from last session (better context)
         try {
             const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
@@ -3081,6 +3179,14 @@ async function init() {
                 }
             }
         } catch (e) { state.history = []; }
+
+        try {
+            if (Array.isArray(state.hubItems) && state.hubItems.length) {
+                persistHubItems(state.hubItems);
+            }
+            // Trigger periodic Hub check
+            state.pendingHubMaintenanceNotice = checkHubMaintenance();
+        } catch (_) { /* ignore */ }
 
         // Load voices and prefer a nicer-sounding browser voice when using Browser Default
         const voices = await speech.init();
@@ -3095,6 +3201,9 @@ async function init() {
             voiceSelect.onchange = (e) => {
                 state.selectedVoice = enVoices[parseInt(e.target.value, 10)];
             };
+        }
+        if (state.passiveWakeEnabled && speech.SR && !state.passiveWakePrimed) {
+            markPassiveWakePrimed();
         }
         const hasMicPermission = await syncPassiveWakePermission();
         if (state.passiveWakeEnabled && (state.passiveWakePrimed || hasMicPermission)) {
@@ -3137,6 +3246,20 @@ async function init() {
                 updateVoiceToggles();
             });
         }
+        if (companionModeToggle) {
+            companionModeToggle.checked = !!state.companionModeEnabled;
+            companionModeToggle.onchange = () => {
+                state.companionModeEnabled = !!companionModeToggle.checked;
+                safeStorageSet('blip_companion_mode_enabled', state.companionModeEnabled ? '1' : '0');
+                if (!state.companionModeEnabled) {
+                    companionModeController.stop();
+                } else if (state.isListening && !speech.isSpeaking && !state.isThinking) {
+                    companionModeController.start().catch(() => { });
+                }
+                renderCompanionIndicator();
+                renderCompanionSettingsStatus();
+            };
+        }
 
         // Kokoro voice selector
         if (kokoroVoiceSelect) {
@@ -3148,6 +3271,7 @@ async function init() {
         // Initialize UI
         geminiKeyInput.value = state.geminiKey;
         if (youtubeKeyInput) youtubeKeyInput.value = state.youtubeApiKey;
+        if (minimaxKeyInput) minimaxKeyInput.value = state.minimaxKey;
         if (weatherKeyInput) weatherKeyInput.value = state.weatherApiKey;
         if (googleCalendarClientIdInput) googleCalendarClientIdInput.value = state.googleCalendarClientId;
         await initGoogleCalendar();
@@ -3158,6 +3282,7 @@ async function init() {
         updateCalendarAuthUi();
         await emailFeature.initBackend();
         await telegramFeature.initBackend();
+        bindTelegramSettingsQuickActions();
         syncUsageTierControls();
         if (usageTierSelect) {
             usageTierSelect.onchange = () => {
@@ -3169,6 +3294,34 @@ async function init() {
                 state.selectedModel = modelSelect.value;
                 persistUsageTierState();
             };
+        }
+        if (conversationTemperatureInput && conversationTemperatureValue) {
+            const initValue = clampConversationTemperature(state.conversationTemperature);
+            state.conversationTemperature = initValue;
+            conversationTemperatureInput.value = initValue.toFixed(2);
+            conversationTemperatureValue.textContent = initValue.toFixed(2);
+            const saveConversationTemperature = () => {
+                const nextValue = clampConversationTemperature(conversationTemperatureInput.value);
+                state.conversationTemperature = nextValue;
+                safeStorageSet('blip_conversation_temperature', String(nextValue));
+                conversationTemperatureValue.textContent = nextValue.toFixed(2);
+            };
+            conversationTemperatureInput.oninput = saveConversationTemperature;
+            conversationTemperatureInput.onchange = saveConversationTemperature;
+        }
+        if (parsingTemperatureInput && parsingTemperatureValue) {
+            const initValue = clampParsingTemperature(state.parsingTemperature);
+            state.parsingTemperature = initValue;
+            parsingTemperatureInput.value = initValue.toFixed(2);
+            parsingTemperatureValue.textContent = initValue.toFixed(2);
+            const saveParsingTemperature = () => {
+                const nextValue = clampParsingTemperature(parsingTemperatureInput.value);
+                state.parsingTemperature = nextValue;
+                safeStorageSet('blip_parsing_temperature', String(nextValue));
+                parsingTemperatureValue.textContent = nextValue.toFixed(2);
+            };
+            parsingTemperatureInput.oninput = saveParsingTemperature;
+            parsingTemperatureInput.onchange = saveParsingTemperature;
         }
         if (imageModelSelect) {
             imageModelSelect.onchange = () => {
@@ -3253,25 +3406,31 @@ async function init() {
 
         const saveKey = (e) => {
             state.geminiKey = e.target.value.trim();
-            localStorage.setItem('blip_gemini_key', state.geminiKey);
+            safeStorageSet('blip_gemini_key', state.geminiKey);
             console.log('🔐 Access Key updated');
+        };
+        const saveMiniMaxKey = (e) => {
+            if (!minimaxKeyInput) return;
+            state.minimaxKey = e.target.value.trim();
+            safeStorageSet('blip_minimax_key', state.minimaxKey);
+            console.log('🔐 MiniMax API key updated');
         };
         const saveYoutubeKey = (e) => {
             if (!youtubeKeyInput) return;
             state.youtubeApiKey = e.target.value.trim();
-            localStorage.setItem('blip_youtube_key', state.youtubeApiKey);
+            safeStorageSet('blip_youtube_key', state.youtubeApiKey);
             console.log('🔐 YouTube API key updated');
         };
         const saveWeatherKey = (e) => {
             if (!weatherKeyInput) return;
             state.weatherApiKey = e.target.value.trim();
-            localStorage.setItem('blip_weather_key', state.weatherApiKey);
+            safeStorageSet('blip_weather_key', state.weatherApiKey);
             console.log('🔐 Weather API key updated');
         };
         const saveGoogleCalendarClientId = (e) => {
             if (!googleCalendarClientIdInput) return;
             state.googleCalendarClientId = e.target.value.trim();
-            localStorage.setItem('blip_google_calendar_client_id', state.googleCalendarClientId);
+            safeStorageSet('blip_google_calendar_client_id', state.googleCalendarClientId);
             setGoogleCalendarClientId(state.googleCalendarClientId);
             updateCalendarAuthUi();
             console.log('📅 Google Calendar Client ID updated');
@@ -3281,6 +3440,11 @@ async function init() {
         geminiKeyInput.oninput = saveKey;
         geminiKeyInput.onchange = saveKey;
         geminiKeyInput.onblur = saveKey;
+        if (minimaxKeyInput) {
+            minimaxKeyInput.oninput = saveMiniMaxKey;
+            minimaxKeyInput.onchange = saveMiniMaxKey;
+            minimaxKeyInput.onblur = saveMiniMaxKey;
+        }
         if (youtubeKeyInput) {
             youtubeKeyInput.oninput = saveYoutubeKey;
             youtubeKeyInput.onchange = saveYoutubeKey;
@@ -3295,6 +3459,23 @@ async function init() {
             googleCalendarClientIdInput.oninput = saveGoogleCalendarClientId;
             googleCalendarClientIdInput.onchange = saveGoogleCalendarClientId;
             googleCalendarClientIdInput.onblur = saveGoogleCalendarClientId;
+        }
+        if (copyGeminiKeyBtn) {
+            copyGeminiKeyBtn.onclick = async () => {
+                const keyToCopy = String(state.geminiKey || geminiKeyInput?.value || '').trim();
+                if (!keyToCopy) {
+                    if (transcriptText) transcriptText.innerText = 'Add your Gemini API key first.';
+                    return;
+                }
+
+                try {
+                    await copyTextToClipboard(keyToCopy);
+                    if (transcriptText) transcriptText.innerText = 'Gemini API key copied to clipboard.';
+                } catch (error) {
+                    console.warn('Gemini key copy failed:', error?.message || error);
+                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not copy the Gemini key.';
+                }
+            };
         }
         if (connectCalendarBtn) {
             connectCalendarBtn.onclick = async () => {
@@ -3339,6 +3520,7 @@ async function init() {
         }
         emailFeature.bindSettingsControls();
         telegramFeature.bindSettingsControls();
+        bindSettingsLockControls();
 
         // Blip volume (20% steps)
         if (speechVolumeInput && speechVolumeValue) {
@@ -3350,7 +3532,7 @@ async function init() {
             const saveVolume = () => {
                 const val = parseInt(speechVolumeInput.value, 10);
                 state.speechVolume = val / 100;
-                localStorage.setItem('blip_speech_volume', state.speechVolume);
+                safeStorageSet('blip_speech_volume', state.speechVolume);
                 speechVolumeValue.textContent = val + '%';
             };
             speechVolumeInput.oninput = saveVolume;
@@ -3437,6 +3619,10 @@ async function init() {
         // Close panels on Esc
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
+            if (document.getElementById('conversation-inspector-modal')?.style?.display === 'flex') {
+                closeConversationInspector();
+                return;
+            }
                 if (mediaLightbox && mediaLightbox.classList.contains('active')) {
                     closeMediaLightbox();
                     return;
@@ -3504,94 +3690,13 @@ async function init() {
             };
         }
         if (stopCameraBtn) stopCameraBtn.onclick = () => exitVisionMode();
-        if (closeCameraBtn) {
-            closeCameraBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                exitVisionMode();
-            };
-        }
         if (watchBtn) watchBtn.onclick = toggleLiveWatch;
-        if (careCamQuickBtn) {
-            careCamQuickBtn.onclick = async () => {
-                if (state.careCamRunning) {
-                    await stopCareCamDemo();
-                    if (transcriptText) transcriptText.innerText = 'Care Cam demo stopped.';
-                    return;
-                }
-                try {
-                    await startCareCamDemo();
-                    if (transcriptText) transcriptText.innerText = 'Care Cam demo ready. Share the phone viewer link.';
-                } catch (error) {
-                    console.warn('Care Cam quick start failed:', error?.message || error);
-                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not start Care Cam demo.';
-                }
-            };
-        }
-        if (careCamDemoBtn) {
-            careCamDemoBtn.onclick = async () => {
-                if (state.careCamRunning) {
-                    await stopCareCamDemo();
-                    if (transcriptText) transcriptText.innerText = 'Care Cam demo stopped.';
-                    return;
-                }
-                try {
-                    await startCareCamDemo();
-                    if (transcriptText) transcriptText.innerText = 'Care Cam demo ready. Copy the viewer link to your phone.';
-                } catch (error) {
-                    console.warn('Care Cam demo start failed:', error?.message || error);
-                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not start Care Cam demo.';
-                }
-            };
-        }
-        if (copyCareCamLinkBtn) {
-            copyCareCamLinkBtn.onclick = async () => {
-                if (!state.careCamSessionId) {
-                    await startCareCamDemo();
-                }
-                await copyCareCamLink();
-            };
-        }
-        if (openCareCamViewerBtn) {
-            openCareCamViewerBtn.onclick = async () => {
-                if (!state.careCamSessionId) {
-                    await startCareCamDemo();
-                }
-                await openCareCamViewer();
-            };
-        }
-        if (careCamTalkBtn) {
-            careCamTalkBtn.onclick = async () => {
-                await sendCareCamViewerCommand('talk');
-            };
-        }
-        if (careCamAlertBtn) {
-            careCamAlertBtn.onclick = async () => {
-                await sendCareCamViewerCommand('alert');
-            };
-        }
-        if (careCamTalkInput) {
-            careCamTalkInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void sendCareCamViewerCommand('talk');
-                }
-            });
-        }
         if (uploadBtn && fileInput) {
             uploadBtn.onclick = () => fileInput.click();
             fileInput.onchange = handleFileUpload;
         }
         if (clearImageBtn) clearImageBtn.onclick = clearPendingImage;
         if (saveToHubBtn) saveToHubBtn.onclick = saveCurrentVisionToHub;
-        if (visionPreviewContainer) {
-            visionPreviewContainer.addEventListener('click', async (event) => {
-                if (event.target.closest('#clear-image-btn, #save-to-hub-btn')) return;
-                if (state.careCamRunning || state.careCamSessionId) {
-                    await openCareCamViewer();
-                }
-            });
-        }
         if (mediaBtn) mediaBtn.onclick = () => toggleMediaGallery(null, 'all');
         if (creationsBtn) {
             creationsBtn.onclick = () => {
@@ -3620,13 +3725,7 @@ async function init() {
             });
         }
         if (closeMediaBtn) closeMediaBtn.onclick = () => toggleMediaGallery(false);
-        if (closeMediaLightboxBtn) {
-            closeMediaLightboxBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                closeMediaLightbox();
-            };
-        }
+        if (closeMediaLightboxBtn) closeMediaLightboxBtn.onclick = closeMediaLightbox;
         if (shareMediaLightboxBtn) {
             shareMediaLightboxBtn.onclick = async () => {
                 const result = await shareActiveMediaImage();
@@ -3680,9 +3779,9 @@ async function init() {
                     return;
                 }
                 try {
-                    await telegramFeature.openPanel({ summary: 'Telegram is open. Your message is ready to review.' });
-                    state.pendingTelegramReview = false;
-                    if (transcriptText) transcriptText.innerText = 'Telegram is open. Your message is ready to review.';
+                    await telegramFeature.openPanel({ summary: 'Telegram open.' });
+                    state.pendingTelegramReview = true;
+                    if (transcriptText) transcriptText.innerText = 'Telegram open.';
                 } catch (error) {
                     console.warn('Open Telegram tool failed:', error?.message || error);
                     openSettingsPanel();
@@ -3705,9 +3804,20 @@ async function init() {
         };
         closePanelBtn.onclick = () => closeSettingsPanel();
         document.getElementById('ui-debug-refresh-btn')?.addEventListener('click', refreshUiDebugDump);
-        openConversationInspectorBtn?.addEventListener('click', () => {
-            openConversationInspectorPanel();
-        });
+        if (refreshApiUsageBtn) {
+            refreshApiUsageBtn.onclick = () => {
+                refreshApiUsageSummary().catch(() => { });
+            };
+        }
+        if (openConversationInspectorBtn) {
+            openConversationInspectorBtn.onclick = () => {
+                refreshUiDebugDump();
+                openConversationInspector();
+            };
+        }
+        if (closeConversationInspectorBtn) {
+            closeConversationInspectorBtn.onclick = () => closeConversationInspector();
+        }
 
         // Chart Toggles
         if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
@@ -3719,13 +3829,9 @@ async function init() {
             };
         }
         if (calendarBtn) {
-            calendarBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isCalendarPanelActuallyVisible()) {
-                    if (closeCalendarPanel()) {
-                        if (transcriptText) transcriptText.innerText = 'Calendar closed.';
-                    }
+            calendarBtn.onclick = async () => {
+                if (closeCalendarPanel()) {
+                    if (transcriptText) transcriptText.innerText = 'Calendar closed.';
                     return;
                 }
                 try {
@@ -3735,7 +3841,7 @@ async function init() {
                     console.warn('Calendar button failed:', error?.message || error);
                     if (transcriptText) transcriptText.innerText = error?.message || 'Could not open Blip Calendar.';
                 }
-            });
+            };
         }
 
         // Scenery Orbit (V4.3.1)
@@ -3756,7 +3862,7 @@ async function init() {
         chatInput.addEventListener('input', () => syncChatEngagementState());
         chatInput.addEventListener('blur', () => setTimeout(() => syncChatEngagementState(), 0));
 
-        await initStudentDeskStore();
+        renderHub();
         renderCart();
         initLearningGames();
         persistMediaGallery();
@@ -3795,7 +3901,6 @@ function setMode(mode) {
     if (cartContainer) cartContainer.style.display = 'none';
     if (mediaContainer) mediaContainer.style.display = 'none';
     if (cameraControls) cameraControls.style.display = 'none';
-    if (closeCameraBtn) closeCameraBtn.style.display = 'none';
 
     // Show specific panel based on mode
     switch (mode) {
@@ -3816,35 +3921,25 @@ function setMode(mode) {
             renderMediaGallery();
             break;
         case 'chart':
-            if (chartContainer) {
-                chartContainer.classList.add('active');
-                setTimeout(() => chartContainer.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
-            }
+            chartContainer.classList.add('active');
+            setTimeout(() => chartContainer?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
             break;
         case 'map':
-            if (mapContainer) {
-                mapContainer.classList.add('active');
-                setTimeout(() => mapContainer.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
-            }
+            mapContainer.classList.add('active');
+            setTimeout(() => mapContainer?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 50);
             break;
-        case 'settings':
-            if (underTheHood) underTheHood.classList.add('active');
-            break;
-        case 'vision':
-            if (cameraControls) cameraControls.style.display = 'flex';
-            if (closeCameraBtn) closeCameraBtn.style.display = 'flex';
-            break;
+        case 'settings': underTheHood.classList.add('active'); break;
+        case 'vision': cameraControls.style.display = 'flex'; break;
         default:
             // Core mode
             if (cameraControls) cameraControls.style.display = 'none';
-            if (closeCameraBtn) closeCameraBtn.style.display = 'none';
             stopCamera({ keepTranscript: true });
             break;
     }
 
     // Full-browser layout uses fixed-height container. Enable scroll only when a panel needs vertical room.
     if (appContainer) {
-        const allowPanelScroll = mode === 'map' || mode === 'chart' || mode === 'settings' || mode === 'hub' || mode === 'games' || mode === 'media' || mode === 'cart' || state.isMediaStripOpen;
+        const allowPanelScroll = mode === 'map' || mode === 'chart' || mode === 'settings' || mode === 'hub' || mode === 'games' || mode === 'media' || state.isMediaStripOpen;
         appContainer.style.overflowY = allowPanelScroll ? 'auto' : 'hidden';
         appContainer.style.overflowX = 'hidden';
     }
@@ -3954,6 +4049,7 @@ async function startCamera() {
         transcriptText.innerText = "Opening my eyes...";
 
         // Pause listening while camera is open
+        companionModeController.stop();
         speech.stopListening();
 
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
@@ -3995,8 +4091,14 @@ function stopCamera(options = {}) {
     if (watchBtn) watchBtn.classList.remove('active');
     if (liveIndicator) liveIndicator.style.display = 'none';
     if (state.cameraStream) {
-        state.cameraStream.getTracks().forEach(track => track.stop());
+        state.cameraStream.getTracks().forEach(track => {
+            try { track.stop(); } catch (_) { }
+        });
         state.cameraStream = null;
+    }
+    if (state.visionIdleTimer) {
+        clearTimeout(state.visionIdleTimer);
+        state.visionIdleTimer = null;
     }
     if (webcamVideo) {
         try { webcamVideo.pause?.(); } catch (_) { }
@@ -4004,15 +4106,10 @@ function stopCamera(options = {}) {
         webcamVideo.style.display = 'none';
     }
     if (cameraControls) cameraControls.style.display = 'none';
-    if (closeCameraBtn) closeCameraBtn.style.display = 'none';
     if (cameraBtn) cameraBtn.style.display = 'block';
     if (visionPreviewContainer) visionPreviewContainer.style.display = state.pendingImage ? 'block' : 'none';
-    setCareCamMiniPreviewState(false);
     updateRecordButtonUI();
     setEmotion('serious');
-    if (state.careCamRunning || state.careCamSessionId) {
-        resetCareCamSession('No care cam session running.');
-    }
     if (!keepTranscript) transcriptText.innerText = transcript;
 
     // Resume listening if Blip is still active
@@ -4045,65 +4142,16 @@ async function capturePhotoWhenReady() {
         const started = await startCamera();
         if (!started) return false;
     }
+    // Refresh idle timer on user action
+    if (state.visionIdleTimer) clearTimeout(state.visionIdleTimer);
+    state.visionIdleTimer = setTimeout(() => {
+        if (!state.isLiveWatch && state.cameraStream) {
+            exitVisionMode({ transcript: "Camera timed out to save battery." });
+        }
+    }, 60000);
     const ready = await waitForVideoReady(webcamVideo, 2200);
     if (!ready || !webcamVideo?.videoWidth || !webcamVideo?.videoHeight) return false;
     return capturePhoto();
-}
-
-async function captureCameraPhotoToDesign(title = 'Camera Photo', options = {}) {
-    const { analyze = false, prompt = title } = options || {};
-    const hasPendingPhoto = !!state.pendingImage;
-    if (!hasPendingPhoto) {
-        const ok = await capturePhotoWhenReady();
-        if (!ok) return { ok: false, message: 'I could not capture the photo yet.' };
-    }
-
-    const pendingImage = state.pendingImage;
-    const rawData = typeof pendingImage === 'string'
-        ? pendingImage.trim()
-        : String(pendingImage?.data || '').trim();
-    const mimeType = typeof pendingImage === 'object' && pendingImage?.mimeType
-        ? pendingImage.mimeType
-        : 'image/jpeg';
-    const dataUrl = rawData ? (rawData.startsWith('data:') ? rawData : `data:${mimeType};base64,${rawData}`) : '';
-    if (!dataUrl) {
-        return { ok: false, message: 'I could not prepare that photo for Design.' };
-    }
-
-    let summaryText = `${title} ready in Design.`;
-    if (analyze) {
-        try {
-            const analysis = await analyzeHomeworkPhoto(
-                { data: rawData, mimeType },
-                prompt,
-                state.geminiKey,
-                state.selectedModel
-            );
-            if (analysis?.text) {
-                summaryText = analysis.text;
-                setPersona(analysis.emotion || 'curious');
-                setBlipEmotion(analysis.emotion || 'curious');
-                addToHub('note', analysis.text, { source: 'student-homework', kind: 'homework' });
-            }
-        } catch (error) {
-            console.warn('Homework photo analysis failed:', error?.message || error);
-            summaryText = `${title} ready in Design.`;
-        }
-    }
-
-    state.lastContext.lastDesignPrompt = prompt || title;
-    state.lastContext.lastDesignDataUrl = dataUrl;
-    renderActionInSidePanel({
-        action: 'design',
-        tool_params: {
-            dataUrl,
-            imageUrl: dataUrl,
-            prompt: prompt || title,
-            title
-        },
-        text: summaryText
-    });
-    return { ok: true, message: summaryText };
 }
 
 function exitVisionMode(options = {}) {
@@ -4122,32 +4170,19 @@ function exitVisionMode(options = {}) {
 function toggleLiveWatch() {
     state.isLiveWatch = !state.isLiveWatch;
     if (watchBtn) watchBtn.classList.toggle('active', state.isLiveWatch);
-    if (careCamQuickBtn) careCamQuickBtn.classList.toggle('active', state.careCamRunning);
-    if (careCamQuickBtn) {
-        careCamQuickBtn.setAttribute('aria-label', state.careCamRunning ? 'Stop Care Cam Demo' : 'Start Care Cam Demo');
-        careCamQuickBtn.title = state.careCamRunning ? 'Stop Care Cam Demo' : 'Start Care Cam Demo';
-    }
     if (liveIndicator) liveIndicator.style.display = state.isLiveWatch ? 'block' : 'none';
     if (visionPreviewContainer) visionPreviewContainer.style.display = state.isLiveWatch ? 'block' : (state.pendingImage ? 'block' : 'none');
-    setCareCamMiniPreviewState(state.isLiveWatch && state.careCamRunning, 'LIVE VERIFY');
 
-        if (state.isLiveWatch) {
-            setEmotion('curious');
-            transcriptText.innerText = "Live Watch ACTIVE. I'm observing everything...";
-            // If camera not yet on, start it
-            if (!state.cameraStream) startCamera();
+    if (state.isLiveWatch) {
+        setEmotion('curious');
+        transcriptText.innerText = "Live Watch ACTIVE. I'm observing everything...";
+        // If camera not yet on, start it
+        if (!state.cameraStream) startCamera();
 
-            state.liveInterval = setInterval(captureLiveFrame, 1500);
-            if (state.careCamRunning) {
-                setCareCamMiniPreviewState(true, 'LIVE VERIFY');
-                if (visionPreviewContainer) visionPreviewContainer.style.display = 'block';
-            }
-        } else {
-            clearInterval(state.liveInterval);
-            state.liveFrames = [];
-            if (state.careCamRunning) {
-                resetCareCamSession('Care Cam paused.');
-        }
+        state.liveInterval = setInterval(captureLiveFrame, 1500);
+    } else {
+        clearInterval(state.liveInterval);
+        state.liveFrames = [];
         transcriptText.innerText = "Live Watch stopped.";
         if (state.isActive) startListeningLoop();
     }
@@ -4169,531 +4204,6 @@ function captureLiveFrame() {
 
     // Update preview bubble with latest
     if (visionPreview) visionPreview.src = `data:image/jpeg;base64,${base64}`;
-    if (state.careCamRunning) {
-        setCareCamMiniPreviewState(true, 'LIVE VERIFY');
-        if (visionPreviewContainer) visionPreviewContainer.style.display = 'block';
-    }
-
-    if (state.careCamSessionId) {
-        pushCareCamFrame(state.careCamSessionId, {
-            imageDataUrl: `data:image/jpeg;base64,${base64}`,
-            emotion: state.currentEmotion || 'serious',
-            caption: state.careCamRunning ? 'Live room feed' : ''
-        }).catch((error) => {
-            console.warn('Care Cam frame push failed:', error?.message || error);
-        });
-    }
-
-}
-
-function setCareCamHomeStatus(text = '') {
-    const message = String(text || '').trim() || 'No care cam session running.';
-    if (careCamStatus) careCamStatus.textContent = message;
-}
-
-function setCareCamMiniPreviewState(active, label = 'LIVE VERIFY') {
-    if (!visionPreviewContainer) return;
-    visionPreviewContainer.classList.toggle('care-cam-mini-live', !!active);
-    if (active) {
-        visionPreviewContainer.dataset.liveLabel = label;
-        visionPreviewContainer.title = 'Tap to open the Care Cam viewer';
-        visionPreviewContainer.setAttribute('aria-label', 'Care Cam live preview. Tap to open the viewer.');
-    } else {
-        delete visionPreviewContainer.dataset.liveLabel;
-        visionPreviewContainer.title = '';
-        visionPreviewContainer.removeAttribute('aria-label');
-    }
-}
-
-function setCareCamViewerStatus(text = '') {
-    const message = String(text || '').trim() || 'Waiting for a live session...';
-    if (careCamViewerStatus) careCamViewerStatus.textContent = message;
-}
-
-function setCareCamViewerVisible(visible) {
-    state.careCamViewerMode = !!visible;
-    document.body.classList.toggle('care-cam-viewer-mode', !!visible);
-    if (careCamViewerShell) {
-        careCamViewerShell.classList.toggle('hidden', !visible);
-        careCamViewerShell.setAttribute('aria-hidden', visible ? 'false' : 'true');
-    }
-}
-
-function getCareCamSessionLink() {
-    if (!state.careCamSessionId) return '';
-    if (!state.careCamViewerUrl) {
-        state.careCamViewerUrl = buildCareCamViewerUrl(state.careCamSessionId);
-    }
-    return state.careCamViewerUrl;
-}
-
-async function ensureCareCamSession() {
-    if (state.careCamSessionId) return state.careCamSessionId;
-    const result = await createCareCamSession('Blip Care Cam');
-    state.careCamSessionId = result.sessionId;
-    state.careCamViewerUrl = buildCareCamViewerUrl(result.sessionId);
-    state.careCamCommandCursor = 0;
-    setCareCamHomeStatus(`Session ready: ${result.sessionId.slice(0, 8)}…`);
-    return state.careCamSessionId;
-}
-
-function updateCareCamHomeControls() {
-    const link = getCareCamSessionLink();
-    if (copyCareCamLinkBtn) copyCareCamLinkBtn.disabled = !link;
-    if (openCareCamViewerBtn) openCareCamViewerBtn.disabled = !link;
-    if (careCamDemoBtn) {
-        careCamDemoBtn.textContent = state.careCamRunning ? '🛑 Stop Care Cam Demo' : '🍼 Start Care Cam Demo';
-    }
-}
-
-async function copyCareCamLink() {
-    const link = getCareCamSessionLink();
-    if (!link) {
-        setCareCamHomeStatus('Start the demo first to generate a viewer link.');
-        return false;
-    }
-    try {
-        await navigator.clipboard.writeText(link);
-        setCareCamHomeStatus('Viewer link copied to clipboard.');
-        return true;
-    } catch (_) {
-        setCareCamHomeStatus(link);
-        return false;
-    }
-}
-
-function stopCareCamPolling() {
-    if (state.careCamRelayTimer) {
-        clearInterval(state.careCamRelayTimer);
-        state.careCamRelayTimer = null;
-    }
-    if (state.careCamPollTimer) {
-        clearInterval(state.careCamPollTimer);
-        state.careCamPollTimer = null;
-    }
-}
-
-function clearCareCamFallWatch() {
-    if (state.careCamFallWatchTimer) {
-        clearTimeout(state.careCamFallWatchTimer);
-        state.careCamFallWatchTimer = null;
-    }
-    state.careCamFallWatchActive = false;
-    state.careCamFallWatchPhase = 'idle';
-    state.careCamFallWatchStartedAt = 0;
-    state.careCamLastFallAnalysisAt = 0;
-    state.careCamLastFallAnalysisResult = null;
-}
-
-function getCareCamFallMessage(location = state.careCamFallWatchLocation || 'living room') {
-    const room = String(location || 'living room').trim() || 'living room';
-    return `Your dad fell in the ${room}.`;
-}
-
-function getCareCamUrgentMessage(location = state.careCamFallWatchLocation || 'living room') {
-    const room = String(location || 'living room').trim() || 'living room';
-    return `Urgent: your dad says he is not okay in the ${room}. Call him now!`;
-}
-
-async function sendCareCamTelegramFallMessage(options = {}) {
-    const location = String(options.location || state.careCamFallWatchLocation || 'living room').trim() || 'living room';
-    const announce = Boolean(options.announce);
-    const keepWatch = Boolean(options.keepWatch);
-    const urgent = Boolean(options.urgent);
-    const message = urgent ? getCareCamUrgentMessage(location) : getCareCamFallMessage(location);
-
-    try {
-        await sendTelegramMessage({ text: message });
-        state.lastTelegramSendResult = {
-            ok: true,
-            kind: 'text',
-            chatId: ''
-        };
-        setCareCamHomeStatus(`Telegram sent: ${message}`);
-        if (state.careCamViewerMode) {
-            setCareCamViewerStatus('Telegram alert sent.');
-        }
-        transcriptText.innerHTML = `<b>Blip:</b> Telegram alert sent.<br><small>${message}</small>`;
-        state.history.push({ user: 'care cam', blip: `Telegram alert sent: ${message}` });
-        if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-        if (keepWatch) {
-            state.careCamFallWatchActive = true;
-            state.careCamFallWatchPhase = urgent ? 'idle' : 'check';
-            state.careCamFallWatchStartedAt = Date.now();
-            if (state.careCamFallWatchTimer) {
-                clearTimeout(state.careCamFallWatchTimer);
-                state.careCamFallWatchTimer = null;
-            }
-        } else {
-            clearCareCamFallWatch();
-        }
-        if (announce) {
-            await speakWithGuard(
-                urgent
-                    ? 'I sent the urgent Telegram alert.'
-                    : 'I sent the Telegram alert.',
-                'serious'
-            );
-        }
-        return true;
-    } catch (error) {
-        console.warn('Care Cam Telegram send failed:', error?.message || error);
-        setCareCamHomeStatus(error?.message || 'Could not send the Telegram alert.');
-        if (state.careCamViewerMode) {
-            setCareCamViewerStatus(error?.message || 'Could not send the Telegram alert.');
-        }
-        clearCareCamFallWatch();
-        if (announce) {
-            await speakWithGuard(error?.message || 'I could not send the Telegram alert.', 'sad');
-        }
-        return false;
-    }
-}
-
-async function beginCareCamFallWatch(options = {}) {
-    const location = String(options.location || state.careCamFallWatchLocation || 'living room').trim() || 'living room';
-    const prompt = String(options.prompt || 'Are you okay?').trim() || 'Are you okay?';
-    const autoDelayMs = Math.max(5000, Number(options.autoDelayMs) || 60000);
-    const shouldSpeak = options.shouldSpeak !== false;
-
-    state.careCamFallWatchLocation = location;
-    clearCareCamFallWatch();
-    state.careCamFallWatchActive = true;
-    state.careCamFallWatchPhase = 'watch';
-    state.careCamFallWatchStartedAt = Date.now();
-    setCareCamHomeStatus(`Fall watch active. Asking "${prompt}" and waiting for Telegram fallback...`);
-    if (state.careCamViewerMode) {
-        setCareCamViewerStatus(`Fall watch active. Quiet for ${Math.round(autoDelayMs / 1000)}s sends Telegram.`);
-    }
-    if (shouldSpeak) {
-        transcriptText.innerHTML = `<b>Blip:</b> ${prompt}`;
-        state.history.push({ user: 'care cam alert', blip: prompt });
-        if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-        setPersona('warning');
-        await speakWithGuard(prompt, 'serious');
-    }
-
-    state.careCamFallWatchTimer = setTimeout(() => {
-        void sendCareCamTelegramFallMessage({ location, announce: false });
-    }, autoDelayMs);
-
-    return true;
-}
-
-async function handleCareCamHelpVoice(command = '') {
-    const intent = parseBlipIntent(command, {
-        careCamActive: state.careCamRunning || state.careCamViewerMode || state.careCamSessionId,
-        careCamHelpActive: state.careCamFallWatchActive,
-        careCamFollowUpPhase: state.careCamFallWatchPhase
-    });
-    if (!intent || intent.kind !== 'carecam') return false;
-    if (intent.action === 'start_and_send_help') {
-        const location = state.careCamFallWatchLocation || 'living room';
-        if (!state.careCamRunning && !state.careCamSessionId) {
-            setCareCamHomeStatus('Turning on Care Cam and sending Telegram alert...');
-            if (state.careCamViewerMode) {
-                setCareCamViewerStatus('Turning on Care Cam and sending Telegram alert...');
-            }
-            await startCareCamDemo();
-        } else {
-            setCareCamHomeStatus('Sending Telegram alert...');
-            if (state.careCamViewerMode) {
-                setCareCamViewerStatus('Sending Telegram alert...');
-            }
-        }
-        transcriptText.innerHTML = `<b>Blip:</b> Turning on Care Cam and calling for help now.`;
-        state.history.push({ user: command || 'send help message', blip: 'Turning on Care Cam and calling for help now.' });
-        if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-        clearCareCamFallWatch();
-        await sendCareCamTelegramFallMessage({ location, announce: true });
-        await beginCareCamSafetyCheck({ location });
-        return true;
-    }
-    if (!['request_help', 'send_help'].includes(intent.action)) return false;
-
-    const location = state.careCamFallWatchLocation || 'living room';
-    setCareCamHomeStatus('Help requested. Sending Telegram alert...');
-    if (state.careCamViewerMode) {
-        setCareCamViewerStatus('Help requested. Sending Telegram alert...');
-    }
-    transcriptText.innerHTML = `<b>Blip:</b> Calling for help now.`;
-    state.history.push({ user: command || 'call for help', blip: 'Calling for help now.' });
-    if (state.history.length > HISTORY_MAX) state.history.shift();
-    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-    clearCareCamFallWatch();
-    await sendCareCamTelegramFallMessage({ location, announce: true });
-    await beginCareCamSafetyCheck({ location });
-    return true;
-}
-
-async function beginCareCamSafetyCheck(options = {}) {
-    const location = String(options.location || state.careCamFallWatchLocation || 'living room').trim() || 'living room';
-    state.careCamFallWatchLocation = location;
-    state.careCamFallWatchActive = true;
-    state.careCamFallWatchPhase = 'check';
-    state.careCamFallWatchStartedAt = Date.now();
-    if (state.careCamFallWatchTimer) {
-        clearTimeout(state.careCamFallWatchTimer);
-        state.careCamFallWatchTimer = null;
-    }
-    setCareCamHomeStatus('Telegram sent. Waiting for yes or no...');
-    if (state.careCamViewerMode) {
-        setCareCamViewerStatus('Telegram sent. Waiting for yes or no...');
-    }
-    transcriptText.innerHTML = `<b>Blip:</b> I sent the Telegram alert. Are you okay?`;
-    state.history.push({ user: 'care cam', blip: 'I sent the Telegram alert. Are you okay?' });
-    if (state.history.length > HISTORY_MAX) state.history.shift();
-    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-    await speakWithGuard('I sent the Telegram alert. Are you okay?', 'serious');
-    if (state.isActive && !state.softSleepMode && !state.isThinking && !speech.isSpeaking) {
-        startListeningLoop();
-    }
-    return true;
-}
-
-async function handleCareCamFallWatchVoice(command = '') {
-    if (!state.careCamFallWatchActive) return false;
-    const intent = parseBlipIntent(command, {
-        careCamActive: state.careCamRunning || state.careCamViewerMode || state.careCamSessionId,
-        careCamHelpActive: state.careCamFallWatchActive,
-        careCamFollowUpPhase: state.careCamFallWatchPhase
-    });
-
-    if (intent.action === 'send_help') {
-        clearCareCamFallWatch();
-        await sendCareCamTelegramFallMessage({ announce: true });
-        await beginCareCamSafetyCheck({ location: state.careCamFallWatchLocation || 'living room' });
-        return true;
-    }
-
-    if (intent.action === 'urgent_help') {
-        clearCareCamFallWatch();
-        await sendCareCamTelegramFallMessage({ announce: true, urgent: true });
-        return true;
-    }
-
-    if (intent.action === 'clear_help') {
-        clearCareCamFallWatch();
-        setCareCamHomeStatus('Fall watch cleared.');
-        if (state.careCamViewerMode) {
-            setCareCamViewerStatus('Fall watch cleared.');
-        }
-        transcriptText.innerHTML = `<b>Blip:</b> Okay, I’m staying quiet and watching.`;
-        state.history.push({ user: command || 'I am okay', blip: 'Okay, I’m staying quiet and watching.' });
-        if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-        await speakWithGuard('Okay, I’m staying quiet and watching.', 'happy');
-        return true;
-    }
-
-    return false;
-}
-
-function resetCareCamSession(message = 'No care cam session running.') {
-    stopCareCamPolling();
-    clearCareCamFallWatch();
-    state.careCamRunning = false;
-    state.careCamLocalOnly = false;
-    state.careCamSessionId = '';
-    state.careCamViewerUrl = '';
-    state.careCamCommandCursor = 0;
-    updateCareCamHomeControls();
-    setCareCamHomeStatus(message);
-}
-
-async function processCareCamCommand(command = {}) {
-    const kind = String(command.kind || 'talk').toLowerCase();
-    const text = String(command.text || '').trim();
-    if (!text && kind !== 'alert') return;
-
-    if (kind === 'alert') {
-        face.classList.remove('thinking');
-        setBlipEmotion('surprised', 1600);
-        setPersona('warning');
-        transcriptText.innerHTML = `<b>Phone:</b> ${text || 'Care Cam alert'}<br><b>Blip:</b> Are you okay?`;
-        state.history.push({ user: text || 'Care Cam alert', blip: 'Are you okay?' });
-        if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-        await beginCareCamFallWatch({
-            prompt: 'Are you okay?',
-            location: state.careCamFallWatchLocation || 'living room',
-            autoDelayMs: 60000,
-            shouldSpeak: false
-        });
-        await speakWithGuard('Are you okay?', 'serious');
-        return;
-    }
-
-    face.classList.remove('thinking');
-    transcriptText.innerHTML = `<b>Phone:</b> ${text}<br><b>Blip:</b> Thinking...`;
-    await handleCommand(text);
-}
-
-async function pollCareCamCommands() {
-    if (!state.careCamSessionId) return;
-    try {
-        const result = await getCareCamCommands(state.careCamSessionId, state.careCamCommandCursor || 0);
-        const commands = Array.isArray(result.commands) ? result.commands : [];
-        if (commands.length) {
-            for (const command of commands) {
-                state.careCamCommandCursor = Math.max(state.careCamCommandCursor || 0, Number(command.id) || 0);
-                await processCareCamCommand(command);
-            }
-        } else if (Number.isFinite(Number(result.latestCommandId))) {
-            state.careCamCommandCursor = Math.max(state.careCamCommandCursor || 0, Number(result.latestCommandId) || 0);
-        }
-    } catch (error) {
-        console.warn('Care Cam command poll failed:', error?.message || error);
-    }
-}
-
-async function startCareCamPolling() {
-    stopCareCamPolling();
-    await pollCareCamCommands();
-    state.careCamRelayTimer = setInterval(() => {
-        void pollCareCamCommands();
-    }, 900);
-}
-
-async function startCareCamDemo() {
-    state.careCamRunning = true;
-    updateCareCamHomeControls();
-    if (!state.cameraStream) {
-        const started = await startCamera();
-        if (!started) {
-            resetCareCamSession('Could not start the camera for Care Cam.');
-            throw new Error('Could not start the camera for Care Cam.');
-        }
-    }
-    if (!state.isLiveWatch) toggleLiveWatch();
-    if (visionPreviewContainer) visionPreviewContainer.style.display = 'block';
-    setCareCamMiniPreviewState(true, 'LIVE VERIFY');
-    try {
-        const sessionId = await ensureCareCamSession();
-        state.careCamLocalOnly = false;
-        await startCareCamPolling();
-        setCareCamHomeStatus(`Session live. Share the viewer link for ${sessionId.slice(0, 8)}…`);
-        return sessionId;
-    } catch (error) {
-        console.warn('Care Cam backend unavailable, using local preview only:', error?.message || error);
-        state.careCamLocalOnly = true;
-        stopCareCamPolling();
-        state.careCamSessionId = '';
-        state.careCamViewerUrl = '';
-        setCareCamHomeStatus('Live preview active locally. Start the Care Cam backend to share to a phone.');
-        if (state.careCamViewerMode) {
-            setCareCamViewerStatus('Local preview only. Start the Care Cam backend to open the phone viewer.');
-        }
-        updateCareCamHomeControls();
-        return '';
-    }
-}
-
-async function stopCareCamDemo() {
-    state.careCamRunning = false;
-    setCareCamMiniPreviewState(false);
-    if (state.liveInterval || state.cameraStream) {
-        stopCamera({ keepTranscript: true, transcript: 'Care Cam demo stopped.', resumeListening: true });
-    } else {
-        resetCareCamSession('Care Cam demo stopped.');
-    }
-}
-
-async function openCareCamViewer() {
-    const link = getCareCamSessionLink();
-    if (!link) {
-        if (state.careCamLocalOnly || state.careCamRunning) {
-            setCareCamHomeStatus('Care Cam backend is offline, so the phone viewer is unavailable right now.');
-            return;
-        }
-        await startCareCamDemo();
-    }
-    const next = getCareCamSessionLink();
-    if (next) window.open(next, '_blank', 'noopener,noreferrer');
-}
-
-async function updateCareCamViewerFrame() {
-    if (!state.careCamViewerMode || !state.careCamSessionId) return;
-    try {
-        const result = await getCareCamSessionStatus(state.careCamSessionId);
-        if (careCamViewerTitle) careCamViewerTitle.textContent = result.label || 'Investor demo';
-        if (careCamViewerStatus) {
-            const statusText = result.hasFrame
-                ? `Live frame updated ${result.frameUpdatedAt ? new Date(result.frameUpdatedAt).toLocaleTimeString() : ''}`
-                : 'Waiting for the home device to go live...';
-            careCamViewerStatus.textContent = statusText;
-        }
-        if (careCamViewerShell) careCamViewerShell.classList.remove('hidden');
-        if (result.hasFrame && result.frameUpdatedAt) {
-            const frame = await getCareCamFrame(state.careCamSessionId);
-            if (frame?.frame?.imageDataUrl && careCamFrame) {
-                careCamFrame.src = frame.frame.imageDataUrl;
-                careCamFrame.style.display = 'block';
-                if (careCamEmpty) careCamEmpty.style.display = 'none';
-            }
-        } else if (careCamEmpty) {
-            careCamEmpty.style.display = 'flex';
-            if (careCamFrame) careCamFrame.style.display = 'none';
-        }
-    } catch (error) {
-        console.warn('Care Cam viewer update failed:', error?.message || error);
-        setCareCamViewerStatus('Waiting for the home device...');
-    }
-}
-
-function startCareCamViewerLoop() {
-    if (!state.careCamSessionId) {
-        setCareCamViewerStatus('Waiting for a session link...');
-        return;
-    }
-    if (state.careCamPollTimer) {
-        clearInterval(state.careCamPollTimer);
-        state.careCamPollTimer = null;
-    }
-    void updateCareCamViewerFrame();
-    state.careCamPollTimer = setInterval(() => {
-        void updateCareCamViewerFrame();
-    }, 700);
-}
-
-async function sendCareCamViewerCommand(kind = 'talk') {
-    if (!state.careCamSessionId) return false;
-    const text = String(careCamTalkInput?.value || '').trim();
-    if (kind !== 'alert' && !text) {
-        setCareCamViewerStatus('Type a message first.');
-        return false;
-    }
-    const payload = kind === 'alert'
-        ? { kind: 'alert', text: text || 'Care Cam alert: please check the room now.' }
-        : { kind: 'talk', text };
-    try {
-        await postCareCamCommand(state.careCamSessionId, payload);
-        if (careCamTalkInput) careCamTalkInput.value = '';
-        setCareCamViewerStatus(kind === 'alert' ? 'Alert sent.' : 'Message sent to Blip.');
-        return true;
-    } catch (error) {
-        console.warn('Care Cam talkback failed:', error?.message || error);
-        setCareCamViewerStatus(error?.message || 'Could not send message.');
-        return false;
-    }
-}
-
-async function initCareCamMode() {
-    if (careCamRoute.role === 'viewer') {
-        state.careCamViewerMode = true;
-        state.careCamSessionId = careCamRoute.sessionId;
-        state.careCamViewerUrl = buildCareCamViewerUrl(careCamRoute.sessionId);
-        setCareCamViewerVisible(true);
-        if (careCamViewerTitle) careCamViewerTitle.textContent = 'Viewer mode';
-        if (careCamViewerNote) careCamViewerNote.textContent = 'Phone viewer connected to a live Blip session.';
-        startCareCamViewerLoop();
-        return true;
-    }
-    setCareCamViewerVisible(false);
-    return false;
 }
 
 function handleFileUpload(e) {
@@ -4764,7 +4274,6 @@ async function toggleApp() {
             chatEntry.classList.remove('hidden'); // Show chat entry automatically on wake
             syncChatEngagementState();
             syncSleepButtonUI();
-            syncSleepArcadeMode();
             transcriptText.innerText = 'I am awake.';
             if (WAKE_GREETING_ENABLED) {
                 await speakWithGuard('I am awake.', 'happy');
@@ -4792,6 +4301,7 @@ function cancelInteraction() {
     state.isActive = true;
     dismissActiveAlert({ resumeListening: false, clearVisual: true });
     speech.stopSpeaking?.();
+    companionModeController.stop();
     speech.stopListening();
 
     talkBtn.classList.add('active');
@@ -4801,54 +4311,11 @@ function cancelInteraction() {
     startListeningLoop();
 }
 
-/** 
- * Centralized resource cleanup: clears all active intervals and timeouts stored in state 
- * or common globals to prevent memory leaks and "hanging" background tasks. 
- */
-function cleanupAllSystemTimers() {
-    console.log('🧹 Cleaning up all system timers...');
-
-    clearSleepArcadeTimers();
-    
-    // 1. Clear speech (mouth animations, safety timeouts)
-    if (speech && typeof speech.stopAll === 'function') {
-        speech.stopAll();
-    }
-
-    // 2. Clear known state-tracked timers
-    const timerKeys = [
-        'alarmLoopTimer', 'timerCornerTicker', 'timerPanelTicker', 
-        'weatherDisplayTicker', 'alertDisplayClearTimer', 'passiveWakeLoopTimer', 
-        'autoScrollTimer', 'idleAmbientFxTimer', 'gmailVoiceMergeTimer', 
-        'listeningRestartTimer', 'recordingAutoStopTimer', 'liveInterval', 
-        'weatherSceneShowcaseTimer', 'idleWeatherRefreshTimer', 'sleepDreamInterval'
-    ];
-    
-    timerKeys.forEach(key => {
-        if (state[key]) {
-            clearInterval(state[key]);
-            clearTimeout(state[key]);
-            state[key] = null;
-        }
-    });
-
-    // 3. Clear global (non-state) timers
-    if (typeof emotionShowcaseResumeTimer !== 'undefined' && emotionShowcaseResumeTimer) {
+function stopApp() {
+    if (emotionShowcaseResumeTimer) {
         clearTimeout(emotionShowcaseResumeTimer);
         emotionShowcaseResumeTimer = null;
     }
-    if (typeof emotionShowcaseTimer !== 'undefined' && emotionShowcaseTimer) {
-        clearTimeout(emotionShowcaseTimer);
-        emotionShowcaseTimer = null;
-    }
-    if (typeof wakeRainbowTimer !== 'undefined' && wakeRainbowTimer) {
-        clearTimeout(wakeRainbowTimer);
-        wakeRainbowTimer = null;
-    }
-}
-
-function stopApp() {
-    cleanupAllSystemTimers();
     state.isActive = false;
     state.softSleepMode = false;
     state.isListening = false;
@@ -4858,6 +4325,9 @@ function stopApp() {
     document.body.classList.remove('reduce-motion');
     clearPendingImage();
     stopCamera();
+    companionModeController.stop();
+    speech.stopListening();
+    speech.stopSpeaking?.();
 
     talkBtn.classList.remove('active');
     chatEntry.classList.add('hidden'); // Hide chat entry on sleep
@@ -4868,7 +4338,6 @@ function stopApp() {
     talkBtn.innerText = SLEEP_BUTTON_LABEL;
     transcriptText.innerText = SLEEP_PROMPT_TEXT;
     syncScenerySuppression();
-    syncSleepArcadeMode();
     schedulePassiveWakeLoop(500);
     syncWakeReadinessUI();
     syncSleepButtonUI();
@@ -4878,6 +4347,7 @@ async function enterSoftSleepMode(message = SLEEP_PROMPT_TEXT) {
     state.softSleepMode = true;
     state.isThinking = false;
     stopListening();
+    stopCamera({ keepTranscript: true }); // Prevent mobile battery drain in sleep
     closeEverythingPanels();
     document.body.classList.remove('thinking-mode');
     face.classList.remove('thinking', 'listening');
@@ -4889,7 +4359,7 @@ async function enterSoftSleepMode(message = SLEEP_PROMPT_TEXT) {
     transcriptText.innerHTML = `<b>Blip:</b> ${message}`;
     state.history.push({ user: '(system)', blip: message });
     if (state.history.length > HISTORY_MAX) state.history.shift();
-    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+    safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
     await speakWithGuard(message, 'sleepy');
     setPersona('sleepy');
     setRestingEyes(true);
@@ -4902,131 +4372,11 @@ async function enterSoftSleepMode(message = SLEEP_PROMPT_TEXT) {
     }
     syncWakeReadinessUI();
     syncSleepButtonUI();
-    syncSleepArcadeMode();
-}
-
-const GMAIL_VOICE_MERGE_FLUSH_MS = 850;
-const GMAIL_VOICE_MERGE_WINDOW_MS = 2200;
-
-function inActiveGmailDraftFlow() {
-    if (state.currentSidePanelAction !== 'gmail') return false;
-    if (state.pendingEmailReview) return true;
-    const d = state.gmailComposeDraft || {};
-    return !!(String(d.to || '').trim()
-        || String(d.subject || '').trim()
-        || String(d.text || '').trim()
-        || String(d.recipientQuery || '').trim());
-}
-
-function looksLikeCompleteGmailUtterance(text) {
-    const t = String(text || '').trim();
-    if (!t) return false;
-    if (t.length > 72) return true;
-    if (/[\w.-]+@[\w.-]+\.\w+/.test(t)) return true;
-    if (/^subject\s+/i.test(t)) return true;
-    if (/[.!?]$/.test(t)) return true;
-    if (/^no subject$/i.test(t)) return true;
-    return false;
-}
-
-function isGmailImmediateVoiceCommand(text) {
-    const t = normalizeVoiceTokens(String(text || '')).trim();
-    if (!t) return true;
-    if (looksLikeCompleteGmailUtterance(text)) return true;
-    if (isStrongEmailSendDraftCommand(text)) return true;
-    return /^(send|send it|send now|yes|no|ok|okay|go ahead|go on|never mind|nevermind|forget it|cancel|stop|no subject|correct|change it)$/i.test(t)
-        || /^(okay you can send it|you can send it|please send)$/i.test(t)
-        || /^(undo|scratch that|take that back|oops)$/i.test(t);
-}
-
-function clearGmailVoiceMergeState() {
-    if (state.gmailVoiceMergeTimer) {
-        clearTimeout(state.gmailVoiceMergeTimer);
-        state.gmailVoiceMergeTimer = null;
-    }
-    state.gmailVoiceMergeBuffer = '';
-    state.gmailVoiceMergeWindowUntil = 0;
-}
-
-function flushGmailVoiceMergeBufferSync() {
-    if (state.gmailVoiceMergeTimer) {
-        clearTimeout(state.gmailVoiceMergeTimer);
-        state.gmailVoiceMergeTimer = null;
-    }
-    const full = state.gmailVoiceMergeBuffer;
-    state.gmailVoiceMergeBuffer = '';
-    state.gmailVoiceMergeWindowUntil = 0;
-    return String(full || '').trim();
-}
-
-function scheduleGmailVoiceMerge(cmdRaw, onVoiceError) {
-    const trimmed = String(cmdRaw || '').trim();
-    if (!trimmed) return;
-    if (looksLikeCompleteGmailUtterance(trimmed)) {
-        const pending = flushGmailVoiceMergeBufferSync();
-        (async () => {
-            try {
-                if (pending) await handleCommand(pending);
-                await handleCommand(trimmed);
-            } catch (error) {
-                onVoiceError?.(error);
-            }
-        })();
-        return;
-    }
-    clearTimeout(state.gmailVoiceMergeTimer);
-    const now = Date.now();
-    if (state.gmailVoiceMergeBuffer && now < state.gmailVoiceMergeWindowUntil) {
-        state.gmailVoiceMergeBuffer = `${state.gmailVoiceMergeBuffer} ${trimmed}`.trim();
-    } else {
-        state.gmailVoiceMergeBuffer = trimmed;
-    }
-    state.gmailVoiceMergeWindowUntil = now + GMAIL_VOICE_MERGE_WINDOW_MS;
-    state.gmailVoiceMergeTimer = setTimeout(() => {
-        state.gmailVoiceMergeTimer = null;
-        state.gmailVoiceMergeWindowUntil = 0;
-        const full = state.gmailVoiceMergeBuffer;
-        state.gmailVoiceMergeBuffer = '';
-        if (full) {
-            handleCommand(full).catch((error) => onVoiceError?.(error));
-        }
-    }, GMAIL_VOICE_MERGE_FLUSH_MS);
-}
-
-function clearListeningRestartTimer() {
-    if (state.listeningRestartTimer) {
-        clearTimeout(state.listeningRestartTimer);
-        state.listeningRestartTimer = null;
-    }
-}
-
-function suppressListeningRestart(durationMs = 900) {
-    state.listeningRestartSuppressedUntil = Date.now() + Math.max(0, Number(durationMs) || 0);
-}
-
-function canAutoRestartListening() {
-    if (!state.isActive) return false;
-    if (state.isThinking) return false;
-    if (speech.isSpeaking) return false;
-    if (state.emotionShowcaseActive) return false;
-    if (Date.now() < (Number(state.listeningRestartSuppressedUntil) || 0)) return false;
-    return true;
-}
-
-function scheduleListeningRestart(delayMs = 300) {
-    clearListeningRestartTimer();
-    const delay = Math.max(0, Number(delayMs) || 0);
-    state.listeningRestartTimer = setTimeout(() => {
-        state.listeningRestartTimer = null;
-        if (!canAutoRestartListening()) return;
-        startListeningLoop();
-    }, delay);
 }
 
 function startListeningLoop() {
     if (!state.isActive || state.isThinking || state.emotionShowcaseActive) return;
     stopPassiveWakeLoop();
-    clearListeningRestartTimer();
     if (speech.isSpeaking && state.lastSpeechStartedAt && (Date.now() - state.lastSpeechStartedAt > 45000)) {
         console.warn('⚠️ Stale speaking state detected. Resetting speech flags.');
         speech.isSpeaking = false;
@@ -5053,6 +4403,7 @@ function startListeningLoop() {
     }
     face.classList.remove('thinking');
     state.isListening = true;
+    companionModeController.start().catch(() => { });
     syncChatEngagementState();
     syncScenerySuppression();
     syncWakeReadinessUI();
@@ -5060,15 +4411,12 @@ function startListeningLoop() {
     const listeningStarted = speech.startListening(
         // On Result
         (result) => {
-            // Always show the recognized transcript immediately.
-            // Even if we then stop listening (e.g. because speech playback is active),
-            // the student should still see what the mic heard.
-            if (state.softSleepMode && !result.isFinal) return;
-            transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${result.text}</i>`;
             if (speech.isSpeaking) {
                 stopListening();
                 return;
             }
+            if (state.softSleepMode && !result.isFinal) return;
+            transcriptText.innerHTML = `<i style="opacity: 0.7;">🎤 ${result.text}</i>`;
             if (result.isFinal) {
                 const normalizedHeard = normalizeVoiceTokens(result.text);
                 const normalizedLastSpoken = normalizeVoiceTokens(state.lastSpokenText || '');
@@ -5083,7 +4431,7 @@ function startListeningLoop() {
                 }
                 const systemCmd = getSystemVoiceCommand(result.text);
                 if (state.softSleepMode) {
-                    const wakePhrase = parseWakeOrEmergencyWakePhrase(result.text, { confidence: result.confidence });
+                    const wakePhrase = parseWakePhrase(result.text, { confidence: result.confidence });
                     if (systemCmd !== 'wake' && !wakePhrase.matched) {
                         transcriptText.innerText = SLEEP_PROMPT_TEXT;
                         setPersona('sleepy');
@@ -5092,7 +4440,7 @@ function startListeningLoop() {
                     }
                 }
                 if (!systemCmd) setPersona('thinking');
-                const onVoiceFailure = (error) => {
+                handleCommand(result.text).catch((error) => {
                     console.warn('Voice command failed:', error?.message || error);
                     state.isThinking = false;
                     if (state.isActive && !state.softSleepMode) {
@@ -5109,22 +4457,7 @@ function startListeningLoop() {
                     if (state.isActive && !speech.isSpeaking && !state.softSleepMode) {
                         startListeningLoop();
                     }
-                };
-                if (inActiveGmailDraftFlow() && isGmailImmediateVoiceCommand(result.text)) {
-                    const pending = flushGmailVoiceMergeBufferSync();
-                    (async () => {
-                        try {
-                            if (pending) await handleCommand(pending);
-                            await handleCommand(result.text);
-                        } catch (error) {
-                            onVoiceFailure(error);
-                        }
-                    })();
-                } else if (inActiveGmailDraftFlow()) {
-                    scheduleGmailVoiceMerge(result.text, onVoiceFailure);
-                } else {
-                    handleCommand(result.text).catch(onVoiceFailure);
-                }
+                });
             }
         },
         // On End
@@ -5132,7 +4465,9 @@ function startListeningLoop() {
             state.isListening = false;
             syncScenerySuppression();
             syncWakeReadinessUI();
-            if (canAutoRestartListening()) scheduleListeningRestart(300);
+            if (state.isActive && !state.isThinking && !speech.isSpeaking) {
+                setTimeout(startListeningLoop, 300);
+            }
         },
         // On Error
         (err) => {
@@ -5145,7 +4480,12 @@ function startListeningLoop() {
                 transcriptText.innerText = '⚠️ Microphone blocked.';
                 return;
             }
-            if (canAutoRestartListening()) scheduleListeningRestart(err?.error === 'no-speech' ? 250 : 700);
+            if (state.isActive && !state.isThinking && !speech.isSpeaking) {
+                setTimeout(() => {
+                    if (state.softSleepMode) startListeningLoop();
+                    else schedulePassiveWakeLoop(700);
+                }, 700);
+            }
         }
     );
     if (listeningStarted) {
@@ -5161,17 +4501,18 @@ function startListeningLoop() {
     state.isListening = false;
     syncScenerySuppression();
     syncWakeReadinessUI();
-    if (!speech.SR && transcriptText && state.isActive) {
-        transcriptText.innerText = 'Voice recognition is not supported in this browser. Try Chrome or Edge over HTTPS.';
-        return;
+    if (state.isActive && !state.isThinking && !speech.isSpeaking) {
+        setTimeout(() => {
+            if (state.isActive && !state.isThinking && !speech.isSpeaking) {
+                startListeningLoop();
+            }
+        }, 450);
     }
-    if (canAutoRestartListening()) scheduleListeningRestart(450);
 }
 
 function stopListening() {
     state.isListening = false;
-    suppressListeningRestart(900);
-    clearListeningRestartTimer();
+    companionModeController.stop();
     speech.stopListening();
     syncScenerySuppression();
     syncWakeReadinessUI();
@@ -5316,7 +4657,7 @@ function ensureBlipAccessories() {
 
 function persistBlipPersonalization() {
     try {
-        localStorage.setItem(BLIP_PERSONALIZATION_STORAGE_KEY, JSON.stringify(state.personalization));
+        safeStorageSet(BLIP_PERSONALIZATION_STORAGE_KEY, state.personalization);
     } catch (_) { }
 }
 
@@ -5324,7 +4665,7 @@ function applyBlipPersonalization() {
     if (!face) return;
     if (!ENABLE_BLIP_PERSONALIZATION) {
         face.classList.remove('style-hat-cap', 'style-hat-beanie', 'style-hat-crown', 'style-glasses-round', 'style-glasses-visor');
-        face.style.setProperty('--blip-eye-color', BLIP_EYE_COLOR_MAP.blue);
+        face.style.setProperty('--blip-eye-color', BLIP_EYE_COLOR_MAP.white);
         document.documentElement.style.setProperty('--blip-aura-core', BLIP_AURA_COLOR_MAP.default.core);
         document.documentElement.style.setProperty('--blip-aura-mid', BLIP_AURA_COLOR_MAP.default.mid);
         return;
@@ -5342,7 +4683,7 @@ function applyBlipPersonalization() {
     if (hat !== 'none') face.classList.add(`style-hat-${hat}`);
     if (glasses !== 'none') face.classList.add(`style-glasses-${glasses}`);
 
-    face.style.setProperty('--blip-eye-color', BLIP_EYE_COLOR_MAP[eyeColor] || BLIP_EYE_COLOR_MAP.blue);
+    face.style.setProperty('--blip-eye-color', BLIP_EYE_COLOR_MAP[eyeColor] || BLIP_EYE_COLOR_MAP.white);
     const auraPreset = BLIP_AURA_COLOR_MAP[auraColor] || BLIP_AURA_COLOR_MAP.default;
     document.documentElement.style.setProperty('--blip-aura-core', auraPreset.core);
     document.documentElement.style.setProperty('--blip-aura-mid', auraPreset.mid);
@@ -5376,7 +4717,7 @@ function setFaceScale(nextScale) {
     const safeScale = Math.min(1.45, Math.max(0.72, Number(nextScale) || 1));
     state.faceScale = safeScale;
     applyFaceScale();
-    try { localStorage.setItem('blip_face_scale', String(safeScale)); } catch (e) { }
+    safeStorageSet('blip_face_scale', String(safeScale));
     return safeScale;
 }
 
@@ -5384,11 +4725,7 @@ function scrollActiveSurface(direction = 'down') {
     const delta = direction === 'up' ? -320 : 320;
     const sidePanel = document.getElementById('blip-side-panel');
     const appContainer = document.querySelector('.container');
-    // Month mirror scrolls `.blip-calendar-mirror-content`; legacy/orb paths use mirror-body / orb-body.
-    const calendarMirrorContent = sidePanel?.querySelector('.blip-calendar-mirror-content')
-        || document.querySelector('.blip-calendar-mirror-content');
-    const calendarOrbBody = sidePanel?.querySelector('.blip-calendar-mirror-body, .blip-calendar-orb-body')
-        || document.querySelector('.blip-calendar-mirror-body, .blip-calendar-orb-body');
+    const calendarOrbBody = sidePanel?.querySelector('.blip-calendar-orb-body') || document.querySelector('.blip-calendar-orb-body');
     const calendarBody = sidePanel?.querySelector('.blip-calendar-body') || document.querySelector('.blip-calendar-body');
     const youtubeLibraryList = sidePanel?.dataset.youtubeLibraryOnly === '1'
         ? sidePanel.querySelector('.blip-yt-recent-list')
@@ -5398,7 +4735,6 @@ function scrollActiveSurface(direction = 'down') {
         : [];
     const settingsPanelContent = underTheHood?.querySelector('.panel-content');
     const candidates = [
-        calendarMirrorContent,
         calendarOrbBody,
         calendarBody,
         youtubeLibraryList,
@@ -5431,10 +4767,6 @@ function scrollActiveSurface(direction = 'down') {
             return true;
         }
     }
-    // Calendar is fixed; scrolling the page/window reads as "the panel went away" — do not fall back.
-    if (isCalendarPanelActuallyVisible()) {
-        return false;
-    }
     if (typeof window.scrollBy === 'function') {
         window.scrollBy({ top: delta, behavior: 'smooth' });
         return true;
@@ -5444,8 +4776,8 @@ function scrollActiveSurface(direction = 'down') {
 
 function isCalendarScrollContextActive() {
     const sidePanel = document.getElementById('blip-side-panel');
-    const calendarBody = sidePanel?.querySelector('.blip-calendar-mirror-content, .blip-calendar-mirror-body, .blip-calendar-orb-body, .blip-calendar-body')
-        || document.querySelector('.blip-calendar-mirror-content, .blip-calendar-mirror-body, .blip-calendar-orb-body, .blip-calendar-body');
+    const calendarBody = sidePanel?.querySelector('.blip-calendar-orb-body, .blip-calendar-body')
+        || document.querySelector('.blip-calendar-orb-body, .blip-calendar-body');
     if (!calendarBody) return false;
     const style = window.getComputedStyle(calendarBody);
     return style.display !== 'none' && style.visibility !== 'hidden';
@@ -5477,16 +4809,6 @@ function mergeTextParts(...parts) {
         .trim();
 }
 
-function getIsDay(data = {}) {
-    const location = String(data.city || data.location || '').toLowerCase();
-    const home = BLIP_HOME_LOCATION.toLowerCase();
-    if (!location || location.includes(home) || home.includes(location)) {
-        const hour = new Date().getHours();
-        return (hour >= 6 && hour < 20); // 6am to 8pm is day
-    }
-    return data.isDay !== false;
-}
-
 function getWeatherDisplayIcon(desc = '', isDay = true) {
     const lower = normalizeVoiceTokens(desc);
     if (/(storm|thunder)/.test(lower)) return '⛈️';
@@ -5500,9 +4822,12 @@ function getWeatherDisplayIcon(desc = '', isDay = true) {
 function formatOffsetClock(offsetSeconds) {
     if (!Number.isFinite(Number(offsetSeconds))) return '';
     const now = new Date(Date.now() + (Number(offsetSeconds) * 1000));
-    const h = String(now.getUTCHours()).padStart(2, '0');
-    const m = String(now.getUTCMinutes()).padStart(2, '0');
-    return `${h}:${m}`;
+    return new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'UTC'
+    }).format(now);
 }
 
 function formatOffsetCalendarDate(offsetSeconds) {
@@ -5516,79 +4841,15 @@ function formatOffsetCalendarDate(offsetSeconds) {
     }).format(now);
 }
 
-function getLiveWeatherLocalDateTime(data = {}) {
-    const raw = String(data.localTime || '').trim();
-    const fetchTime = Number(data.fetchTime);
-    if (!raw || !Number.isFinite(fetchTime)) return null;
-
-    const match = raw.match(/(?:(\d{4})-(\d{1,2})-(\d{1,2}))?\s*(\d{1,2})[:.](\d{2})\s*(AM|PM)?/i);
-    if (!match) return null;
-
-    const now = new Date();
-    const [, yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw, ampmRaw] = match;
-    const year = yearRaw ? Number(yearRaw) : now.getFullYear();
-    const monthIndex = monthRaw ? (Number(monthRaw) - 1) : now.getMonth();
-    const day = dayRaw ? Number(dayRaw) : now.getDate();
-    let hour = Number(hourRaw);
-    const minute = Number(minuteRaw);
-    const ampm = ampmRaw ? ampmRaw.toUpperCase() : '';
-
-    if (ampm === 'PM' && hour < 12) hour += 12;
-    if (ampm === 'AM' && hour === 12) hour = 0;
-
-    const initial = new Date(year, monthIndex, day, hour, minute, 0, 0);
-    if (Number.isNaN(initial.getTime())) return null;
-
-    const elapsedMs = Math.max(0, Date.now() - fetchTime);
-    return {
-        date: new Date(initial.getTime() + elapsedMs),
-        hasExplicitDate: Boolean(yearRaw && monthRaw && dayRaw)
-    };
-}
-
 function getWeatherDisplayLocalTime(data = {}) {
     const timezoneOffset = Number(data.timezoneOffset);
     if (Number.isFinite(timezoneOffset)) return formatOffsetClock(timezoneOffset);
-
-    // Fallback: If it's the home location or no location provided, use current client time
-    const location = String(data.city || data.location || '').toLowerCase();
-    const home = BLIP_HOME_LOCATION.toLowerCase();
-    if (!location || location.includes(home) || home.includes(location)) {
-        const now = new Date();
-        const h = String(now.getHours()).padStart(2, '0');
-        const m = String(now.getMinutes()).padStart(2, '0');
-        return `${h}:${m}`;
-    }
-
-    const localTimeStr = String(data.localTime || '').trim();
-    if (!localTimeStr) return '';
-
-    try {
-        const live = getLiveWeatherLocalDateTime(data);
-        if (live?.date) {
-            const displayH = String(live.date.getHours()).padStart(2, '0');
-            const displayM = String(live.date.getMinutes()).padStart(2, '0');
-            return `${displayH}:${displayM}`;
-        }
-    } catch (e) {
-        console.warn('Failed to calculate live local time:', e);
-    }
-
-    return localTimeStr;
+    return String(data.localTime || '').trim();
 }
 
 function getWeatherDisplayLocalDate(data = {}) {
     const timezoneOffset = Number(data.timezoneOffset);
     if (Number.isFinite(timezoneOffset)) return formatOffsetCalendarDate(timezoneOffset);
-
-    const live = getLiveWeatherLocalDateTime(data);
-    if (live?.date && live.hasExplicitDate) {
-        return new Intl.DateTimeFormat('en-GB', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        }).format(live.date);
-    }
 
     const raw = String(data.localTime || '').trim();
     if (!raw) return '';
@@ -5613,13 +4874,12 @@ function renderWeatherDisplay(data = {}) {
     const localTime = localTimeRaw ? escapeHtml(localTimeRaw) : '';
     const localDateRaw = getWeatherDisplayLocalDate(data);
     const localDate = localDateRaw ? escapeHtml(localDateRaw) : '';
-    const isDay = getIsDay(data);
-    const icon = getWeatherDisplayIcon(data.desc || data.condition || '', isDay);
+    const icon = getWeatherDisplayIcon(data.desc || data.condition || '', data.isDay !== false);
     weatherDisplay.innerHTML = `
         <span class="weather-display-icon" aria-hidden="true">${icon}</span>
         <span class="weather-display-copy">
             <span class="weather-display-city">${city}</span>
-            ${localTime ? `<span class="weather-display-time">${localTime}</span>` : ''}
+            ${localTime ? `<span class="weather-display-time">Local time ${localTime}</span>` : ''}
             ${localDate ? `<span class="weather-display-date">${localDate}</span>` : ''}
             <span class="weather-display-temp">${temp}</span>
             <span class="weather-display-desc">${desc}${humidity ? ` · ${escapeHtml(humidity)}` : ''}</span>
@@ -5835,6 +5095,112 @@ function refreshUiDebugDump() {
     if (el) el.textContent = getUiDebugSnapshot();
 }
 
+function formatApiUsageSummary(summary = {}) {
+    const totalEvents = Number(summary?.totalEvents || 0);
+    const totalEstimatedCost = Number(summary?.totalEstimatedCost || 0);
+    const currency = String(summary?.currency || 'USD');
+    const byProvider = summary?.byProvider && typeof summary.byProvider === 'object' ? summary.byProvider : {};
+    const byModel = summary?.byModel && typeof summary.byModel === 'object' ? summary.byModel : {};
+    const byDay = summary?.byDay && typeof summary.byDay === 'object' ? summary.byDay : {};
+
+    const providerLines = Object.entries(byProvider)
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+        .slice(0, 8)
+        .map(([name, cost]) => `- ${name}: ${Number(cost || 0).toFixed(6)} ${currency}`);
+    const modelLines = Object.entries(byModel)
+        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+        .slice(0, 8)
+        .map(([name, cost]) => `- ${name}: ${Number(cost || 0).toFixed(6)} ${currency}`);
+    const dayLines = Object.entries(byDay)
+        .sort((a, b) => String(b[0]).localeCompare(String(a[0])))
+        .slice(0, 10)
+        .map(([day, cost]) => `- ${day}: ${Number(cost || 0).toFixed(6)} ${currency}`);
+
+    return [
+        `Total calls: ${totalEvents}`,
+        `Estimated total: ${totalEstimatedCost.toFixed(6)} ${currency}`,
+        '',
+        'By provider:',
+        providerLines.length ? providerLines.join('\n') : '- no data',
+        '',
+        'By model:',
+        modelLines.length ? modelLines.join('\n') : '- no data',
+        '',
+        'By day:',
+        dayLines.length ? dayLines.join('\n') : '- no data'
+    ].join('\n');
+}
+
+async function refreshApiUsageSummary() {
+    if (!apiUsageStatus || !apiUsageSummary) return;
+    apiUsageStatus.classList.remove('connected', 'warning');
+    apiUsageStatus.textContent = 'Loading API usage...';
+    try {
+        const response = await fetch(`${EXPENSE_TRACKER_BASE}/summary`, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error(`Expense tracker unavailable (${response.status}).`);
+        }
+        const data = await response.json();
+        const summary = data?.summary || {};
+        apiUsageSummary.textContent = formatApiUsageSummary(summary);
+        const amount = Number(summary?.totalEstimatedCost || 0).toFixed(6);
+        const currency = String(summary?.currency || 'USD');
+        apiUsageStatus.classList.add('connected');
+        apiUsageStatus.textContent = `Usage loaded: ${Number(summary?.totalEvents || 0)} calls, ${amount} ${currency}.`;
+    } catch (error) {
+        apiUsageStatus.classList.add('warning');
+        apiUsageStatus.textContent = error?.message || 'Could not load API usage.';
+        apiUsageSummary.textContent = 'Expense tracker is not reachable. Start local stack with `npm run dev`.';
+    }
+}
+
+function getConversationInspectorDump() {
+    const recentHistory = Array.isArray(state.history) ? state.history.slice(-10) : [];
+    const lastContext = state.lastContext || {};
+    const selectedModel = state.selectedModel || '';
+    const voiceEngine = state.voiceEngine || '';
+    const mode = state.currentMode || '';
+    const sidePanelAction = state.currentSidePanelAction || '';
+
+    const payload = {
+        snapshotAt: new Date().toISOString(),
+        ui: {
+            mode,
+            sidePanelAction,
+            isActive: !!state.isActive,
+            isThinking: !!state.isThinking,
+            isListening: !!state.isListening
+        },
+        models: {
+            chatModel: selectedModel,
+            voiceEngine
+        },
+        lastContext: lastContext,
+        historyLast10: recentHistory
+    };
+
+    return JSON.stringify(payload, null, 2);
+}
+
+function openConversationInspector() {
+    const modal = document.getElementById('conversation-inspector-modal');
+    const dump = document.getElementById('conversation-inspector-dump');
+    if (!modal || !dump) return;
+
+    if (typeof dump.textContent !== 'string') dump.textContent = '';
+    dump.textContent = getConversationInspectorDump();
+
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeConversationInspector() {
+    const modal = document.getElementById('conversation-inspector-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+}
+
 function openSettingsPanel() {
     if (!underTheHood) return false;
     underTheHood.style.display = 'flex';
@@ -5847,7 +5213,9 @@ function openSettingsPanel() {
         appContainer.style.overflowY = 'auto';
         appContainer.style.overflowX = 'hidden';
     }
+    applySettingsLockUi();
     refreshUiDebugDump();
+    refreshApiUsageSummary().catch(() => { });
     return true;
 }
 
@@ -5871,6 +5239,78 @@ function closeSettingsPanel() {
         appContainer.style.overflowX = 'hidden';
     }
     return true;
+}
+
+function isSettingsLockConfigured() {
+    return !!String(state.settingsLockPin || '').trim();
+}
+
+function persistSettingsLockState() {
+    safeStorageSet(SETTINGS_LOCKED_STORAGE_KEY, state.settingsLocked ? '1' : '0');
+    if (isSettingsLockConfigured()) {
+        safeStorageSet(SETTINGS_LOCK_PIN_STORAGE_KEY, String(state.settingsLockPin || '').trim());
+    }
+}
+
+function applySettingsLockUi() {
+    if (!underTheHood) return;
+    const locked = Boolean(state.settingsLocked);
+    const controls = underTheHood.querySelectorAll('.panel-content input, .panel-content select, .panel-content textarea, .panel-content button');
+    controls.forEach((el) => {
+        if (!(el instanceof HTMLElement)) return;
+        if (el.id === 'settingsLockToggleBtn') return;
+        el.toggleAttribute('disabled', locked);
+    });
+    if (settingsLockToggleBtn) {
+        settingsLockToggleBtn.textContent = locked ? 'Unlock' : 'Lock';
+    }
+    if (settingsLockStatus) {
+        settingsLockStatus.textContent = locked
+            ? 'Locked'
+            : (isSettingsLockConfigured() ? 'Unlocked' : 'Unlocked (no PIN set)');
+    }
+}
+
+function bindSettingsLockControls() {
+    applySettingsLockUi();
+    if (!settingsLockToggleBtn || settingsLockToggleBtn.dataset.bound === '1') return;
+    settingsLockToggleBtn.dataset.bound = '1';
+    settingsLockToggleBtn.addEventListener('click', () => {
+        if (state.settingsLocked) {
+            const entered = window.prompt('Enter settings PIN to unlock:');
+            if (!entered) return;
+            if (String(entered).trim() !== String(state.settingsLockPin || '').trim()) {
+                if (transcriptText) transcriptText.innerText = 'Wrong PIN. Settings remain locked.';
+                return;
+            }
+            state.settingsLocked = false;
+            persistSettingsLockState();
+            applySettingsLockUi();
+            if (transcriptText) transcriptText.innerText = 'Settings unlocked.';
+            return;
+        }
+
+        if (!isSettingsLockConfigured()) {
+            const pin = window.prompt('Set a settings PIN (at least 4 characters):');
+            if (!pin) return;
+            const cleanPin = String(pin).trim();
+            if (cleanPin.length < 4) {
+                if (transcriptText) transcriptText.innerText = 'PIN too short. Use at least 4 characters.';
+                return;
+            }
+            const confirm = window.prompt('Confirm settings PIN:');
+            if (String(confirm || '').trim() !== cleanPin) {
+                if (transcriptText) transcriptText.innerText = 'PIN mismatch. Settings stay unlocked.';
+                return;
+            }
+            state.settingsLockPin = cleanPin;
+        }
+
+        state.settingsLocked = true;
+        persistSettingsLockState();
+        applySettingsLockUi();
+        if (transcriptText) transcriptText.innerText = 'Settings locked.';
+    });
 }
 
 function toggleChatEntry(forceOpen = null) {
@@ -5960,7 +5400,7 @@ async function refreshIdleWeatherScene(options = {}) {
     try {
         const weather = await web.getWeather(location, state.weatherApiKey);
         if (weather?.error) return false;
-        const scene = normalizeWeatherToBlip(weather?.data?.desc || weather?.text || '', getIsDay(weather?.data || {}));
+        const scene = normalizeWeatherToBlip(weather?.data?.desc || weather?.text || '', weather?.data?.isDay !== false);
         setWeatherScene(scene, { subtle: true });
         renderWeatherDisplay({ ...(weather?.data || {}), location });
         state.lastContext.lastWeather = weather?.data ? { ...weather.data, scene } : { scene };
@@ -6003,7 +5443,7 @@ const actionHandlers = {
             state.history.push({ user: `(System: Weather in ${res.tool_params.location})`, blip: weather.text });
             return { text: mergeTextParts(res.text, weather.text), weatherScene: 'clear' };
         }
-        const scene = normalizeWeatherToBlip(weather?.data?.desc || weather?.text || '', getIsDay(weather?.data || {}));
+        const scene = normalizeWeatherToBlip(weather?.data?.desc || weather?.text || '', weather?.data?.isDay !== false);
         setWeatherScene(scene, { subtle: false });
         renderWeatherDisplay({ ...(weather?.data || {}), location: res.tool_params.location });
         state.lastContext.lastWeather = weather?.data ? { ...weather.data, scene } : { scene };
@@ -6040,6 +5480,14 @@ const actionHandlers = {
 
         const opened = openMapRequest(request);
         if (!opened.ok) return { text: res.text };
+
+        publishConversationObject(state, {
+            id: `map-${Date.now()}`,
+            kind: opened.type === 'route' ? 'route' : 'location',
+            label: opened.label || request.query || (opened.type === 'route' ? `${request.from} to ${request.to}` : 'Location'),
+            value: opened.url,
+            tool: 'map'
+        });
 
         if (opened.type === 'route') {
             const routeText = `Route ready from ${request.from} to ${request.to}.`;
@@ -6082,7 +5530,11 @@ const actionHandlers = {
         if (!res.tool_params?.query) return { text: res.text };
         const recommendations = res.tool_params.recommendations || [];
         const retailer = String(res.tool_params.retailer || '');
-        const result = await web.getProducts(res.tool_params.query, recommendations, { retailer, apiKey: state.geminiKey });
+        const result = await web.getProducts(res.tool_params.query, recommendations, {
+            retailer,
+            apiKey: getActiveTextApiKey(state.selectedModel),
+            model: state.selectedModel
+        });
         let previewDataUrl = '';
         if (state.geminiKey) {
             try {
@@ -6128,38 +5580,6 @@ const actionHandlers = {
         const url = createGoogleCalendarUrl(details);
         const eventTitle = details.title || details.summary || 'Event';
         const reminderStatus = scheduleCalendarEventReminder(details);
-        const calendarBranchSnapshot = {
-            currentTask: 'calendar event',
-            currentIntent: {
-                family: 'calendar',
-                action: 'compose',
-                confidence: 0.95
-            },
-            activePanel: 'calendaragenda',
-            panelStack: ['calendaragenda'],
-            draft: {
-                title: eventTitle,
-                start: details.start,
-                end: details.end,
-                description: String(details.description || ''),
-                location: String(details.location || ''),
-                invitees: Array.isArray(details.attendees) ? details.attendees : [],
-                reminderMinutes: Number(details.reminderMinutes || 0) || 0
-            },
-            lastUtterance: String(res.text || ''),
-            note: `Calendar event: ${eventTitle}`
-        };
-        setToolBranchState(state, 'calendar', calendarBranchSnapshot);
-        recordConversationAction(state, {
-            tool: 'calendar',
-            action_type: 'event_requested',
-            target_object: eventTitle,
-            previous_state: null,
-            new_state: calendarBranchSnapshot.draft,
-            undo_strategy: 'cancel_draft',
-            undo_window: 'session',
-            user_visible_summary: `Prepared calendar event ${eventTitle}`
-        });
         await ensureGoogleCalendarConnected({ silent: true });
         const authState = getGoogleCalendarAuthState();
 
@@ -6175,37 +5595,6 @@ const actionHandlers = {
                     htmlLink: eventUrl,
                     source: 'google'
                 }]);
-                setToolBranchState(state, 'calendar', {
-                    ...calendarBranchSnapshot,
-                    currentTask: 'calendar event sent',
-                    currentIntent: {
-                        family: 'calendar',
-                        action: 'sendDirect',
-                        confidence: 1
-                    },
-                    draft: {
-                        ...calendarBranchSnapshot.draft,
-                        eventId: event?.id || eventTitle,
-                        url: eventUrl
-                    },
-                    note: `Created calendar event: ${eventTitle}`
-                });
-                recordConversationAction(state, {
-                    tool: 'calendar',
-                    action_type: 'event_created',
-                    target_object: event?.id || eventTitle,
-                    previous_state: calendarBranchSnapshot.draft,
-                    new_state: {
-                        id: event?.id || eventTitle,
-                        summary: event?.summary || eventTitle,
-                        start: details.start,
-                        end: details.end,
-                        url: eventUrl
-                    },
-                    undo_strategy: 'delete_event',
-                    undo_window: 'session',
-                    user_visible_summary: `Created calendar event ${eventTitle}`
-                });
                 await refreshOpenCalendarPanel();
                 addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url: eventUrl });
                 return {
@@ -6230,37 +5619,6 @@ const actionHandlers = {
                                 htmlLink: eventUrl,
                                 source: 'google'
                             }]);
-                            setToolBranchState(state, 'calendar', {
-                                ...calendarBranchSnapshot,
-                                currentTask: 'calendar event sent',
-                                currentIntent: {
-                                    family: 'calendar',
-                                    action: 'sendDirect',
-                                    confidence: 1
-                                },
-                                draft: {
-                                    ...calendarBranchSnapshot.draft,
-                                    eventId: event?.id || eventTitle,
-                                    url: eventUrl
-                                },
-                                note: `Created calendar event: ${eventTitle}`
-                            });
-                            recordConversationAction(state, {
-                                tool: 'calendar',
-                                action_type: 'event_created',
-                                target_object: event?.id || eventTitle,
-                                previous_state: calendarBranchSnapshot.draft,
-                                new_state: {
-                                    id: event?.id || eventTitle,
-                                    summary: event?.summary || eventTitle,
-                                    start: details.start,
-                                    end: details.end,
-                                    url: eventUrl
-                                },
-                                undo_strategy: 'delete_event',
-                                undo_window: 'session',
-                                user_visible_summary: `Created calendar event ${eventTitle}`
-                            });
                             await refreshOpenCalendarPanel();
                             addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url: eventUrl });
                             return {
@@ -6283,30 +5641,6 @@ const actionHandlers = {
         }
 
         queuePendingCalendarEvent(details);
-        setToolBranchState(state, 'calendar', {
-            ...calendarBranchSnapshot,
-            currentTask: 'calendar pending sync',
-            currentIntent: {
-                family: 'calendar',
-                action: 'compose',
-                confidence: 0.86
-            },
-            note: `Queued calendar event: ${eventTitle}`
-        });
-        recordConversationAction(state, {
-            tool: 'calendar',
-            action_type: 'event_queued',
-            target_object: eventTitle,
-            previous_state: calendarBranchSnapshot.draft,
-            new_state: {
-                title: eventTitle,
-                start: details.start,
-                end: details.end
-            },
-            undo_strategy: 'remove_queued_event',
-            undo_window: 'session',
-            user_visible_summary: `Queued calendar event ${eventTitle}`
-        });
         await refreshOpenCalendarPanel();
         addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url });
         return {
@@ -6348,6 +5682,13 @@ const actionHandlers = {
             state.lastContext.lastYoutubeQuery = rawQuery || 'video';
             state.lastContext.lastYoutubeSearchIndex = 0;
             addToHub('link', `🎬 YouTube: ${rawQuery || directVideoId}`, { url: watchUrl });
+            publishConversationObject(state, {
+                id: `yt-${directVideoId}`,
+                kind: 'link',
+                label: `YouTube: ${rawQuery || directVideoId}`,
+                value: watchUrl,
+                tool: 'youtube'
+            });
             document.body.classList.add('projecting-visual');
             return {
                 text: mergeTextParts(res.text, 'Playing your YouTube video now.'),
@@ -6366,6 +5707,13 @@ const actionHandlers = {
         state.lastContext.lastYoutubeQuery = effectiveQuery;
         state.lastContext.lastYoutubeSearchIndex = 0;
         addToHub('link', `🎬 YouTube: ${effectiveQuery}`, { url: result.watchUrl || result.url });
+        publishConversationObject(state, {
+            id: `yt-${result.videoId || Date.now()}`,
+            kind: 'link',
+            label: `YouTube: ${effectiveQuery}`,
+            value: result.watchUrl || result.url,
+            tool: 'youtube'
+        });
         document.body.classList.add('projecting-visual');
         return { text: mergeTextParts(res.text, result.text), extraHtml: `<br>${result.html}` };
     },
@@ -6429,11 +5777,11 @@ const actionHandlers = {
 
         if (action === 'add' && item) {
             list.push(item);
-            localStorage.setItem(key, JSON.stringify(list));
+            safeStorageSet(key, list);
             return { text: `Added ${item} to your ${type} list.` };
         } else if (action === 'remove' && item) {
             list = list.filter(i => i.toLowerCase() !== item.toLowerCase());
-            localStorage.setItem(key, JSON.stringify(list));
+            safeStorageSet(key, list);
             return { text: `Removed ${item} from your ${type} list.` };
         }
 
@@ -6453,31 +5801,30 @@ const actionHandlers = {
     },
 
     gmail: async (res) => {
-        if (state.currentSidePanelAction === 'gmail' && isSidePanelVisible()) {
-            closeSidePanel();
-            return { text: 'Email closed.' };
-        }
-        try {
-            await emailFeature.openInboxPanel({ summary: 'Email open.' });
-            return { text: 'Email open.' };
-        } catch (error) {
-            console.warn('Action handler: gmail failed:', error?.message || error);
-            return { text: error?.message || 'Connect Gmail in Settings first.' };
-        }
+        const gmailCmd = {
+            action: res.tool_params?.action || (res.tool_params?.shareType ? 'shareCurrent' : 'compose'),
+            recipient: res.tool_params?.recipient || res.tool_params?.to || '',
+            subject: res.tool_params?.subject || '',
+            text: res.tool_params?.text || '',
+            shareType: res.tool_params?.shareType || 'auto',
+            quickSend: !!res.tool_params?.quickSend || (res.text || '').toLowerCase().includes('send')
+        };
+        await emailFeature.handleVoiceCommand(gmailCmd);
+        return { text: 'Email draft ready.' };
     },
 
     telegram: async (res) => {
-        if (state.currentSidePanelAction === 'telegram' && isSidePanelVisible()) {
-            closeSidePanel();
-            return { text: 'Telegram closed.' };
-        }
-        try {
-            await telegramFeature.openPanel();
-            return { text: 'Telegram is open. Your message is ready to review.' };
-        } catch (error) {
-            console.warn('Action handler: telegram failed:', error?.message || error);
-            return { text: error?.message || 'Telegram integration error.' };
-        }
+        const telegramCmd = {
+            action: res.tool_params?.action || (res.tool_params?.shareType ? 'shareCurrent' : 'compose'),
+            draft: {
+                chatId: res.tool_params?.chatId || res.tool_params?.to || '',
+                text: res.tool_params?.text || ''
+            },
+            shareType: res.tool_params?.shareType || 'auto',
+            quickSend: !!res.tool_params?.quickSend || (res.text || '').toLowerCase().includes('send')
+        };
+        await telegramFeature.handleVoiceCommand(telegramCmd);
+        return { text: 'Telegram draft ready.' };
     }
 };
 
@@ -6669,7 +6016,6 @@ function inferNoteKindAndTitle(text = '') {
 function parseNoteItemsFromText(text = '') {
     const raw = sanitizeVoiceQuery(text)
         .replace(/^(?:please\s+)?(?:add|include|put|write\s+down|save|note)\s+/i, '')
-        .replace(/^(?:please\s+)?(?:add|include|put)\s+to\s+(?:the\s+)?(?:a\s+)?(?:note|list)\s+/i, '')
         .replace(/^(?:and|also)\s+/i, '')
         .replace(/^(?:you\s+can\s+)?save\s+(?:the\s+)?note$/i, '')
         .replace(/^(?:you\s+can\s+)?save\s+(?:the\s+)?list$/i, '')
@@ -6686,6 +6032,11 @@ function parseNoteItemsFromText(text = '') {
     return [...new Set(items)];
 }
 
+function isNotesDraftFinishIntent(text = '') {
+    const lower = normalizeVoiceTokens(text);
+    return /^(?:done|finished|finish|save|save it|save note|save the note|save list|save the list|you can save the note|you can save the list|that's all|thats all|that's it|thats it|that is all|end note|end list|complete|okay save note|ok save note)$/i.test(lower);
+}
+
 function buildSavedNoteContent(draft) {
     const bodyText = String(draft?.bodyText || '').trim();
     if (bodyText) return bodyText;
@@ -6700,13 +6051,22 @@ function formatPendingNotesDraftPrompt(draft) {
     if (!draft) return userName ? `What kind of note do you need, ${userName}?` : 'What kind of note do you need?';
     if (draft.stage === 'awaiting_freeform') {
         return userName
-            ? `Okay, ${userName}. I am listening. Say everything you want in the note, then say I am done with the note to save.`
-            : 'Okay. I am listening. Say everything you want in the note, then say I am done with the note to save.';
+            ? `Okay, ${userName}. I am listening. Dictate your note.`
+            : 'Okay. I am listening. Dictate your note.';
     }
     const kindLabel = draft.noteType === 'note' ? 'note' : draft.noteType;
     return userName
         ? `Okay, ${userName}. I will create a ${kindLabel} called ${draft.title}. What should I add?`
         : `Okay. I will create a ${kindLabel} called ${draft.title}. What should I add?`;
+}
+
+function parseFreeformNoteBody(text = '') {
+    return sanitizeVoiceQuery(text)
+        .replace(/^(?:yes\s+)?(?:this|here)(?:\s+is)?\s+(?:the\s+)?note[:\s,-]*/i, '')
+        .replace(/^(?:yes\s+)?(?:it'?s|it is)\s+(?:the\s+)?note[:\s,-]*/i, '')
+        .replace(/^(?:please\s+)?(?:take|save|write)\s+(?:this\s+)?note[:\s,-]*/i, '')
+        .replace(/^(?:note|memo)[:\s,-]*/i, '')
+        .trim();
 }
 
 function resolvePendingNotesFollowUp(cmd) {
@@ -6722,30 +6082,28 @@ function resolvePendingNotesFollowUp(cmd) {
     if (draft.stage === 'awaiting_kind') {
         const descriptor = inferNoteKindAndTitle(cmd);
         if (!descriptor) {
-            const userName = getDisplayUserName();
-            return {
-                needsMore: true,
-                message: userName ? `What kind of note do you need, ${userName}?` : 'What kind of note do you need?'
-            };
+            return { needsMore: true, message: 'What kind of note do you need, Pablo?' };
         }
         state.pendingNotesDraft = buildPendingNotesDraft(descriptor.noteType, descriptor.title);
         return { needsMore: true, message: formatPendingNotesDraftPrompt(state.pendingNotesDraft) };
     }
 
     if (draft.stage === 'awaiting_freeform') {
-        const freeformStep = advanceFreeformNotesDraft(draft, cmd, lower);
-        if (!freeformStep) {
-            return { needsMore: true, message: formatPendingNotesDraftPrompt(draft) };
-        }
-        if (freeformStep.type === 'needsMore') {
-            state.pendingNotesDraft = freeformStep.draft;
-            return { needsMore: true, message: freeformStep.message };
+        const bodyText = parseFreeformNoteBody(cmd);
+        if (!bodyText) {
+            return { needsMore: true, message: 'I am listening. Dictate the note when you are ready.' };
         }
         state.pendingNotesDraft = null;
-        return { completed: true, draft: freeformStep.draft };
+        return {
+            completed: true,
+            draft: {
+                ...draft,
+                bodyText
+            }
+        };
     }
 
-    if (isNotesDraftFinishIntent(lower)) {
+    if (isNotesDraftFinishIntent(cmd)) {
         if (!draft.items?.length) {
             return { needsMore: true, message: 'Tell me what should go in the note first.' };
         }
@@ -6827,190 +6185,6 @@ function openNotesPanel(message = '', prefill = '') {
     });
 }
 
-function formatConversationTime(timestamp = '') {
-    const value = String(timestamp || '').trim();
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function summarizeConversationDraft(draft = {}) {
-    if (!draft || typeof draft !== 'object') return 'No draft';
-    const parts = [];
-    if (String(draft.to || '').trim()) parts.push(`to ${String(draft.to || '').trim()}`);
-    if (String(draft.chatId || '').trim()) parts.push(`chat ${String(draft.chatId || '').trim()}`);
-    if (String(draft.subject || '').trim()) parts.push(`subject ${String(draft.subject || '').trim()}`);
-    if (String(draft.text || '').trim()) parts.push(String(draft.text || '').trim());
-    if (!parts.length && String(draft.note || '').trim()) parts.push(String(draft.note || '').trim());
-    return parts.length ? parts.join(' · ').slice(0, 180) : 'No draft';
-}
-
-function summarizeConversationIntent(intent = {}) {
-    const family = String(intent?.family || 'none').trim() || 'none';
-    const action = String(intent?.action || 'none').trim() || 'none';
-    const confidence = Number(intent?.confidence || 0);
-    const confidenceLabel = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : '0%';
-    return `${family} · ${action} · ${confidenceLabel}`;
-}
-
-function getConversationUndoCandidate(snapshot = {}) {
-    const actions = Array.isArray(snapshot?.recentActions) ? snapshot.recentActions : [];
-    return actions.find((action) => {
-        const undoStrategy = String(action?.undo_strategy || '').trim().toLowerCase();
-        const undoWindow = String(action?.undo_window || '').trim().toLowerCase();
-        return String(action?.action_type || '').toLowerCase() !== 'undo' && undoStrategy !== 'none' && undoWindow !== 'none';
-    }) || null;
-}
-
-function buildConversationInspectorHtml(snapshot = {}) {
-    const branches = Object.entries(snapshot.branches || {})
-        .map(([toolId, branch]) => ({ toolId, ...(branch || {}) }))
-        .sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
-    const sharedObjects = Array.isArray(snapshot.sharedObjects) ? snapshot.sharedObjects.slice(0, 12) : [];
-    const recentActions = Array.isArray(snapshot.recentActions) ? snapshot.recentActions.slice(0, 12) : [];
-    const undoCandidate = getConversationUndoCandidate(snapshot);
-    const activeIntent = snapshot.currentIntent || null;
-    const activeTool = String(snapshot.activeTool || 'none').trim() || 'none';
-    const previousTool = String(snapshot.previousTool || 'none').trim() || 'none';
-    const currentScreenStack = Array.isArray(snapshot.currentScreenStack) ? snapshot.currentScreenStack : [];
-    const referencedEntities = Array.isArray(snapshot.referencedEntities) ? snapshot.referencedEntities : [];
-
-    return `
-        <div class="blip-conversation-panel blip-panel-body">
-            <div class="blip-conversation-hero blip-panel-card">
-                <div class="blip-conversation-grid">
-                    <div class="blip-conversation-stat">
-                        <span class="blip-conversation-stat-label">Active tool</span>
-                        <strong>${escapeHtml(activeTool)}</strong>
-                    </div>
-                    <div class="blip-conversation-stat">
-                        <span class="blip-conversation-stat-label">Previous tool</span>
-                        <strong>${escapeHtml(previousTool)}</strong>
-                    </div>
-                    <div class="blip-conversation-stat">
-                        <span class="blip-conversation-stat-label">Branches</span>
-                        <strong>${branches.length}</strong>
-                    </div>
-                    <div class="blip-conversation-stat">
-                        <span class="blip-conversation-stat-label">Shared objects</span>
-                        <strong>${sharedObjects.length}</strong>
-                    </div>
-                    <div class="blip-conversation-stat">
-                        <span class="blip-conversation-stat-label">Recent actions</span>
-                        <strong>${recentActions.length}</strong>
-                    </div>
-                    <div class="blip-conversation-stat">
-                        <span class="blip-conversation-stat-label">Updated</span>
-                        <strong>${escapeHtml(formatConversationTime(snapshot.lastUpdatedAt) || '—')}</strong>
-                    </div>
-                </div>
-                <div class="blip-conversation-actions">
-                    <button type="button" class="action-link outline" data-conversation-refresh>🔄 Refresh</button>
-                    <button type="button" class="action-link outline" data-conversation-undo${undoCandidate ? '' : ' disabled'}>↩ Undo last</button>
-                </div>
-                <div class="blip-conversation-undo-note">
-                    ${undoCandidate
-                        ? `Last undoable: ${escapeHtml(undoCandidate.tool || 'tool')} · ${escapeHtml(undoCandidate.action_type || 'action')} · ${escapeHtml(undoCandidate.user_visible_summary || '')}`
-                        : 'No undoable action is currently available.'}
-                </div>
-            </div>
-
-            <div class="blip-conversation-section">
-                <div class="blip-conversation-section-head">Current Intent</div>
-                <div class="blip-conversation-chip-row">
-                    <span class="blip-conversation-chip">${escapeHtml(summarizeConversationIntent(activeIntent || {}))}</span>
-                    <span class="blip-conversation-chip">${escapeHtml(String(snapshot.currentScreenStack?.length || 0))} screen${(snapshot.currentScreenStack?.length || 0) === 1 ? '' : 's'}</span>
-                    <span class="blip-conversation-chip">${escapeHtml(String(referencedEntities.length))} referenced</span>
-                </div>
-            </div>
-
-            <div class="blip-conversation-section">
-                <div class="blip-conversation-section-head">Branches</div>
-                <div class="blip-conversation-branch-list">
-                    ${branches.length ? branches.map((branch) => `
-                        <div class="blip-panel-card blip-conversation-branch">
-                            <div class="blip-conversation-branch-top">
-                                <div class="blip-conversation-branch-title">${escapeHtml(branch.toolId || 'tool')}</div>
-                                <div class="blip-conversation-branch-meta">${escapeHtml(formatConversationTime(branch.updatedAt) || '—')}</div>
-                            </div>
-                            <div class="blip-conversation-branch-task">${escapeHtml(branch.currentTask || 'No task')}</div>
-                            <div class="blip-conversation-branch-detail">
-                                ${branch.activePanel ? `<span class="blip-conversation-chip">panel: ${escapeHtml(branch.activePanel)}</span>` : ''}
-                                ${branch.note ? `<span class="blip-conversation-chip">${escapeHtml(branch.note)}</span>` : ''}
-                                ${branch.currentIntent ? `<span class="blip-conversation-chip">${escapeHtml(summarizeConversationIntent(branch.currentIntent))}</span>` : ''}
-                                ${branch.draft ? `<span class="blip-conversation-chip">${escapeHtml(summarizeConversationDraft(branch.draft))}</span>` : ''}
-                            </div>
-                            ${Array.isArray(branch.referencedObjects) && branch.referencedObjects.length
-                                ? `<div class="blip-conversation-subtext">Refs: ${escapeHtml(branch.referencedObjects.slice(0, 5).join(', '))}</div>`
-                                : ''}
-                        </div>
-                    `).join('') : '<div class="blip-panel-empty">No tool branches yet.</div>'}
-                </div>
-            </div>
-
-            <div class="blip-conversation-section">
-                <div class="blip-conversation-section-head">Shared Objects</div>
-                <div class="blip-conversation-object-list">
-                    ${sharedObjects.length ? sharedObjects.map((item) => `
-                        <div class="blip-conversation-object">
-                            <div class="blip-conversation-object-title">${escapeHtml(item.label || item.id || 'Object')}</div>
-                            <div class="blip-conversation-object-meta">
-                                ${escapeHtml(item.kind || 'entity')} · ${escapeHtml(item.tool || 'tool')}
-                                ${item.source ? ` · ${escapeHtml(item.source)}` : ''}
-                            </div>
-                            ${item.summary ? `<div class="blip-conversation-subtext">${escapeHtml(item.summary)}</div>` : ''}
-                        </div>
-                    `).join('') : '<div class="blip-panel-empty">No shared objects yet.</div>'}
-                </div>
-            </div>
-
-            <div class="blip-conversation-section">
-                <div class="blip-conversation-section-head">Recent Actions</div>
-                <div class="blip-conversation-action-list">
-                    ${recentActions.length ? recentActions.map((action) => `
-                        <div class="blip-conversation-action">
-                            <div class="blip-conversation-action-top">
-                                <strong>${escapeHtml(action.tool || 'tool')}</strong>
-                                <span>${escapeHtml(formatConversationTime(action.timestamp) || '—')}</span>
-                            </div>
-                            <div class="blip-conversation-action-summary">${escapeHtml(action.user_visible_summary || action.action_type || 'Action')}</div>
-                            <div class="blip-conversation-action-meta">
-                                <span>${escapeHtml(action.action_type || 'unknown')}</span>
-                                <span>${escapeHtml(action.undo_strategy || 'none')}</span>
-                                <span>${escapeHtml(action.undo_window || 'none')}</span>
-                            </div>
-                        </div>
-                    `).join('') : '<div class="blip-panel-empty">No recent actions yet.</div>'}
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function bindConversationInspectorControls(sidePanel) {
-    sidePanel.querySelector('[data-conversation-refresh]')?.addEventListener('click', () => {
-        openConversationInspectorPanel('Conversation refreshed.');
-    });
-    sidePanel.querySelector('[data-conversation-undo]')?.addEventListener('click', () => {
-        const result = undoLastConversationAction(state);
-        if (transcriptText) transcriptText.innerText = result?.message || 'Nothing to undo yet.';
-        openConversationInspectorPanel(result?.message || 'Conversation updated.');
-    });
-}
-
-function openConversationInspectorPanel(message = '') {
-    const snapshot = getConversationSnapshot(state) || {};
-    const branchCount = Object.keys(snapshot.branches || {}).length;
-    const sharedCount = Array.isArray(snapshot.sharedObjects) ? snapshot.sharedObjects.length : 0;
-    const actionCount = Array.isArray(snapshot.recentActions) ? snapshot.recentActions.length : 0;
-    renderActionInSidePanel({
-        action: 'conversation',
-        tool_params: { snapshot },
-        text: message || `Conversation open. ${branchCount} branch${branchCount === 1 ? '' : 'es'}, ${sharedCount} shared object${sharedCount === 1 ? '' : 's'}, ${actionCount} recent action${actionCount === 1 ? '' : 's'}.`
-    });
-}
-
 function syncNotesPanelIfVisible(message = '', prefill = '') {
     if (isSidePanelVisible() && state.currentSidePanelAction === 'notes') {
         openNotesPanel(message, prefill);
@@ -7035,10 +6209,6 @@ function toggleCart() {
 function toggleLearningGames() {
     if (!gamesContainer) return;
     const shouldShow = state.currentMode !== 'games';
-    if (shouldShow) {
-        // When opening learning games, always return ear training to its 2-mode menu.
-        state.earTrainingController?.resetToMenu?.();
-    }
     setMode(shouldShow ? 'games' : 'core');
 }
 
@@ -7101,11 +6271,6 @@ async function speakLearningGameLine(text, emotion = 'curious') {
     }
 }
 
-function setLearningGamesDebug(text = '') {
-    if (!learningGamesDebug) return;
-    learningGamesDebug.textContent = `Debug: ${String(text || '').trim() || 'idle'}`;
-}
-
 async function renderMathQuestion() {
     if (!mathQuestion || !mathOptions || !mathFeedback || !mathNextBtn) return;
     const q = generateMathQuestion();
@@ -7132,7 +6297,7 @@ async function renderMathQuestion() {
     setBlipEmotion('curious');
     setPersona(getReplyPersonaKey('curious'));
     if (mathIntro) mathIntro.textContent = 'Blip will ask easy number questions!';
-    await speakLearningGameLine(`What number is this? ${q.text}`, 'curious');
+    await speakLearningGameLine(`Can you solve this? ${q.text}`, 'curious');
 }
 
 async function handleMathAnswer(selected) {
@@ -7147,10 +6312,10 @@ async function handleMathAnswer(selected) {
         state.mathGame.score += 1;
         mathScore.textContent = `Score: ${state.mathGame.score}`;
         mathFeedback.textContent = "Great job! That's correct.";
-        await speakLearningGameLine('Correct. Nice work.', 'happy');
+        await speakLearningGameLine('Yay! You got it!', 'happy');
     } else {
-        mathFeedback.textContent = `Not quite. It was ${state.mathGame.currentAnswer}. Try this one.`;
-        await speakLearningGameLine(`Not quite. It was ${state.mathGame.currentAnswer}. Try this one.`, 'gentle');
+        mathFeedback.textContent = `Good try! The answer was ${state.mathGame.currentAnswer}.`;
+        await speakLearningGameLine(`That's okay, we can learn together. The answer was ${state.mathGame.currentAnswer}.`, 'gentle');
     }
 
     mathNextBtn.style.display = 'inline-block';
@@ -7162,14 +6327,12 @@ async function startMathGame() {
     state.mathGame.answered = false;
     if (mathScore) mathScore.textContent = 'Score: 0';
     if (mathIntro) mathIntro.textContent = 'Blip will ask easy number questions!';
-    setLearningGamesDebug('math start requested');
     await renderMathQuestion();
 }
 
 function renderLearningGamesPanel() {
     if (!gamesContainer) return;
     if (mathScore) mathScore.textContent = `Score: ${state.mathGame.score}`;
-    setLearningGamesDebug(state.currentMode === 'games' ? 'games panel ready' : 'games panel hidden');
     if (!state.mathGame.started) {
         if (mathQuestion) mathQuestion.textContent = 'Press Start';
         if (mathIntro) mathIntro.textContent = "Let's play with numbers!";
@@ -7190,17 +6353,6 @@ function initLearningGames() {
             void renderMathQuestion();
         });
     }
-
-    // Ear training (intervals + major/minor)
-const earTrainingRoot = document.getElementById('blip-ear-training-game');
-    if (earTrainingRoot && !state.earTrainingMounted) {
-        state.earTrainingController = mountEarTrainingGame(earTrainingRoot, {
-            speakLine: (text, emotion = 'curious') => speakLearningGameLine(text, emotion)
-        });
-        state.earTrainingMounted = true;
-        setLearningGamesDebug('ear training mounted');
-    }
-
     renderLearningGamesPanel();
 }
 
@@ -7568,20 +6720,11 @@ function isSidePanelActuallyVisible(expectedAction = '') {
     const sidePanel = document.getElementById('blip-side-panel');
     if (!isContainerActuallyVisible(sidePanel)) return false;
     if (!expectedAction) return true;
-    const normalizedAction = normalizeSidePanelAction(expectedAction);
-    const registration = getSidePanelRegistration(normalizedAction);
-    if (registration?.isOpen) {
-        try {
-            return !!registration.isOpen();
-        } catch (error) {
-            console.warn(`Side panel visibility check failed for ${normalizedAction}:`, error?.message || error);
-        }
+    if (expectedAction === 'calendarAgenda') {
+        return sidePanel.classList.contains('blip-calendar-orb');
     }
-    if (normalizedAction === 'calendaragenda') {
-        return sidePanel.classList.contains('blip-calendar-mirror-panel') || sidePanel.classList.contains('blip-calendar-orb');
-    }
-    const panelAction = normalizeSidePanelAction(sidePanel.dataset?.panelAction || state.currentSidePanelAction || '');
-    return panelAction === normalizedAction;
+    const panelAction = String(sidePanel.dataset?.panelAction || state.currentSidePanelAction || '').trim();
+    return panelAction === expectedAction;
 }
 
 function isYouTubePanelActuallyVisible() {
@@ -7603,7 +6746,7 @@ function isChartActuallyVisible() {
 }
 
 function isCalendarPanelActuallyVisible() {
-    return isCalendarAgendaDomVisible();
+    return isSidePanelActuallyVisible('calendarAgenda');
 }
 
 function logUiOpenVisibilityFailure(cmd = '', target = '', details = {}) {
@@ -7665,21 +6808,18 @@ function persistMediaGallery() {
     }));
 
     if (!persistableItems.length) {
-        try {
-            localStorage.setItem(MEDIA_STORAGE_KEY, '[]');
+        if (safeStorageSet(MEDIA_STORAGE_KEY, [])) {
             state.lastMediaPersistStatus = 'ok';
             return { ok: true, prunedCount: 0 };
-        } catch (e) {
-            state.lastMediaPersistStatus = isQuotaError(e) ? 'quota' : 'error';
-            console.warn('Media gallery save failed:', e.message);
-            return { ok: false, prunedCount: 0, reason: state.lastMediaPersistStatus };
+        } else {
+            state.lastMediaPersistStatus = 'quota';
+            return { ok: false, prunedCount: 0, reason: 'quota' };
         }
     }
 
     let keptItems = persistableItems.slice();
-    while (keptItems.length) {
-        try {
-            localStorage.setItem(MEDIA_STORAGE_KEY, JSON.stringify(toPayload(keptItems)));
+    while (keptItems.length > 0) {
+        if (safeStorageSet(MEDIA_STORAGE_KEY, toPayload(keptItems))) {
             const keptIds = new Set(keptItems.map((item) => item.id));
             const dropped = [];
             state.mediaItems = (state.mediaItems || []).filter((item) => {
@@ -7698,13 +6838,13 @@ function persistMediaGallery() {
             }
             state.lastMediaPersistStatus = 'ok';
             return { ok: true, prunedCount: dropped.length };
-        } catch (e) {
-            if (!isQuotaError(e) || keptItems.length <= 1) {
-                state.lastMediaPersistStatus = isQuotaError(e) ? 'quota' : 'error';
-                console.warn('Media gallery save failed:', e.message);
-                return { ok: false, prunedCount: 0, reason: state.lastMediaPersistStatus };
+        } else {
+            // Storage full - shrink and try again until it fits or we run out of items
+            if (keptItems.length <= 1) {
+                state.lastMediaPersistStatus = 'quota';
+                return { ok: false, prunedCount: 0, reason: 'quota' };
             }
-            keptItems.pop();
+            keptItems.pop(); // Remove oldest to try and fit
         }
     }
 
@@ -7739,36 +6879,6 @@ function rememberMediaUndo(entry = null) {
             savedAt: Date.now()
         }
         : null;
-}
-
-function recordMediaConversationAction(action = {}) {
-    try {
-        recordConversationAction(state, {
-            tool: 'photos',
-            action_type: action.action_type || 'media_action',
-            target_object: action.target_object || '',
-            previous_state: action.previous_state || null,
-            new_state: action.new_state || null,
-            undo_strategy: action.undo_strategy || 'session',
-            undo_window: action.undo_window || 'session',
-            user_visible_summary: action.user_visible_summary || ''
-        });
-        setToolBranchState(state, 'photos', {
-            currentTask: action.currentTask || 'media',
-            currentIntent: {
-                family: 'photos',
-                action: action.intentAction || 'none',
-                confidence: Number(action.confidence || 0.8)
-            },
-            activePanel: 'photos',
-            panelStack: ['photos'],
-            draft: action.draft || null,
-            lastUtterance: String(action.lastUtterance || ''),
-            note: String(action.user_visible_summary || '').trim()
-        });
-    } catch (_) {
-        // best effort
-    }
 }
 
 function getMediaUndoLane(entry = null) {
@@ -7836,46 +6946,6 @@ function undoLastMediaRemoval() {
                 ? `Restored ${entries.length} ${view.toLowerCase()} items.`
                 : `Restored ${view.toLowerCase()} item.`
         };
-    }
-
-    return { ok: false, message: 'Nothing to undo.', lane: null };
-}
-
-function undoLatestPhotoConversationAction() {
-    const convo = state.conversation || null;
-    if (!convo || !Array.isArray(convo.recentActions)) {
-        return { ok: false, message: 'Nothing to undo.', lane: null };
-    }
-    const index = convo.recentActions.findIndex((action) => String(action?.tool || '') === 'photos' && String(action?.undo_window || '') !== 'none');
-    if (index < 0) {
-        return { ok: false, message: 'Nothing to undo.', lane: null };
-    }
-    const action = convo.recentActions.splice(index, 1)[0];
-    if (!action) return { ok: false, message: 'Nothing to undo.', lane: null };
-
-    if (String(action.action_type || '') === 'photo_edit') {
-        const targetId = String(action.target_object || action.previous_state?.id || '');
-        const item = (state.mediaItems || []).find((entry) => String(entry?.id || '') === targetId);
-        if (item && action.previous_state) {
-            item.url = action.previous_state.url || item.url;
-            item.rotation = action.previous_state.rotation ?? item.rotation;
-            item.lastEdit = action.previous_state.lastEdit || null;
-            if (state.mediaBrightnessOverrides) delete state.mediaBrightnessOverrides[String(item.id)];
-            persistMediaGallery();
-            renderMediaGallery();
-            return { ok: true, message: 'I restored the previous photo edit.', lane: 'photos' };
-        }
-    }
-
-    if (String(action.action_type || '') === 'photo_removed') {
-        const removed = action.previous_state?.item || action.previous_state?.mediaItem || null;
-        const index = Number(action.previous_state?.index);
-        if (removed && Number.isFinite(index)) {
-            state.mediaItems.splice(Math.max(0, Math.min(state.mediaItems.length, index)), 0, removed);
-            persistMediaGallery();
-            renderMediaGallery();
-            return { ok: true, message: 'I restored the removed photo.', lane: 'photos' };
-        }
     }
 
     return { ok: false, message: 'Nothing to undo.', lane: null };
@@ -8287,15 +7357,8 @@ Steps (numbered):
 Approx nutrition per serving: calories, protein, carbs, fiber.
 
 Keep it around 120-220 words.`;
-    const generate = async (sp, up, key, mdl) => {
-        if (mdl.startsWith('gemini')) {
-            return await generateWithPrompt(sp, up, key, mdl);
-        } else {
-            return await generateWithOllama(sp, up, mdl);
-        }
-    };
     try {
-        const raw = await generate(systemPrompt, userPrompt, state.geminiKey, state.selectedModel);
+        const raw = await generateWithPrompt(systemPrompt, userPrompt, getActiveTextApiKey(state.selectedModel), state.selectedModel);
         const cleaned = String(raw || '').trim();
         return cleaned || buildFallbackRecipeText(focus);
     } catch (error) {
@@ -8692,14 +7755,7 @@ Rules:
 - Avoid external assets and avoid scripts.`;
     if (!preferRaster) {
         try {
-            const generate = async (sp, up, key, mdl) => {
-                if (mdl.startsWith('gemini')) {
-                    return await generateWithPrompt(sp, up, key, mdl);
-                } else {
-                    return await generateWithOllama(sp, up, mdl);
-                }
-            };
-            const raw = await generate(systemPrompt, userPrompt, state.geminiKey, state.selectedModel);
+            const raw = await generateWithPrompt(systemPrompt, userPrompt, getActiveTextApiKey(state.selectedModel), state.selectedModel);
             const extracted = extractSvgMarkup(raw);
             const safeSvg = normalizeSvgMarkup(extracted);
             if (safeSvg) {
@@ -9490,22 +8546,16 @@ function openMediaLightbox(url, index = null, kind = 'image', bucket = MEDIA_BUC
 
 function clearSidePanelContext() {
     stopTimerPanelTicker();
-    clearVoiceToolFollowUpLock();
     if (state.currentSidePanelAction === 'telegram') {
         state.pendingTelegramReview = false;
     }
-    if (state.currentSidePanelAction === 'gmail') {
-        state.pendingEmailReview = null;
-        clearGmailVoiceMergeState();
-    }
     state.currentSidePanelAction = '';
     state.currentSidePanelVisualUrl = '';
-    document.body.classList.remove('blip-gmail-panel-open', 'blip-telegram-panel-open', 'blip-calendar-panel-open');
 }
 
 function applyDefaultSidePanelLayout(sidePanel, action = '') {
     if (!sidePanel) return;
-    sidePanel.classList.remove('blip-video-big', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-calendar-mirror-panel', 'blip-side-panel-workspace', 'blip-gmail-dock', 'blip-telegram-dock');
+    sidePanel.classList.remove('blip-video-big', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-side-panel-workspace');
     sidePanel.dataset.panelAction = action || '';
     delete sidePanel.dataset.youtubeLibraryOnly;
     sidePanel.querySelectorAll('.blip-workspace-dock').forEach((node) => node.remove());
@@ -9523,13 +8573,8 @@ function applyDefaultSidePanelLayout(sidePanel, action = '') {
     sidePanel.style.boxShadow = '0 18px 48px rgba(2, 6, 23, 0.5)';
 }
 
-/** Wide, centered workspace tools. Gmail & Telegram use compact corner docks, not this. */
 function isWideWorkspaceAction(action = '') {
-    return ['youtube', 'products', 'notes', 'image', 'design', 'drawing', 'chart', 'conversation'].includes(String(action || ''));
-}
-
-function panelUsesFlexColumnLayout(action = '') {
-    return isWideWorkspaceAction(action) || action === 'gmail' || action === 'telegram';
+    return ['youtube', 'products', 'notes', 'gmail', 'telegram', 'image', 'design', 'drawing', 'chart'].includes(String(action || ''));
 }
 
 function applyWorkspaceSidePanelLayout(sidePanel, action = '') {
@@ -9548,54 +8593,11 @@ function applyWorkspaceSidePanelLayout(sidePanel, action = '') {
     sidePanel.style.flexDirection = 'column';
 }
 
-/** Gmail: bottom-right dock — tall enough for toolbar + compose + inbox + body (CSS blip-gmail-dock sets !important sizes). */
-function applyGmailSidePanelLayout(sidePanel) {
-    if (!sidePanel) return;
-    sidePanel.classList.remove('blip-side-panel-workspace', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-calendar-mirror-panel', 'blip-telegram-dock');
-    sidePanel.classList.add('blip-gmail-dock');
-    sidePanel.style.top = 'auto';
-    sidePanel.style.bottom = 'max(10px, env(safe-area-inset-bottom, 0px))';
-    sidePanel.style.left = 'auto';
-    sidePanel.style.right = 'max(10px, env(safe-area-inset-right, 0px))';
-    sidePanel.style.transform = 'none';
-    sidePanel.style.width = 'min(400px, calc(100vw - 24px))';
-    sidePanel.style.maxWidth = 'min(400px, calc(100vw - 24px))';
-    sidePanel.style.height = 'min(78vh, 820px)';
-    sidePanel.style.maxHeight = 'min(78vh, 820px)';
-    sidePanel.style.padding = '10px 12px';
-    sidePanel.style.borderRadius = '18px';
-    sidePanel.style.overflow = 'hidden';
-    sidePanel.style.display = 'flex';
-    sidePanel.style.flexDirection = 'column';
-}
-
-/** Telegram: bottom-right dock — wide/tall enough for message + voice hints (face stays visible). */
-function applyTelegramSidePanelLayout(sidePanel) {
-    if (!sidePanel) return;
-    sidePanel.classList.remove('blip-side-panel-workspace', 'blip-side-panel-centered', 'blip-calendar-orb', 'blip-calendar-mirror-panel', 'blip-gmail-dock');
-    sidePanel.classList.add('blip-telegram-dock');
-    sidePanel.style.top = 'auto';
-    sidePanel.style.bottom = 'max(10px, env(safe-area-inset-bottom, 0px))';
-    sidePanel.style.left = 'auto';
-    sidePanel.style.right = 'max(10px, env(safe-area-inset-right, 0px))';
-    sidePanel.style.transform = 'none';
-    sidePanel.style.width = 'min(380px, calc(100vw - 24px))';
-    sidePanel.style.maxWidth = 'min(380px, calc(100vw - 24px))';
-    sidePanel.style.height = 'min(72vh, 720px)';
-    sidePanel.style.maxHeight = 'min(72vh, 720px)';
-    sidePanel.style.padding = '10px 12px';
-    sidePanel.style.borderRadius = '18px';
-    sidePanel.style.overflow = 'hidden';
-    sidePanel.style.display = 'flex';
-    sidePanel.style.flexDirection = 'column';
-}
-
 function getWorkspaceDockText(action = '') {
     if (action === 'products') return { title: 'Blip Shop', hint: 'Browse and compare' };
     if (action === 'notes') return { title: 'Blip Notes', hint: 'Listen and save' };
     if (action === 'gmail') return { title: 'Blip Email', hint: 'Inbox and compose' };
     if (action === 'telegram') return { title: 'Blip Telegram', hint: 'Text and photo send' };
-    if (action === 'conversation') return { title: 'Blip Thread', hint: 'Branches, memory, undo' };
     if (action === 'image' || action === 'design' || action === 'drawing') return { title: 'Blip Vision', hint: 'Create and inspect' };
     if (action === 'chart') return { title: 'Blip Data', hint: 'View and save' };
     return { title: 'Blip', hint: 'Voice ready' };
@@ -9689,29 +8691,20 @@ function openCreationsPanel(summary = '') {
 }
 
 function closeSidePanel() {
+    if (state.currentSidePanelAction === 'youtube') {
+        closeYouTubePanel();
+        return 'youtube';
+    }
+    if (closeCalendarPanel()) {
+        return 'calendar';
+    }
     const sidePanel = document.getElementById('blip-side-panel');
-    const action = normalizeSidePanelAction(state.currentSidePanelAction || sidePanel?.dataset?.panelAction || '');
-    const registration = getSidePanelRegistration(action);
-    if (registration?.closePanel) {
-        try {
-            registration.closePanel();
-        } catch (error) {
-            console.warn(`Side panel close failed for ${action || 'panel'}:`, error?.message || error);
-        }
-    }
-    if (sidePanelChart) {
-        sidePanelChart.destroy();
-        sidePanelChart = null;
-    }
-    if (!sidePanel || sidePanel.style.display === 'none') {
-        clearSidePanelContext();
-        return action || null;
-    }
+    if (!sidePanel || sidePanel.style.display === 'none') return null;
     sidePanel.innerHTML = '';
     sidePanel.style.display = 'none';
     applyDefaultSidePanelLayout(sidePanel);
     clearSidePanelContext();
-    return action || 'panel';
+    return 'panel';
 }
 
 function canOpenCurrentCreationFromPanel() {
@@ -9955,10 +8948,11 @@ function closeCurrentPanel() {
         setMode('core');
         return 'panel';
     }
-    if (state.currentSidePanelAction || isSidePanelVisible()) {
-        const closed = closeSidePanel();
-        if (closed === 'calendaragenda') return 'calendar';
-        return closed || 'panel';
+    if (closeCalendarPanel()) {
+        return 'calendar';
+    }
+    if (isSidePanelVisible()) {
+        return closeSidePanel() || 'panel';
     }
     return null;
 }
@@ -9971,7 +8965,9 @@ function closeEverythingPanels() {
     closeCalendarPanel();
     state.pendingNotesDraft = null;
     state.pendingProfileDraft = null;
-    if (isSidePanelVisible() || state.currentSidePanelAction || blipYtPlayer) {
+    if (state.currentSidePanelAction === 'youtube' || blipYtPlayer) {
+        closeYouTubePanel();
+    } else if (isSidePanelVisible()) {
         closeSidePanel();
     }
     if (state.currentMode === 'settings' || isSettingsPanelOpen()) closeSettingsPanel();
@@ -10294,7 +9290,7 @@ function persistTimers() {
                 text: String(t.text || 'Timer'),
                 time: Number(t.time)
             }));
-        localStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify(payload));
+        safeStorageSet(TIMER_STORAGE_KEY, payload);
     } catch (_) { }
     const nextReminder = getNextTimerDue();
     state.lastScheduledReminder = nextReminder
@@ -10313,16 +9309,6 @@ function cancelScheduledTimerById(timerId) {
     try { clearTimeout(timerId); } catch (_) { }
     persistTimers();
     renderCountdownDisplay();
-    recordConversationAction(state, {
-        tool: 'timer',
-        action_type: 'timer_cancelled',
-        target_object: String(removed?.id || timerId || ''),
-        previous_state: { id: removed?.id || timerId, text: removed?.text || '', time: removed?.time || null },
-        new_state: null,
-        undo_strategy: 'restore_timer',
-        undo_window: 'session',
-        user_visible_summary: `Cancelled timer ${removed?.text || ''}`.trim()
-    });
     return removed || null;
 }
 
@@ -10351,15 +9337,6 @@ function clearAllScheduledTimers() {
     state.timers = [];
     persistTimers();
     renderCountdownDisplay();
-    recordConversationAction(state, {
-        tool: 'timer',
-        action_type: 'timers_cleared',
-        previous_state: { timers: timers.map((timer) => ({ ...timer })) },
-        new_state: { remaining: 0 },
-        undo_strategy: 'restore_timers',
-        undo_window: 'session',
-        user_visible_summary: 'Cleared all timers'
-    });
     return timers.length;
 }
 
@@ -10427,37 +9404,6 @@ function openLastVideoPanel() {
     const watchUrl = last.lastYoutubeUrl || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '');
     const embedUrl = last.lastYoutubeEmbedUrl || (videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1` : null);
     if (!watchUrl && !videoId) return false;
-    setToolBranchState(state, 'youtube', {
-        currentTask: 'open video',
-        currentIntent: {
-            family: 'youtube',
-            action: 'openVideo',
-            confidence: 0.92
-        },
-        activePanel: 'youtube',
-        panelStack: ['youtube'],
-        draft: {
-            url: watchUrl,
-            embedUrl,
-            videoId: videoId || '',
-            query: last.lastYoutubeQuery || 'video'
-        },
-        lastUtterance: 'open video',
-        note: 'Reopening last video.'
-    });
-    recordConversationAction(state, {
-        tool: 'youtube',
-        action_type: 'video_opened',
-        target_object: watchUrl || videoId || '',
-        previous_state: null,
-        new_state: {
-            url: watchUrl,
-            videoId: videoId || ''
-        },
-        undo_strategy: 'close_panel',
-        undo_window: 'session',
-        user_visible_summary: 'Opened the last video'
-    });
     renderActionInSidePanel({
         action: 'youtube',
         tool_params: {
@@ -10535,22 +9481,6 @@ function saveCurrentYouTubeToPlaylist(playlistName = DEFAULT_VIDEO_PLAYLIST) {
         return sameId || sameUrl;
     });
     if (duplicate) {
-        setToolBranchState(state, 'youtube', {
-            currentTask: 'save video',
-            currentIntent: {
-                family: 'youtube',
-                action: 'saveVideo',
-                confidence: 0.92
-            },
-            activePanel: 'youtube',
-            panelStack: ['youtube'],
-            draft: {
-                playlistName: normalizedName,
-                videoId: duplicate.videoId || payload.videoId || '',
-                url: duplicate.url || payload.url || ''
-            },
-            note: `${payload.title} already in ${normalizedName}.`
-        });
         return { ok: true, playlistName: normalizedName, duplicate: true, item: duplicate };
     }
 
@@ -10560,36 +9490,6 @@ function saveCurrentYouTubeToPlaylist(playlistName = DEFAULT_VIDEO_PLAYLIST) {
         [normalizedName]: nextList
     };
     persistVideoPlaylists();
-    setToolBranchState(state, 'youtube', {
-        currentTask: 'save video',
-        currentIntent: {
-            family: 'youtube',
-            action: 'saveVideo',
-            confidence: 0.95
-        },
-        activePanel: 'youtube',
-        panelStack: ['youtube'],
-        draft: {
-            playlistName: normalizedName,
-            videoId: payload.videoId || '',
-            url: payload.url || ''
-        },
-        lastUtterance: `save video to ${normalizedName}`,
-        note: `Saved video to ${normalizedName}`
-    });
-    recordConversationAction(state, {
-        tool: 'youtube',
-        action_type: 'video_saved',
-        target_object: payload.videoId || payload.url || payload.title || '',
-        previous_state: null,
-        new_state: {
-            playlistName: normalizedName,
-            title: payload.title
-        },
-        undo_strategy: 'remove_saved_video',
-        undo_window: 'session',
-        user_visible_summary: `Saved video to ${normalizedName}`
-    });
     addToHub('link', `🎬 ${normalizedName}: ${payload.title}`, {
         url: payload.url,
         playlistName: normalizedName,
@@ -10606,36 +9506,146 @@ function toggleProjectorMode() {
     console.log(`📽️ Projector Mode: ${state.isProjectorMode}`);
 }
 
+const HUB_MAX_STORED_ITEMS = 50;
+const HUB_MAX_CONTENT_CHARS = 30000;
+const HUB_MAX_URL_CHARS = 8000;
+const HUB_INLINE_DATA_URL_MAX = 2048;
+
+function truncateHubString(value, max = HUB_MAX_CONTENT_CHARS) {
+    const s = String(value ?? '');
+    if (s.length <= max) return s;
+    return `${s.slice(0, max)}…`;
+}
+
+function sanitizeHubDataForStorage(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return data || {};
+    const o = { ...data };
+    if (typeof o.url === 'string') {
+        const u = o.url;
+        if (u.startsWith('data:')) {
+            if (u.length > HUB_INLINE_DATA_URL_MAX) {
+                o.url = '';
+                o._inlineDataOmitted = true;
+            }
+        } else if (u.length > HUB_MAX_URL_CHARS) {
+            o.url = `${u.slice(0, HUB_MAX_URL_CHARS)}…`;
+        }
+    }
+    for (const k of Object.keys(o)) {
+        if (typeof o[k] === 'string' && o[k].length > 50000) {
+            o[k] = `${o[k].slice(0, 50000)}…`;
+        }
+    }
+    return o;
+}
+
+function deepSanitizeHubItemsForStorage(items) {
+    return (Array.isArray(items) ? items : []).map((it) => ({
+        ...it,
+        content: truncateHubString(it?.content),
+        data: sanitizeHubDataForStorage(it?.data || {})
+    }));
+}
+
+function isStorageQuotaError(e) {
+    return Boolean(e && (e.name === 'QuotaExceededError' || e.code === 22));
+}
+
+/** Writes hub to localStorage; shrinks payload on quota (strip inline data, drop oldest items). */
+function persistHubItems(items) {
+    let itemsToSave = deepSanitizeHubItemsForStorage(items).slice(0, HUB_MAX_STORED_ITEMS);
+    while (itemsToSave.length > 0) {
+        if (safeStorageSet('blip_hub', itemsToSave)) {
+            state.hubItems = itemsToSave;
+            return;
+        } else {
+            // Storage full or failed - shrink and retry
+            if (itemsToSave.length <= 1) {
+                // Try one last-ditch minimal save
+                const minimal = itemsToSave.map((it) => ({
+                    id: it.id,
+                    type: it.type,
+                    content: truncateHubString(String(it?.content || ''), 500),
+                    data: {},
+                    timestamp: it.timestamp
+                }));
+                if (safeStorageSet('blip_hub', minimal)) {
+                    state.hubItems = minimal;
+                } else {
+                    safeStorageSet('blip_hub', []);
+                    state.hubItems = [];
+                }
+                return;
+            }
+            itemsToSave = itemsToSave.slice(0, -1);
+        }
+    }
+    safeStorageSet('blip_hub', []);
+    state.hubItems = [];
+}
+
 function addToHub(type, content, data = {}) {
     const item = {
         id: Date.now(),
-        type, // 'ai', 'link', 'image', 'user'
-        content,
-        data,
+        type, // 'ai', 'link', 'image', 'video', 'user', 'note'
+        content: truncateHubString(content),
+        data: {
+            ...sanitizeHubDataForStorage(data),
+            createdAt: new Date().toISOString() // Persistent date for cleanup logic
+        },
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-    state.hubItems.unshift(item); // Newest at top
-    if (state.hubItems.length > 50) state.hubItems.pop();
+    state.hubItems.unshift(item);
+    if (state.hubItems.length > HUB_MAX_STORED_ITEMS) {
+        state.hubItems = state.hubItems.slice(0, HUB_MAX_STORED_ITEMS);
+    }
+    persistHubItems(state.hubItems);
     renderHub();
-    void addStudentDeskItem(item).catch((error) => {
-        console.warn('Student Desk sync failed:', error?.message || error);
+}
+
+/**
+ * Checks if the hub needs a cleanup (Weekly maintenance).
+ */
+function checkHubMaintenance() {
+    if (!Array.isArray(state.hubItems) || state.hubItems.length === 0) return null;
+    
+    const now = Date.now();
+    const lastCheck = Number(localStorage.getItem(HUB_LAST_CHECK_STORAGE_KEY) || 0);
+    
+    // Safety: don't nag more than once a week
+    if (now - lastCheck < HUB_MAINTENANCE_THROTTLE_DAYS * 24 * 60 * 60 * 1000) {
+        return null; 
+    }
+    
+    // Find items older than HUB_MAX_AGE_DAYS (30 days)
+    const oldItems = state.hubItems.filter(item => {
+        const created = item.data?.createdAt ? new Date(item.data.createdAt).getTime() : 0;
+        return created > 0 && (now - created > HUB_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
     });
-    return item;
+    
+    // If we have more than 5 old items, or the hub is just getting too big (50+)
+    if (oldItems.length > 5 || state.hubItems.length > 50) {
+        return {
+            reason: oldItems.length > 5 ? 'age' : 'volume',
+            count: oldItems.length || state.hubItems.length
+        };
+    }
+    
+    return null;
 }
 
 function persistHub() {
-    void syncStudentDeskItems(state.hubItems || []).catch((error) => {
-        console.warn('Student Desk save failed:', error?.message || error);
-    });
+    try {
+        persistHubItems(state.hubItems || []);
+    } catch (e) {
+        console.warn('Hub save failed:', e?.message || e);
+    }
 }
 
 function removeHubItem(itemId) {
     const before = Array.isArray(state.hubItems) ? state.hubItems.length : 0;
     state.hubItems = (state.hubItems || []).filter((item) => String(item?.id) !== String(itemId));
     renderHub();
-    void removeStudentDeskItem(itemId).catch((error) => {
-        console.warn('Student Desk remove failed:', error?.message || error);
-    });
     persistHub();
     return before !== state.hubItems.length;
 }
@@ -10664,46 +9674,12 @@ function clearHub() {
     const removedCount = Array.isArray(state.hubItems) ? state.hubItems.length : 0;
     state.hubItems = [];
     renderHub();
-    void clearStudentDeskItems().catch((error) => {
-        console.warn('Student Desk clear failed:', error?.message || error);
-    });
     persistHub();
     return removedCount;
 }
 
-async function initStudentDeskStore() {
-    const legacyItems = readStudentDeskFallbackItems();
-    try {
-        const backendItems = normalizeStudentDeskItems(await loadStudentDeskBackendItems());
-        if (backendItems.length > 0) {
-            state.hubItems = backendItems;
-            renderHub();
-            return;
-        }
-
-        if (legacyItems.length > 0) {
-            state.hubItems = legacyItems;
-            renderHub();
-            await syncStudentDeskItems(legacyItems);
-            return;
-        }
-
-        state.hubItems = [];
-        renderHub();
-        await syncStudentDeskItems([]);
-    } catch (error) {
-        console.warn('Student Desk backend unavailable, using local cache:', error?.message || error);
-        state.hubItems = legacyItems;
-        renderHub();
-    }
-}
-
 function persistCart() {
-    try {
-        localStorage.setItem('blip_cart', JSON.stringify(state.cartItems || []));
-    } catch (e) {
-        console.warn('Cart save failed:', e.message);
-    }
+    safeStorageSet('blip_cart', state.cartItems || []);
 }
 
 function addToCart(item) {
@@ -10844,7 +9820,7 @@ function postManualHub() {
 
     addToHub(type, text, data);
     hubInput.value = '';
-    console.log('✅ Manual item added to Student Desk');
+    console.log('✅ Manual item added to Hub');
 }
 
 function saveCurrentVisionToHub() {
@@ -10867,7 +9843,7 @@ function saveCurrentVisionToHub() {
 
 function renderHub() {
     if (state.hubItems.length === 0) {
-        hubMessages.innerHTML = '<div class="hub-empty">Student Desk is empty. Save homework photos, notes, and links here!</div>';
+        hubMessages.innerHTML = '<div class="hub-empty">Hub is empty. Save photos or notes here!</div>';
         return;
     }
 
@@ -10877,7 +9853,7 @@ function renderHub() {
             const label = item.content.length > 40 ? '🔗 Open Link' : item.content;
             body = `<a href="${item.data.url}" target="_blank">${label}</a>`;
         } else if (item.type === 'image') {
-            body = `<img src="${item.data.url}" alt="Student Desk image" onclick="window.open('${item.data.url}')">`;
+            body = `<img src="${item.data.url}" alt="Hub Image" onclick="window.open('${item.data.url}')">`;
         } else {
             body = item.content;
         }
@@ -10991,50 +9967,138 @@ function getNextJoke() {
     return BLIP_JOKES[state.lastJokeIndex];
 }
 
+async function runSelfDiagnosticReport() {
+    const checks = [];
+    const addCheck = (name, ok, detail = '') => {
+        checks.push({ name, ok: Boolean(ok), detail: String(detail || '') });
+    };
+
+    const model = String(state.selectedModel || '').trim() || 'unknown';
+    const voiceEngine = String(state.voiceEngine || '').trim() || 'unknown';
+    const isMiniMax = /^minimax(?:[-\s_]?)/i.test(model);
+    const isGemini = /^gemini-/i.test(model) || /gemini/i.test(model);
+    const hasGeminiKey = !!String(state.geminiKey || '').trim();
+    const hasMiniMaxKey = !!String(state.minimaxKey || '').trim();
+    const hasYouTubeKey = !!String(state.youtubeApiKey || '').trim();
+    const hasWeatherKey = !!String(state.weatherApiKey || '').trim();
+
+    addCheck(
+        'Model config',
+        true,
+        `model=${model}; reasoning=${state.reasoningMode}; voiceEngine=${voiceEngine}`
+    );
+    addCheck(
+        'API key check',
+        (isGemini ? hasGeminiKey : true) && (isMiniMax ? hasMiniMaxKey : true),
+        `geminiKey=${hasGeminiKey ? 'present' : 'missing'}; minimaxKey=${hasMiniMaxKey ? 'present' : 'missing'}; youtubeKey=${hasYouTubeKey ? 'present' : 'missing'}; weatherKey=${hasWeatherKey ? 'present' : 'missing'}`
+    );
+
+    let kokoroOnline = false;
+    try {
+        kokoroOnline = await speech.checkKokoroStatus();
+    } catch (_) { }
+    addCheck(
+        'Voice engine',
+        voiceEngine !== 'kokoro' || kokoroOnline,
+        voiceEngine === 'kokoro'
+            ? `Kokoro is ${kokoroOnline ? 'online' : 'offline'}`
+            : `using ${voiceEngine}`
+    );
+
+    try {
+        await initTelegram();
+        const t = getTelegramAuthState();
+        addCheck(
+            'Telegram backend',
+            t.backendConfigured,
+            t.backendConfigured
+                ? `ready${t.chatIdPreview ? ` (default ${t.chatIdPreview})` : ''}`
+                : 'missing TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID or backend not running'
+        );
+    } catch (e) {
+        addCheck('Telegram backend', false, e?.message || 'status check failed');
+    }
+
+    try {
+        await initGoogleGmail();
+        const g = getGoogleGmailAuthState();
+        addCheck(
+            'Gmail',
+            g.backendConfigured && g.connected,
+            `backend=${g.backendConfigured ? 'ready' : 'offline'}; connected=${g.connected ? (g.email || 'yes') : 'no'}`
+        );
+    } catch (e) {
+        addCheck('Gmail', false, e?.message || 'status check failed');
+    }
+
+    try {
+        await initGoogleCalendar();
+        const c = getGoogleCalendarAuthState();
+        addCheck(
+            'Calendar',
+            c.connected,
+            `backend=${c.backendConfigured ? 'ready' : 'offline'}; connected=${c.connected ? 'yes' : 'no'}; mode=${c.mode || 'none'}`
+        );
+    } catch (e) {
+        addCheck('Calendar', false, e?.message || 'status check failed');
+    }
+
+    try {
+        const ollamaOnline = await checkOllamaStatus();
+        addCheck('Ollama', ollamaOnline, ollamaOnline ? '127.0.0.1:11434 reachable' : 'offline/unreachable');
+    } catch (e) {
+        addCheck('Ollama', false, e?.message || 'status check failed');
+    }
+
+    const okCount = checks.filter((item) => item.ok).length;
+    const summary = `Self-diagnostic: ${okCount}/${checks.length} checks look healthy.`;
+    const lines = checks.map((item) => `${item.ok ? '✅' : '⚠️'} ${item.name}: ${item.detail || (item.ok ? 'ok' : 'issue detected')}`);
+    const generatedAt = new Date().toLocaleString('en-US');
+    const noteContent = [
+        `Self Diagnostic Report (${generatedAt})`,
+        summary,
+        '',
+        ...lines
+    ].join('\n');
+    return {
+        summary,
+        html: `<br><div class="tiny-label">Diagnostics</div><pre style="white-space:pre-wrap;max-height:240px;overflow:auto;margin:6px 0 0;">${escapeHtml(lines.join('\n'))}</pre>`,
+        noteContent
+    };
+}
+
 async function handleCommand(text) {
     if (!text.toLowerCase().includes('hey blip') && !parseWakePhrase(text).matched && text.length < 3) return;
 
     const normalizedText = normalizeVoiceTokens(text);
-    const rawYouTubeCmd = getYouTubeVoiceCommand(normalizedText);
-    const canPrioritizeRawYouTubeCommand = !!(
-        rawYouTubeCmd &&
-        (
-            isYouTubePanelActuallyVisible() ||
-            isSidePanelVisible() ||
-            !!blipYtPlayer ||
-            state.pendingYouTubeAction ||
-            state.lastContext?.lastYoutubeUrl
-        )
-    );
     const sleepLikePhrase = /^(?:go\s+back\s+to\s+sleep|go\s+to\s+sleep|sleep|sleep\s+blip|blip\s+sleep)$/i.test(normalizedText.trim());
-    const wakeInfo = canPrioritizeRawYouTubeCommand
-        ? { matched: false, command: '', score: 0 }
-        : (sleepLikePhrase ? { matched: false, command: '', score: 0 } : parseWakePhrase(text));
-    const cmd = canPrioritizeRawYouTubeCommand
-        ? normalizedText
-        : (wakeInfo.matched
+    const wakeInfo = sleepLikePhrase ? { matched: false, command: '', score: 0 } : parseWakePhrase(text);
+    const isWakeWordOnly = Boolean(wakeInfo?.matched) && !String(wakeInfo?.command || '').trim();
+    const cmd = wakeInfo.matched
         ? (wakeInfo.command || 'wake')
         : (normalizedText.includes('hey blip')
             ? normalizedText.split('hey blip')[1].trim()
-            : normalizedText));
+            : normalizedText);
 
     if (!cmd) return;
     state.currentVoiceCommandText = cmd;
-
-    if (!inActiveGmailDraftFlow()) {
-        clearGmailVoiceMergeState();
-    }
-
-    const earlySystemCmd = getSystemVoiceCommand(cmd);
-    if (state.autoScrollTimer && earlySystemCmd !== 'scrollDown' && earlySystemCmd !== 'scrollUp' && earlySystemCmd !== 'stopScroll') {
-        stopAutoScroll();
-    }
+    const lowerCmd = normalizeVoiceTokens(String(cmd || ''));
 
     const quickReply = async (message, emotion = 'happy', extraHtml = '', resumeListening = true) => {
-        transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${message}${extraHtml}`;
-        state.history.push({ user: cmd, blip: message });
+        let finalMessage = message;
+        if (state.pendingHubMaintenanceNotice && Math.random() > 0.7) {
+            const { reason, count } = state.pendingHubMaintenanceNotice;
+            const mention = reason === 'age' 
+                ? ` By the way, the Hub has ${count} items over a month old. Should we purge them?`
+                : ` Just a heads up, the Hub is getting full with over ${count} items. Maybe a quick cleanup?`;
+            finalMessage += mention;
+            state.pendingHubMaintenanceNotice = null;
+            safeStorageSet(HUB_LAST_CHECK_STORAGE_KEY, String(Date.now()));
+        }
+        transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalMessage}${extraHtml}`;
+        state.history.push({ user: cmd, blip: finalMessage });
         if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+        safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
         setBlipEmotion(emotion);
         setPersona(getReplyPersonaKey(emotion));
         const normalizedCmd = normalizeVoiceTokens(String(cmd || ''));
@@ -11057,42 +10121,22 @@ async function handleCommand(text) {
         };
         if (shouldSpeakAck) {
             talkBtn.innerText = '🔊 SPEAKING...';
-            await speakWithGuard(message, emotion);
+            await speakWithGuard(finalMessage, emotion);
         } else {
-            // Still acknowledge audibly (users often aren't watching the transcript),
-            // but don't block UI updates waiting for speech.
             talkBtn.innerText = '🔊 SPEAKING...';
-            speakWithGuard(message, emotion).catch(() => { });
-            // Ensure we don't get stuck after non-blocking acks (speech may still be playing at 120ms).
+            speakWithGuard(finalMessage, emotion).catch(() => { });
             resumeAfterSpeech();
             return;
         }
         resumeAfterSpeech();
     };
 
-    const bareCloseIntent = /^(?:close|close\s+it|close\s+this|close\s+that|close\s+them|hide|hide\s+it|hide\s+this|hide\s+that|dismiss|dismiss\s+it|dismiss\s+this|dismiss\s+that|exit|exit\s+it|exit\s+this|exit\s+that)(?:\s+please)?$/.test(normalizedText.trim());
-    if (bareCloseIntent) {
-        const anythingOpenNow = !!(
-            mediaLightbox?.classList.contains('active') ||
-            state.isMediaStripOpen ||
-            state.pendingImage ||
-            isSidePanelVisible() ||
-            isSettingsPanelOpen() ||
-            state.currentMode !== 'core'
-        );
-        if (anythingOpenNow) {
-            closeEverythingPanels();
-            await quickReply('Everything closed.', 'happy');
-            return;
-        }
-    }
-
     const passiveReply = async (message = '', emotion = 'happy', extraHtml = '', resumeListening = true) => {
         transcriptText.innerHTML = `<b>You:</b> ${cmd}${message ? `<br><b>Blip:</b> ${message}` : ''}${extraHtml}`;
         if (message) {
             state.history.push({ user: cmd, blip: message });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
         }
         setBlipEmotion(emotion);
         setPersona(getReplyPersonaKey(emotion));
@@ -11100,231 +10144,28 @@ async function handleCommand(text) {
         if (resumeListening && state.isActive && !state.isThinking && !speech.isSpeaking && !state.softSleepMode) startListeningLoop();
     };
 
-    const handleYouTubeVoiceShortcut = async (ytCmd) => {
-        if (!ytCmd) return false;
-        face.classList.remove('thinking');
-        let msg = '';
-        let silentAck = false;
-        const panelVisible = isSidePanelVisible();
-        const hasPlayer = !!blipYtPlayer;
-        const recoverablePlayerAction = ['stop', 'rewind', 'forward', 'pause', 'unmute', 'mute', 'play', 'restart', 'next'].includes(ytCmd);
-
-        if ((ytCmd === 'videoBig' || ytCmd === 'videoSmall') && panelVisible) {
-            setVideoBigMode(ytCmd === 'videoBig');
-            msg = ytCmd === 'videoBig' ? 'Video full.' : 'Video normal.';
-        } else if ((ytCmd === 'blipBig' || ytCmd === 'blipSmall') && panelVisible) {
-            state.videoCompanionSize = ytCmd === 'blipBig' ? 'big' : 'mini';
-            try { localStorage.setItem('blip_video_companion_size', state.videoCompanionSize); } catch (e) { }
-            if (ytCmd === 'blipBig' && !state.videoBigMode) setVideoBigMode(true);
-            applyVideoCompanionSizing();
-            msg = ytCmd === 'blipBig' ? 'Blip big.' : 'Blip mini.';
-        } else if (ytCmd === 'videoBig' || ytCmd === 'videoSmall' || ytCmd === 'blipBig' || ytCmd === 'blipSmall') {
-            msg = 'Open video first.';
-        } else if (ytCmd === 'openYouTube' || ytCmd === 'openMusic' || ytCmd === 'openVideos') {
-            if (ytCmd === 'openVideos') {
-                const activeView = openSavedMediaLane('Videos');
-                msg = getVerifiedOpenMessage({
-                    cmd,
-                    target: 'media-strip',
-                    visible: isMediaStripActuallyVisible(),
-                    successMessage: `${activeView} open.`,
-                    details: { lane: 'videos' }
-                });
-            } else if (ytCmd === 'openMusic') {
-                const activeView = openSavedMediaLane('Music');
-                msg = getVerifiedOpenMessage({
-                    cmd,
-                    target: 'media-strip',
-                    visible: isMediaStripActuallyVisible(),
-                    successMessage: `${activeView} open.`,
-                    details: { lane: 'music' }
-                });
+    // If the user said only the wake word ("blip"), do not call the LLM.
+    // Just wake/acknowledge and resume listening.
+    if (isWakeWordOnly) {
+        try {
+            if (!state.isActive) {
+                await wakeBlipHandsFree(text);
             } else {
-                toggleMediaGallery(true, 'all');
-                msg = getVerifiedOpenMessage({
-                    cmd,
-                    target: 'media-strip',
-                    visible: isMediaStripActuallyVisible(),
-                    successMessage: 'Media open.',
-                    details: { lane: 'all' }
-                });
+                await quickReply('I am awake.', 'happy');
             }
-        } else if (ytCmd === 'close' || ytCmd === 'new') {
-            closeYouTubePanel();
-            if (ytCmd === 'new') {
-                state.lastContext.lastYoutubeQuery = null;
-                state.lastContext.lastYoutubeSearchResults = null;
-                state.lastContext.lastYoutubeSearchIndex = 0;
-            }
-            msg = ytCmd === 'close' ? 'Video closed.' : 'Closed. Ask new video.';
-        } else if (hasPlayer && recoverablePlayerAction) {
-            const ok = runYouTubeAction(ytCmd);
-            msg = getYouTubeActionMessage(ytCmd, ok);
-            silentAck = ['pause', 'unmute', 'mute', 'play', 'rewind', 'forward', 'restart', 'next'].includes(ytCmd);
-            if (ytCmd === 'unmute' && ok) {
-                await new Promise((resolve) => setTimeout(resolve, 660));
-                const stillMuted = isYouTubePlayerMuted();
-                if (stillMuted === true) {
-                    state.pendingYouTubeAction = 'unmute';
-                    msg = 'Chrome still has the video muted. Tap the video or the Unmute button once.';
-                    silentAck = false;
-                }
-            }
-        } else if (recoverablePlayerAction && state.lastContext.lastYoutubeUrl) {
-            state.pendingYouTubeAction = ytCmd;
-            const opened = openLastVideoPanel();
-            msg = opened
-                ? getVerifiedOpenMessage({
-                    cmd,
-                    target: 'youtube-panel',
-                    visible: isYouTubePanelActuallyVisible(),
-                    successMessage: 'Opening last video.'
-                })
-                : 'No active video.';
-        } else {
-            return false;
+        } finally {
+            // Make sure we leave the thinking state cleanly.
+            state.isThinking = false;
+            document.body.classList.remove('thinking-mode');
         }
-
-        transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
-        state.history.push({ user: cmd, blip: msg });
-        if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-        setBlipEmotion('happy');
-        setPersona('happy');
-        if (silentAck) {
-            talkBtn.innerText = state.isActive ? '🎤 LISTENING...' : '🎙️ TALK';
-            if (state.isActive && !state.isThinking && !speech.isSpeaking && !state.softSleepMode) startListeningLoop();
-            return true;
-        }
-        talkBtn.innerText = '🔊 SPEAKING...';
-        await speakWithGuard(msg, 'happy');
-        return true;
-    };
-
-    const handleNaturalConversationBridge = async () => {
-        const lower = normalizeVoiceTokens(String(cmd || ''));
-        const pendingNatural = state.pendingNaturalConversation;
-
-        if (pendingNatural?.kind === 'timerDuration') {
-            const duration = parseStandaloneDurationMs(lower);
-            if (duration) {
-                clearPendingNaturalConversation();
-                face.classList.remove('thinking');
-                const result = await actionHandlers.timer({ text: '', tool_params: duration }, state);
-                await quickReply(result?.text || 'Timer set.', 'happy', result?.extraHtml || '');
-                return true;
-            }
-        }
-
-        if (pendingNatural?.kind === 'alarmTime') {
-            const alarmFollowUp = getDirectAlarmVoiceCommand(lower);
-            if (alarmFollowUp) {
-                clearPendingNaturalConversation();
-                face.classList.remove('thinking');
-                setBlipTimer(alarmFollowUp.label, alarmFollowUp.ms, alarmFollowUp.dueAt);
-                state.lastContext.lastUserQuery = cmd;
-                await quickReply(`Alarm set for ${alarmFollowUp.whenText}!`, 'happy');
-                return true;
-            }
-        }
-
-        const wantsNaturalTimer = /^(?:please\s+)?(?:set|start|create|make|put)\s+(?:a\s+)?(?:timer|countdown)(?:\s+for)?\s*$/.test(lower);
-        if (wantsNaturalTimer) {
-            beginPendingNaturalConversation('timerDuration');
-            await quickReply('How long should I set the timer for?', 'happy');
-            return true;
-        }
-
-        const wantsNaturalAlarm = /^(?:please\s+)?(?:(?:set|start|create|make)\s+(?:an?\s+)?)?(?:alarm|reminder)\s*$/.test(lower)
-            || /^(?:please\s+)?(?:wake|remind)\s+me\s*$/.test(lower);
-        if (wantsNaturalAlarm) {
-            beginPendingNaturalConversation('alarmTime');
-            await quickReply('What time should I set it for?', 'happy');
-            return true;
-        }
-
-        const naturalOpenIntent = resolveNaturalOpenIntent(lower);
-        if (naturalOpenIntent?.type === 'youtube' && state.lastContext.lastYoutubeUrl) {
-            face.classList.remove('thinking');
-            const opened = openLastVideoPanel();
-            await quickReply(opened ? 'Opening video.' : 'No video yet.', 'happy');
-            return true;
-        }
-        if (naturalOpenIntent?.type === 'map' && state.lastContext.lastLocation) {
-            face.classList.remove('thinking');
-            mapFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(state.lastContext.lastLocation)}&output=embed`;
-            setMode('map');
-            await quickReply(`Map open: ${state.lastContext.lastLocation}.`, 'happy');
-            return true;
-        }
-        if (naturalOpenIntent?.type === 'chart' && state.lastContext.lastChartData) {
-            face.classList.remove('thinking');
-            const chartData = state.lastContext.lastChartData;
-            setMode('chart');
-            renderChart(chartData.labels, chartData.data, chartData.title || 'Chart', chartData.type || 'bar');
-            await quickReply('Chart open.', 'happy');
-            return true;
-        }
-        if (naturalOpenIntent?.type === 'media' && state.mediaItems.length > 0) {
-            face.classList.remove('thinking');
-            const bucket = naturalOpenIntent.bucket === MEDIA_BUCKET_CREATED ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS;
-            toggleMediaGallery(true, bucket === MEDIA_BUCKET_CREATED ? 'created' : 'shots');
-            openLatestMediaByBucket(bucket);
-            await quickReply('Opening latest media.', 'happy');
-            return true;
-        }
-
-        const naturalPlayQuery = getNaturalPlayQuery(lower);
-        if (naturalPlayQuery && !isSidePanelActuallyVisible('gmail') && !isSidePanelActuallyVisible('telegram')) {
-            face.classList.remove('thinking');
-            await actionHandlers.youtube({ text: '', tool_params: { query: naturalPlayQuery } }, state);
-            const ytUrl = state.lastContext.lastYoutubeUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(naturalPlayQuery)}`;
-            const embedUrl = state.lastContext.lastYoutubeEmbedUrl || null;
-            const videoId = state.lastContext.lastYoutubeVideoId || null;
-            const searchResults = state.lastContext.lastYoutubeSearchResults || null;
-            renderActionInSidePanel({
-                action: 'youtube',
-                tool_params: { query: naturalPlayQuery, url: ytUrl, embedUrl, videoId, searchResults },
-                text: `Playing: ${naturalPlayQuery}`
-            });
-            await quickReply('Opening video.', 'happy');
-            return true;
-        }
-
-        return false;
-    };
-
-    const lowerCmd = normalizeVoiceTokens(String(cmd || ''));
-    if (await handleNaturalConversationBridge()) {
-        return;
-    }
-    // Photos / shots lane must win over YouTube `openVideos` — runs before prioritized YT shortcuts.
-    if (isPriorityOpenLocalPhotosIntentFromLower(lowerCmd)) {
-        face.classList.remove('thinking');
-        toggleMediaGallery(true, 'shots');
-        setVoiceToolFollowUpLock('media_shots');
-        const shotCount = getMediaItemsByBucket(MEDIA_BUCKET_SHOTS).length;
-        const photosMsg = getVerifiedOpenMessage({
-            cmd,
-            target: 'media-strip',
-            visible: isMediaStripActuallyVisible(),
-            successMessage: shotCount > 0
-                ? `Photos open. ${shotCount} item${shotCount === 1 ? '' : 's'}.`
-                : 'Photos open. Empty.',
-            details: { lane: 'shots' }
-        });
-        await quickReply(photosMsg, 'happy');
-        return;
-    }
-    const ytCmd = getYouTubeVoiceCommand(cmd);
-    const prioritizedYouTubeCommands = new Set([
-        'pause', 'play', 'stop', 'rewind', 'forward', 'mute', 'unmute', 'restart', 'next',
-        'close', 'new', 'videoBig', 'videoSmall', 'blipBig', 'blipSmall', 'openMusic', 'openVideos', 'openYouTube'
-    ]);
-    if (ytCmd && prioritizedYouTubeCommands.has(ytCmd) && await handleYouTubeVoiceShortcut(ytCmd)) {
         return;
     }
 
+    const earlySystemCmd = getSystemVoiceCommand(cmd);
+    if (state.autoScrollTimer && earlySystemCmd !== 'scrollDown' && earlySystemCmd !== 'scrollUp' && earlySystemCmd !== 'stopScroll') {
+        stopAutoScroll();
+    }
+    const learningHint = getToolLearningHint(cmd);
     const jokeRequest = /^(?:tell\s+me\s+)?(?:a\s+)?joke\s*$|^tell\s+a\s+joke\s*$|^joke\s*$|^make\s+me\s+laugh\s*$|^say\s+(?:a\s+)?joke\s*$|^give\s+me\s+(?:a\s+)?joke\s*$|^another\s+joke\s*$/.test(lowerCmd);
     if (jokeRequest) {
         face.classList.remove('thinking');
@@ -11431,6 +10272,18 @@ async function handleCommand(text) {
             await quickReply(`Size ${Math.round(scale * 100)}%.`, 'happy');
             return;
         }
+        if (systemCmd === 'selfDiagnostic') {
+            const report = await runSelfDiagnosticReport();
+            const learningSummary = getLearningSummary();
+            const noteContent = `${report.noteContent}\n\nBehavioral Profile:\n${learningSummary}`;
+            addNoteItem(noteContent, {
+                source: 'self-diagnostic',
+                title: 'Self Diagnostic Report + Learning Profile'
+            });
+            openNotesPanel('Diagnostic report saved to notes.');
+            await quickReply(report.summary, 'happy', `${report.html}<br><div class="tiny-label">Learning Patterns</div><pre style="white-space:pre-wrap;max-height:160px;overflow:auto;margin:6px 0 0;font-size:0.85em;">${escapeHtml(learningSummary)}</pre>`);
+            return;
+        }
     }
 
     const reminderCancelCmd = getReminderCancelVoiceCommand(cmd);
@@ -11471,24 +10324,6 @@ async function handleCommand(text) {
         return;
     }
 
-    const conversationCmd = getSystemVoiceCommand(cmd);
-    if (conversationCmd === 'conversation') {
-        face.classList.remove('thinking');
-        openConversationInspectorPanel('Conversation inspector open.');
-        await quickReply('Conversation inspector open.', 'happy');
-        return;
-    }
-    if (conversationCmd === 'closeConversation') {
-        face.classList.remove('thinking');
-        if (state.currentSidePanelAction === 'conversation' && isSidePanelVisible()) {
-            closeSidePanel();
-            await quickReply('Conversation inspector closed.', 'happy');
-        } else {
-            await quickReply('Conversation inspector is not open.', 'happy');
-        }
-        return;
-    }
-
     const chatCmd = getChatVoiceCommand(cmd);
     if (chatCmd) {
         face.classList.remove('thinking');
@@ -11497,199 +10332,181 @@ async function handleCommand(text) {
         return;
     }
 
-    // Communication skills (deterministic canned answers)
-    // Run before Gmail/Telegram “natural intent” routing so capability questions
-    // like "can you write emails" don't accidentally open a compose panel.
-    const blipQaAnswer = getBlipQaAnswer(cmd);
-    if (blipQaAnswer) {
-        face.classList.remove('thinking');
-        await quickReply(blipQaAnswer, 'happy');
-        return;
-    }
-
-    if (isGlobalUndoVoiceCommand(cmd)) {
-        face.classList.remove('thinking');
-        const undoResult = undoLastConversationAction(state);
-        await quickReply(undoResult?.message || 'Nothing to undo yet.', undoResult?.ok ? 'happy' : 'thinking');
-        return;
-    }
-
-    const voiceRoute = await resolveVoiceRoutingSnapshot(cmd, state);
-    const voiceConversationTool = voiceRoute.family && voiceRoute.family !== 'none' && voiceRoute.family !== 'message'
-        ? voiceRoute.family
-        : (voiceRoute.needsClarification ? 'general' : '');
-    if (voiceConversationTool) {
-        const branchSnapshot = {
-            currentTask: voiceRoute.action || 'voice command',
-            currentIntent: {
-                family: voiceRoute.family || 'none',
-                action: voiceRoute.action || 'none',
-                confidence: Number(voiceRoute.confidence || 0)
-            },
-            activePanel: String(state.currentSidePanelAction || ''),
-            lastUtterance: String(cmd || ''),
-            draft: voiceRoute.gmailCmd?.draft || voiceRoute.telegramCmd?.draft || null,
-            note: voiceRoute.clarificationPrompt || ''
-        };
-        setToolBranchState(state, voiceConversationTool, branchSnapshot);
-        recordConversationAction(state, {
-            tool: voiceConversationTool,
-            action_type: voiceRoute.needsClarification ? 'voice_clarify' : 'voice_route',
-            target_object: voiceRoute.family || '',
-            previous_state: {
-                activeTool: state.conversation?.previousTool || '',
-                activePanel: state.currentSidePanelAction || ''
-            },
-            new_state: branchSnapshot,
-            undo_strategy: 'none',
-            undo_window: 'session',
-            user_visible_summary: voiceRoute.needsClarification
-                ? `Asked for clarification on ${voiceRoute.family || 'message'}`
-                : `Routed voice command to ${voiceConversationTool}`
-        });
-    }
-    if (voiceRoute.needsClarification) {
-        face.classList.remove('thinking');
-        await quickReply(voiceRoute.clarificationPrompt || 'Can you say that a different way?', 'happy');
-        return;
-    }
-    const naturalMessageFlow = voiceRoute.naturalMessageFlow;
-    if (naturalMessageFlow?.channel === 'gmail' && !voiceRoute.gmailCmd) {
-        face.classList.remove('thinking');
-        try {
-            await emailFeature.handleVoiceCommand({
-                action: 'compose',
-                draft: {
-                    to: naturalMessageFlow.draft?.to || '',
-                    subject: naturalMessageFlow.draft?.subject || '',
-                    text: naturalMessageFlow.draft?.text || ''
-                }
-            });
-            return;
-        } catch (error) {
-            console.warn('Natural Gmail flow failed:', error?.message || error);
-            await quickReply(error?.message || 'Could not start that email draft right now.', 'sad');
-            return;
-        }
-    }
-
-    if (naturalMessageFlow?.channel === 'telegram' && !voiceRoute.telegramCmd) {
-        face.classList.remove('thinking');
-        try {
-            await telegramFeature.handleVoiceCommand({
-                action: 'compose',
-                draft: {
-                    chatId: naturalMessageFlow.draft?.chatId || '',
-                    text: naturalMessageFlow.draft?.text || ''
-                }
-            });
-            return;
-        } catch (error) {
-            console.warn('Natural Telegram flow failed:', error?.message || error);
-            await quickReply(error?.message || 'Could not start that Telegram draft right now.', 'sad');
-            return;
-        }
-    }
-
-    const telegramCmd = voiceRoute.telegramCmd;
+    const telegramCmd = getTelegramVoiceCommand(cmd);
     if (telegramCmd) {
         face.classList.remove('thinking');
         try {
             await telegramFeature.handleVoiceCommand(telegramCmd);
+            recordToolOutcome(cmd, 'telegram', 'success');
             return;
         } catch (error) {
             console.warn('Telegram voice command failed:', error?.message || error);
             telegramFeature.updateTelegramAuthUi();
+            recordToolOutcome(cmd, 'telegram', 'failure');
             await quickReply(error?.message || 'Could not handle Telegram right now.', 'sad');
             return;
         }
     }
+
+    const gmailCmd = getGmailVoiceCommand(cmd);
+    const isFreshGmailComposeIntent = !!(
+        gmailCmd
+        && (
+            gmailCmd.action === 'compose'
+            || gmailCmd.action === 'sendDirect'
+            || gmailCmd.action === 'shareCurrent'
+            || gmailCmd.action === 'composeLatestNote'
+            || gmailCmd.action === 'openDraft'
+            || gmailCmd.action === 'openInbox'
+            || gmailCmd.action === 'refreshInbox'
+            || gmailCmd.action === 'readIndex'
+            || gmailCmd.action === 'listContacts'
+            || gmailCmd.action === 'saveContact'
+            || gmailCmd.action === 'connect'
+            || gmailCmd.action === 'disconnect'
+            || gmailCmd.action === 'close'
+        )
+    );
 
     // Email draft follow-ups must run even if pendingEmailReview was cleared (e.g. after "yes"),
     // as long as the Gmail panel is open with something in the compose fields — otherwise the LLM
     // may "role-play" sending mail without calling the Gmail API.
     // But if the user gives a fresh Gmail intent like "send email to my daughter", let that
     // override the old draft instead of treating it like an update to the previous draft.
-    // Explicit Telegram commands run above so Gmail draft follow-up does not treat
-    // "send it to telegram" as an email recipient while the compose panel is open.
-    if (voiceRoute.shouldHandleEmailDraftVoice) {
-        face.classList.remove('thinking');
-        try {
-            const handled = await emailFeature.handlePendingVoiceFollowUp(cmd);
-            if (handled) return;
-        } catch (error) {
-            console.warn('Email draft follow-up failed:', error?.message || error);
-            await quickReply(error?.message || 'Could not update that email draft right now.', 'sad');
-            return;
-        }
-    }
+    const hasVoiceEmailDraft = (() => {
+        const d = state.gmailComposeDraft || {};
+        return !!(String(d.to || '').trim() || String(d.subject || '').trim() || String(d.text || '').trim());
+    })();
+    const hasRecentGmailSend = !!(
+        state.currentSidePanelAction === 'gmail'
+        && state.lastGmailSendResult
+    );
+    const shouldHandleEmailDraftVoice = !isFreshGmailComposeIntent && (
+        state.pendingEmailReview
+        || (state.currentSidePanelAction === 'gmail' && hasVoiceEmailDraft)
+        || hasRecentGmailSend
+    );
 
-    const careCamHelpHandled = await handleCareCamHelpVoice(cmd);
-    if (careCamHelpHandled) {
-        return;
-    }
-
-    const careCamIntent = voiceRoute.careCamIntent;
-    if (careCamIntent?.kind === 'carecam' && careCamIntent.action === 'start_carecam') {
-        face.classList.remove('thinking');
-        try {
-            await startCareCamDemo();
-            await quickReply('Care Cam is on.', 'happy');
-            return;
-        } catch (error) {
-            console.warn('Start Care Cam failed:', error?.message || error);
-            await quickReply(error?.message || 'Could not start Care Cam right now.', 'sad');
-            return;
-        }
-    }
-    if (careCamIntent?.kind === 'carecam' && careCamIntent.action === 'stop_carecam') {
-        face.classList.remove('thinking');
-        try {
-            await stopCareCamDemo();
-            await quickReply('Care Cam is off.', 'happy');
-            return;
-        } catch (error) {
-            console.warn('Stop Care Cam failed:', error?.message || error);
-            await quickReply(error?.message || 'Could not stop Care Cam right now.', 'sad');
-            return;
-        }
-    }
-
-    const careCamFallWatchHandled = await handleCareCamFallWatchVoice(cmd);
-    if (careCamFallWatchHandled) {
-        return;
-    }
-
-    const gmailCmd = voiceRoute.gmailCmd;
-    if (gmailCmd) {
-        face.classList.remove('thinking');
-        try {
-            await emailFeature.handleVoiceCommand(gmailCmd);
-            return;
-        } catch (error) {
-            console.warn('Gmail voice command failed:', error?.message || error);
-            emailFeature.updateGmailAuthUi();
-            await quickReply(error?.message || 'Could not handle Gmail right now.', 'sad');
-            return;
-        }
-    }
-
-    const hasVoiceTelegramDraft = Boolean(voiceRoute.messagingDrafts?.telegram?.hasDraft);
+    const hasVoiceTelegramDraft = !!String(state.telegramDraft?.text || '').trim();
     const shouldHandleTelegramDraftVoice = !telegramCmd && (
         state.pendingTelegramReview
         || (state.currentSidePanelAction === 'telegram' && hasVoiceTelegramDraft)
     );
 
+    // Telegram review (e.g. note ready — "say send") must win over Gmail draft follow-up for bare "send",
+    // otherwise a leftover email draft or inbox focus steals the command.
     if (shouldHandleTelegramDraftVoice) {
         face.classList.remove('thinking');
         try {
             const handled = await telegramFeature.handlePendingVoiceFollowUp(cmd);
-            if (handled) return;
+            if (handled) {
+                recordToolOutcome(cmd, 'telegram', 'success');
+                return;
+            }
         } catch (error) {
             console.warn('Telegram draft follow-up failed:', error?.message || error);
+            recordToolOutcome(cmd, 'telegram', 'failure');
             await quickReply(error?.message || 'Could not update that Telegram draft right now.', 'sad');
             return;
         }
+    }
+
+    if (shouldHandleEmailDraftVoice) {
+        face.classList.remove('thinking');
+        try {
+            const handled = await emailFeature.handlePendingVoiceFollowUp(cmd);
+            if (handled) {
+                recordToolOutcome(cmd, 'gmail', 'success');
+                return;
+            }
+        } catch (error) {
+            console.warn('Email draft follow-up failed:', error?.message || error);
+            recordToolOutcome(cmd, 'gmail', 'failure');
+            await quickReply(error?.message || 'Could not update that email draft right now.', 'sad');
+            return;
+        }
+    }
+
+    if (gmailCmd) {
+        face.classList.remove('thinking');
+        try {
+            await emailFeature.handleVoiceCommand(gmailCmd);
+            recordToolOutcome(cmd, 'gmail', 'success');
+            return;
+        } catch (error) {
+            console.warn('Gmail voice command failed:', error?.message || error);
+            emailFeature.updateGmailAuthUi();
+            recordToolOutcome(cmd, 'gmail', 'failure');
+            await quickReply(error?.message || 'Could not handle Gmail right now.', 'sad');
+            return;
+        }
+    }
+    const deduceLikelyToolIntent = (() => {
+        if (learningHint?.tool && Number(learningHint.confidence || 0) >= 0.65) {
+            return {
+                tool: learningHint.tool,
+                confidence: learningHint.confidence,
+                learned: true,
+                clarifyFirst: Boolean(learningHint.clarifyFirst)
+            };
+        }
+        const lower = String(cmd || '').toLowerCase();
+        if (!lower) return null;
+        const hasActionVerb = /\b(send|share|open|show|play|set|start|stop|close|write|compose|search)\b/.test(lower);
+        if (!hasActionVerb) return null;
+
+        const toolHints = [
+            { tool: 'telegram', re: /\btelegram\b/ },
+            { tool: 'gmail', re: /\b(gmail|email|mail|inbox)\b/ },
+            { tool: 'calendar', re: /\b(calendar|agenda|schedule|event)\b/ },
+            { tool: 'notes', re: /\b(note|notes)\b/ },
+            { tool: 'youtube', re: /\b(youtube|video|music)\b/ },
+            { tool: 'photos', re: /\b(photo|photos|picture|image|snapshot|shot)\b/ },
+            { tool: 'timer', re: /\b(timer|countdown|alarm)\b/ },
+            { tool: 'chat', re: /\bchat\b/ }
+        ];
+        const matched = toolHints.find((hint) => hint.re.test(lower));
+        if (!matched) return null;
+
+        // Confidence bump when verb + object both present.
+        const hasObjectWord = /\b(photo|video|message|note|event|timer|link|email)\b/.test(lower);
+        return {
+            tool: matched.tool,
+            confidence: hasObjectWord ? 0.78 : 0.62
+        };
+    })();
+
+    if (deduceLikelyToolIntent?.tool === 'telegram') {
+        face.classList.remove('thinking');
+        await quickReply(
+            'I could not parse that Telegram command exactly, but most likely you want to share via Telegram. Try: "send latest photo on telegram", "send this link to telegram", or "send telegram message ...".',
+            'sad'
+        );
+        return;
+    }
+    if (deduceLikelyToolIntent?.confidence >= 0.7) {
+        face.classList.remove('thinking');
+        const tool = deduceLikelyToolIntent.tool;
+        const toolLabel = tool === 'gmail' ? 'Gmail' : tool.charAt(0).toUpperCase() + tool.slice(1);
+        
+        // If confidence is very high, just trigger it instead of nagging.
+        if (deduceLikelyToolIntent.confidence >= 0.75) {
+            if (tool === 'gmail') return handleCommand('compose email');
+            if (tool === 'telegram') return handleCommand('share on telegram');
+            if (tool === 'youtube') return handleCommand('open youtube');
+            if (tool === 'calendar') return handleCommand('show calendar');
+            if (tool === 'notes') return handleCommand('show notes');
+            if (tool === 'photos') return handleCommand('show photos');
+            if (tool === 'timer') return handleCommand('set timer');
+        }
+
+        await quickReply(
+            deduceLikelyToolIntent.learned
+                ? `I learned that this usually means ${toolLabel}. Please say it one more time in a direct format so I can execute it safely.`
+                : `I think you mean ${toolLabel}. Please say it one more time in a direct format so I can execute it safely.`,
+            'sad'
+        );
+        return;
     }
 
     const learningGamesCmd = getLearningGamesVoiceCommand(cmd);
@@ -11704,7 +10521,6 @@ async function handleCommand(text) {
             await quickReply('Learning Games closed.', 'happy');
             return;
         }
-
         state.isThinking = true;
         document.body.classList.remove('thinking-mode');
         face.classList.remove('thinking');
@@ -11713,38 +10529,7 @@ async function handleCommand(text) {
         try {
             setMode('games');
             renderLearningGamesPanel();
-
-            const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
-            const startEarTrainingFromVoice = async (mode) => {
-                await nextFrame();
-                const controller = state.earTrainingController;
-                if (mode === 'interval') {
-                    setLearningGamesDebug(`voice start interval, controller=${controller ? 'yes' : 'no'}`);
-                    if (controller?.startInterval) return controller.startInterval();
-                    document.getElementById('ear-training-btn-intervals')?.click();
-                    setLearningGamesDebug('interval button clicked via voice fallback');
-                    return null;
-                }
-                if (mode === 'harmony') {
-                    setLearningGamesDebug(`voice start harmony, controller=${controller ? 'yes' : 'no'}`);
-                    if (controller?.startHarmony) return controller.startHarmony();
-                    document.getElementById('ear-training-btn-harmony')?.click();
-                    setLearningGamesDebug('harmony button clicked via voice fallback');
-                    return null;
-                }
-                return null;
-            };
-
-            if (learningGamesCmd.action === 'open' && learningGamesCmd.mode === 'interval') {
-                setLearningGamesDebug('voice requested interval');
-                await quickReply('Intervals game open. What interval is this?', 'happy', '', false);
-                await startEarTrainingFromVoice('interval');
-            } else if (learningGamesCmd.action === 'open' && learningGamesCmd.mode === 'harmony') {
-                setLearningGamesDebug('voice requested harmony');
-                await quickReply('Harmony game open. What harmony is this?', 'happy', '', false);
-                await startEarTrainingFromVoice('harmony');
-            } else if (learningGamesCmd.action === 'startMath') {
-                setLearningGamesDebug('voice requested math');
+            if (learningGamesCmd.action === 'startMath') {
                 await startMathGame();
             } else if (learningGamesCmd.action === 'answerMath') {
                 if (!state.mathGame.started) {
@@ -11753,10 +10538,9 @@ async function handleCommand(text) {
                     await handleMathAnswer(Number(learningGamesCmd.value));
                 }
             } else if (learningGamesCmd.action === 'nextMath') {
-                setLearningGamesDebug('voice requested next math');
                 await renderMathQuestion();
             } else {
-                await quickReply('Learning Games open. I can do interval game, harmony game, or start math game.', 'happy', '', false);
+                await quickReply('Learning Games open. Say "start math game" when you want to play.', 'happy', '', false);
             }
         } finally {
             state.isThinking = false;
@@ -11833,7 +10617,7 @@ async function handleCommand(text) {
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${message}`;
         state.history.push({ user: cmd, blip: message });
         if (state.history.length > HISTORY_MAX) state.history.shift();
-        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
         await speakWithGuard(message, personaKey);
         resumeListeningAfterEmotionShowcase(80);
         return;
@@ -11865,6 +10649,8 @@ async function handleCommand(text) {
     // Visual state: Start Thinking
     face.classList.remove('listening');
     face.classList.add('thinking');
+
+    updateDevBrainBanner({ thinking: true });
 
     try {
         const images = state.pendingImage ? [state.pendingImage] : [];
@@ -11923,12 +10709,14 @@ async function handleCommand(text) {
                 }
             }
 
+            replyText = adaptReplyToCompanionMode(replyText);
+
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${replyText}${extraHtml}`;
             state.lastContext.lastUserQuery = cmd;
             if (response.tool_params?.query) state.lastContext.lastSearchTopic = response.tool_params.query;
             state.history.push({ user: cmd, blip: replyText });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
 
             contextAgent.observe({
                 voiceTranscript: cmd,
@@ -11951,7 +10739,7 @@ async function handleCommand(text) {
             if (state.pendingImage) clearPendingImage();
 
             talkBtn.innerText = '🔊 SPEAKING...';
-            await speak(replyText, emotion);
+            await speakWithGuard(replyText, emotion);
         };
 
         const hubCmd = getHubVoiceCommand(cmd);
@@ -11961,46 +10749,46 @@ async function handleCommand(text) {
             if (hubCmd.action === 'open') {
                 setMode('hub');
                 renderHub();
-                msg = state.hubItems.length ? `Student Desk open. ${state.hubItems.length} item${state.hubItems.length === 1 ? '' : 's'}.` : 'Student Desk open. Empty.';
+                msg = state.hubItems.length ? `Hub open. ${state.hubItems.length} item${state.hubItems.length === 1 ? '' : 's'}.` : 'Hub open. Empty.';
             } else if (hubCmd.action === 'close') {
                 if (state.currentMode === 'hub') setMode('core');
-                msg = 'Student Desk closed.';
+                msg = 'Hub closed.';
             } else if (hubCmd.action === 'review') {
                 setMode('hub');
                 renderHub();
                 if (!state.hubItems.length) {
-                    msg = 'Student Desk is empty.';
+                    msg = 'Hub is empty.';
                 } else {
                     const latest = state.hubItems[0];
                     const latestLabel = String(latest?.content || latest?.type || 'item').slice(0, 60);
-                    msg = `Student Desk has ${state.hubItems.length} items. Latest: ${latestLabel}.`;
+                    msg = `Hub has ${state.hubItems.length} items. Latest: ${latestLabel}.`;
                 }
             } else if (hubCmd.action === 'saveCurrent') {
                 if (state.pendingImage || state.currentImage) {
                     saveCurrentVisionToHub();
-                    msg = 'Saved to Student Desk.';
+                    msg = 'Saved to Hub.';
                 } else if (state.lastContext?.lastYoutubeUrl) {
                     addToHub('link', `🎬 Video: ${state.lastContext.lastYoutubeQuery || 'YouTube video'}`, { url: state.lastContext.lastYoutubeUrl });
-                    msg = 'Video saved to Student Desk.';
+                    msg = 'Video saved to Hub.';
                 } else if (state.lastContext?.lastLocation) {
                     const mapUrl = `https://www.google.com/maps/search/${encodeURIComponent(state.lastContext.lastLocation)}`;
                     addToHub('link', `🌍 Map: ${state.lastContext.lastLocation}`, { url: mapUrl });
-                    msg = 'Map saved to Student Desk.';
+                    msg = 'Map saved to Hub.';
                 } else {
-                    msg = 'Nothing ready to save to Student Desk.';
+                    msg = 'Nothing ready to save to Hub.';
                 }
             } else if (hubCmd.action === 'saveNote') {
-                addToHub('note', hubCmd.note, { source: 'student' });
-                msg = 'Note saved to Student Desk.';
+                addToHub('note', hubCmd.note, { source: 'hub' });
+                msg = 'Note saved to Hub.';
             } else if (hubCmd.action === 'removeLatest') {
                 const removed = removeLatestHubItem();
-                msg = removed ? 'Removed latest Student Desk item.' : 'Student Desk is already empty.';
+                msg = removed ? 'Removed latest Hub item.' : 'Hub is already empty.';
             } else if (hubCmd.action === 'removeMatch') {
                 const removed = removeMatchingHubItem(hubCmd.query);
-                msg = removed ? 'Removed matching Student Desk item.' : 'No matching Student Desk item found.';
+                msg = removed ? 'Removed matching Hub item.' : 'No matching Hub item found.';
             } else if (hubCmd.action === 'clear') {
                 const removedCount = clearHub();
-                msg = removedCount ? `Student Desk cleared. Removed ${removedCount} item${removedCount === 1 ? '' : 's'}.` : 'Student Desk is already empty.';
+                msg = removedCount ? `Hub cleared. Removed ${removedCount} item${removedCount === 1 ? '' : 's'}.` : 'Hub is already empty.';
             }
             if (msg) {
                 await quickReply(msg, 'happy');
@@ -12049,8 +10837,8 @@ async function handleCommand(text) {
                 openNotesPanel();
                 const count = getNoteItems().length;
                 msg = count
-                    ? `Notes open. ${count} note${count === 1 ? '' : 's'}. Dictate your note; say I am done with the note when you want to save.`
-                    : 'Notes open. Dictate your note; say I am done with the note when you want to save.';
+                    ? `Notes open. ${count} note${count === 1 ? '' : 's'}. Dictate your note when ready.`
+                    : 'Notes open. Dictate your note.';
             } else if (notesCmd.action === 'close') {
                 state.pendingNotesDraft = null;
                 const didClose = state.currentSidePanelAction === 'notes' ? !!closeSidePanel() : false;
@@ -12182,35 +10970,11 @@ async function handleCommand(text) {
                     ? (returnedToPhotos ? 'Photo saved. Back to media.' : 'Photo saved.')
                     : getMediaPersistFailureMessage('No photo to save.');
             }
-        if (msg) {
-            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
-            state.history.push({ user: cmd, blip: msg });
-            if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-                setBlipEmotion('happy');
-                setPersona('happy');
-                talkBtn.innerText = '🔊 SPEAKING...';
-                await speakWithGuard(msg, 'happy');
-                return;
-            }
-        }
-
-        const cameraDesignCmd = getCameraDesignTransferCommand(cmd);
-        if (cameraDesignCmd) {
-            face.classList.remove('thinking');
-            const result = await captureCameraPhotoToDesign(
-                cameraDesignCmd.title || 'Camera Photo',
-                {
-                    analyze: cameraDesignCmd.action === 'analyzeHomework',
-                    prompt: cmd
-                }
-            );
-            const msg = result.ok ? result.message : (result.message || 'I could not move that photo to Design.');
             if (msg) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -12273,7 +11037,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -12376,7 +11140,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -12385,43 +11149,30 @@ async function handleCommand(text) {
             }
         }
 
-        // Recovery shortcut: only reopen gallery when the user was already in a media context.
-        if (wantsToSeeMediaAgain(cmd)) {
-            const inMediaContext = !!(
-                state.isMediaStripOpen ||
-                mediaLightbox?.classList.contains?.('active') ||
-                state.currentSidePanelAction === 'youtube' ||
-                state.currentSidePanelAction === 'creations' ||
-                state.activeMediaBucket === MEDIA_BUCKET_CREATED ||
-                state.activeMediaBucket === MEDIA_BUCKET_SHOTS
-            );
-            if (inMediaContext && state.mediaItems.length > 0) {
-                face.classList.remove('thinking');
-                const lane = state.activeMediaBucket === MEDIA_BUCKET_CREATED ? 'created' : 'shots';
-                toggleMediaGallery(true, lane);
-                const lowerCmd = cmd.toLowerCase();
-                if (/\b(open|expand|zoom)\s+(it|this)\b/.test(lowerCmd)) {
-                    openLatestMediaByBucket(lane === 'created' ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS);
-                }
-                const wantsLightbox = /\b(open|expand|zoom)\s+(it|this)\b/.test(lowerCmd);
-                const msg = getVerifiedOpenMessage({
-                    cmd,
-                    target: wantsLightbox ? 'media-lightbox' : 'media-strip',
-                    visible: wantsLightbox ? isMediaLightboxActuallyVisible() : isMediaStripActuallyVisible(),
-                    successMessage: 'Gallery open.'
-                });
-                transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
-                state.history.push({ user: cmd, blip: msg });
-                if (state.history.length > HISTORY_MAX) state.history.shift();
-                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
-                setBlipEmotion('happy');
-                setPersona('happy');
-                talkBtn.innerText = '🔊 SPEAKING...';
-                await speakWithGuard(msg, 'happy');
-                return;
+        // Recovery shortcut: if user says they can't see it / where it opened, force media UI open.
+        if (wantsToSeeMediaAgain(cmd) && state.mediaItems.length > 0) {
+            face.classList.remove('thinking');
+            const lane = state.activeMediaBucket === MEDIA_BUCKET_CREATED ? 'created' : 'shots';
+            toggleMediaGallery(true, lane);
+            const recoveryLowerCmd = cmd.toLowerCase();
+            if (/\b(open|expand|zoom)\s+(it|this)\b/.test(recoveryLowerCmd)) {
+                openLatestMediaByBucket(lane === 'created' ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS);
             }
-
-            await quickReply('I am not sure what to show. Try interval game, harmony game, math game, or tell me what you want open.', 'curious');
+            const wantsLightbox = /\b(open|expand|zoom)\s+(it|this)\b/.test(recoveryLowerCmd);
+            const msg = getVerifiedOpenMessage({
+                cmd,
+                target: wantsLightbox ? 'media-lightbox' : 'media-strip',
+                visible: wantsLightbox ? isMediaLightboxActuallyVisible() : isMediaStripActuallyVisible(),
+                successMessage: 'Gallery open.'
+            });
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+            state.history.push({ user: cmd, blip: msg });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            setBlipEmotion('happy');
+            setPersona('happy');
+            talkBtn.innerText = '🔊 SPEAKING...';
+            await speakWithGuard(msg, 'happy');
             return;
         }
 
@@ -12462,6 +11213,12 @@ async function handleCommand(text) {
             };
             setTimeout(() => chartContainer.classList.remove('reveal'), 700);
             await quickReply('Graph ready. Say "save to media".', 'happy');
+            return;
+        }
+
+        if (/\b(?:purge|clear|clean|empty)\b.*\b(?:hub|memory|strip)\b/.test(lowerCmd)) {
+            const count = clearHub();
+            await quickReply(count > 0 ? `Hub cleared. Removed ${count} items. We are all fresh!` : 'Hub is already empty.', 'happy');
             return;
         }
 
@@ -12853,7 +11610,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${result.message}`;
             state.history.push({ user: cmd, blip: result.message });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
             setBlipEmotion(result.ok ? 'happy' : 'serious');
             setPersona(result.ok ? 'happy' : 'serious');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -12915,7 +11672,7 @@ async function handleCommand(text) {
                     transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                     state.history.push({ user: cmd, blip: msg });
                     if (state.history.length > HISTORY_MAX) state.history.shift();
-                    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                    safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
                     setBlipEmotion('happy');
                     setPersona('happy');
                     talkBtn.innerText = '🔊 SPEAKING...';
@@ -13019,7 +11776,7 @@ async function handleCommand(text) {
                     transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                     state.history.push({ user: cmd, blip: msg });
                     if (state.history.length > HISTORY_MAX) state.history.shift();
-                    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                    safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
                     setBlipEmotion('happy');
                     setPersona('happy');
                     talkBtn.innerText = '🔊 SPEAKING...';
@@ -13191,7 +11948,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -13388,10 +12145,11 @@ async function handleCommand(text) {
                 state.lastContext.lastSearchTopic = visualExplain.topic;
                 state.lastContext.lastOpenableUrl = `https://www.google.com/search?q=${encodeURIComponent(visualExplain.topic)}`;
             }
+            const textModel = isMiniMaxModel(state.selectedModel) ? 'gemini-2.5-flash' : state.selectedModel;
             const result = await explainWithImage({
                 userText: visualExplain.userText,
-                apiKey: state.geminiKey,
-                textModel: state.selectedModel,
+                apiKey: isMiniMaxModel(state.selectedModel) ? state.geminiKey : getActiveTextApiKey(state.selectedModel),
+                textModel,
                 imagePrompt: visualExplain.imagePrompt,
                 explanationPrompt: visualExplain.explanationPrompt,
                 imageOptions: { model: state.imageModel, imageEngine: state.imageEngine, comfyuiBaseUrl: state.comfyuiBaseUrl, comfyuiCheckpoint: state.comfyuiCheckpoint },
@@ -13875,7 +12633,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -13909,7 +12667,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -13926,7 +12684,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -13963,7 +12721,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
             setBlipEmotion(result.ok ? 'happy' : 'serious');
             setPersona(result.ok ? 'happy' : 'serious');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -13990,7 +12748,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
             setBlipEmotion(result.ok ? 'happy' : 'serious');
             setPersona(result.ok ? 'happy' : 'serious');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -13999,8 +12757,77 @@ async function handleCommand(text) {
         }
 
         // Voice shortcuts: YouTube panel controls (unmute, mute, close, pause, play, rewind, next, new video)
-        if (await handleYouTubeVoiceShortcut(ytCmd)) {
-            return;
+        const ytCmd = getYouTubeVoiceCommand(cmd);
+        if (ytCmd) {
+            face.classList.remove('thinking');
+            let msg = '';
+            const panelVisible = isSidePanelVisible();
+            const hasPlayer = !!blipYtPlayer;
+            const recoverablePlayerAction = ['stop', 'rewind', 'forward', 'pause', 'unmute', 'mute', 'play', 'restart', 'next'].includes(ytCmd);
+
+            // Priority 1: video size controls
+            if ((ytCmd === 'videoBig' || ytCmd === 'videoSmall') && panelVisible) {
+                setVideoBigMode(ytCmd === 'videoBig');
+                msg = ytCmd === 'videoBig' ? 'Video full.' : 'Video normal.';
+            } else if ((ytCmd === 'blipBig' || ytCmd === 'blipSmall') && panelVisible) {
+                state.videoCompanionSize = ytCmd === 'blipBig' ? 'big' : 'mini';
+                safeStorageSet('blip_video_companion_size', state.videoCompanionSize);
+                if (ytCmd === 'blipBig' && !state.videoBigMode) setVideoBigMode(true);
+                applyVideoCompanionSizing();
+                msg = ytCmd === 'blipBig' ? 'Blip big.' : 'Blip mini.';
+            } else if (ytCmd === 'videoBig' || ytCmd === 'videoSmall' || ytCmd === 'blipBig' || ytCmd === 'blipSmall') {
+                msg = 'Open video first.';
+            } else if (ytCmd === 'openYouTube' || ytCmd === 'openMusic' || ytCmd === 'openVideos') {
+                // Voice "open youtube" should open the YouTube side panel (library mode),
+                // not the media gallery/strip.
+                const nextView = ytCmd === 'openVideos' ? 'Videos' : (ytCmd === 'openMusic' ? 'Music' : state.youtubeLibraryView || 'Music');
+                state.youtubeLibraryView = normalizeYouTubeLibraryView(nextView);
+                state.youtubeLibraryBrowseIndex = 0;
+                        safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
+
+                renderActionInSidePanel({
+                    action: 'youtube',
+                    tool_params: { query: state.youtubeLibraryView, libraryOnly: true },
+                    text: 'Opening YouTube library.'
+                });
+
+                msg = `YouTube (${state.youtubeLibraryView}) open.`;
+            } else if (ytCmd === 'close' || ytCmd === 'new') {
+                closeYouTubePanel();
+                if (ytCmd === 'new') {
+                    state.lastContext.lastYoutubeQuery = null;
+                    state.lastContext.lastYoutubeSearchResults = null;
+                    state.lastContext.lastYoutubeSearchIndex = 0;
+                }
+                msg = ytCmd === 'close' ? 'Video closed.' : 'Closed. Ask new video.';
+            } else if (hasPlayer && recoverablePlayerAction) {
+                const ok = runYouTubeAction(ytCmd);
+                msg = getYouTubeActionMessage(ytCmd, ok);
+            } else if (recoverablePlayerAction && state.lastContext.lastYoutubeUrl) {
+                state.pendingYouTubeAction = ytCmd;
+                const opened = openLastVideoPanel();
+                msg = opened
+                    ? getVerifiedOpenMessage({
+                        cmd,
+                        target: 'youtube-panel',
+                        visible: isYouTubePanelActuallyVisible(),
+                        successMessage: 'Opening last video.'
+                    })
+                    : 'No active video.';
+            } else {
+                msg = 'No active video.';
+            }
+            if (msg) {
+                transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+                state.history.push({ user: cmd, blip: msg });
+                if (state.history.length > HISTORY_MAX) state.history.shift();
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                setBlipEmotion('happy');
+                setPersona('happy');
+                talkBtn.innerText = '🔊 SPEAKING...';
+                await speakWithGuard(msg, 'happy');
+                return;
+            }
         }
 
         // Voice shortcut: volume control.
@@ -14038,7 +12865,7 @@ async function handleCommand(text) {
                 state.speechVolume = Math.round(state.speechVolume * 100) / 100;
                 if (speechVolumeInput) speechVolumeInput.value = Math.round(state.speechVolume * 100);
                 if (speechVolumeValue) speechVolumeValue.textContent = Math.round(state.speechVolume * 100) + '%';
-                try { localStorage.setItem('blip_speech_volume', String(state.speechVolume)); } catch (e) { }
+                safeStorageSet('blip_speech_volume', String(state.speechVolume));
                 msg = `Volume ${Math.round(state.speechVolume * 100)}%.`;
             } else {
                 msg = "I didn't catch the volume.";
@@ -14047,7 +12874,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -14070,7 +12897,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -14078,11 +12905,32 @@ async function handleCommand(text) {
             return;
         }
 
+        const taskVoiceResult = tryHandleTaskVoiceCommand(cmd, {
+            now: new Date(),
+            getUpcomingTimersSorted,
+            setBlipTimer,
+            cancelMatchingScheduledTimer
+        });
+        if (taskVoiceResult.handled) {
+            face.classList.remove('thinking');
+            const msg = taskVoiceResult.text || 'OK.';
+            const mood = taskVoiceResult.mood === 'serious' ? 'serious' : 'happy';
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+            state.history.push({ user: cmd, blip: msg });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            setBlipEmotion(mood === 'serious' ? 'serious' : 'happy');
+            setPersona(mood === 'serious' ? 'serious' : 'happy');
+            talkBtn.innerText = '🔊 SPEAKING...';
+            await speakWithGuard(msg, mood);
+            return;
+        }
+
         const reasoningContext = {
             message: cmd,
             history: state.history,
             images,
-            apiKey: state.geminiKey,
+            apiKey: getActiveTextApiKey(state.selectedModel),
             model: state.selectedModel,
             mode: '',
             lastMode: state.currentMode,
@@ -14100,8 +12948,22 @@ async function handleCommand(text) {
                 voiceEngine: state.voiceEngine || ''
             }
         };
-        const reasoningRoute = classifyReasoningMode(cmd, reasoningContext);
+        let reasoningRoute = classifyReasoningMode(cmd, reasoningContext);
+        if (isMiniMaxModel(state.selectedModel)) {
+            reasoningRoute = {
+                ...reasoningRoute,
+                mode: 'fast',
+                reason: 'MiniMax quick mode',
+                reasonCodes: [],
+            };
+        }
         console.info(`[Blip Reasoning] brain=${reasoningRoute.mode} reason=${reasoningRoute.reason}`);
+
+        updateDevBrainBanner({
+            thinking: true,
+            reasoningMode: reasoningRoute.mode,
+            reason: reasoningRoute.reason
+        });
 
         if (reasoningRoute.mode === 'fast') {
             const fastResponse = await runFastReasoning(cmd, {
@@ -14138,13 +13000,13 @@ async function handleCommand(text) {
                 setPersona("thinking");
                 face.classList.add("thinking");
 
-                const answer = await reasoningLoop(cmd, state.geminiKey);
+                const answer = await reasoningLoop(cmd, getActiveTextApiKey(state.selectedModel), state.selectedModel);
 
                 face.classList.remove("thinking");
                 setPersona("happy");
 
                 const displayTextRaw = typeof answer === "string" ? answer : (answer?.text || JSON.stringify(answer, null, 2));
-                const displayText = toCompactReply(displayTextRaw, BLIP_REPLY_MAX_WORDS);
+                const displayText = adaptReplyToCompanionMode(toCompactReply(displayTextRaw, BLIP_REPLY_MAX_WORDS));
                 const extraHtml = `<br><a href="https://www.google.com/search?q=${encodeURIComponent(cmd)}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>`;
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${displayText}${extraHtml}`;
                 state.lastContext.lastUserQuery = cmd;
@@ -14152,7 +13014,7 @@ async function handleCommand(text) {
                 state.history.push({ user: cmd, blip: displayText });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
                 try {
-                    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX)));
+                    safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
                 } catch (e) { /* quota or private */ }
 
                 spawnSymbol("brain");
@@ -14185,28 +13047,17 @@ Preferred tools: ${deepReasoning.preferredActions.join(', ') || 'chat'}.
 
 `;
         const reviewedRequest = deepReasoning.reviewedMessage || cmd;
-        const intentPrompt = `${contextBlock}${deepReasoningBlock}You are the Intent Interpreter.
+        const intentPrompt = `${contextBlock}${deepReasoningBlock}${getCompanionPromptBlock()}You are the Intent Interpreter.
 Analyze the user's latest request: "${reviewedRequest}".
 Use the context above and conversation history so that "another graph", "that place", "same" etc. refer to the last topic (e.g. same city, same chart subject).
 
 Return a simple JSON object: {
-  "actions": ["search", "youtube", "map", "chart", "calendar", "weather", "time", "products", "timer", "gmail", "telegram", "chat", "none"],
+  "actions": ["search", "youtube", "map", "chart", "calendar", "weather", "time", "products", "timer", "chat", "none"],
   "query": "optimized search query — if user said 'another graph' or 'same' use the last search topic; if they said 'there' use last location (leave empty for casual chat)",
   "entities": ["entity1", "entity2"]
 }`;
 
-        const askAIBrain = async (prompt, history, images, apiKey, model) => {
-            if (model.startsWith('gemini')) {
-                return await askGemini(prompt, history, images, apiKey, model);
-            } else {
-                const res = await askOllama(prompt, history, images, model);
-                // Shim rawResponse for extractJSON calls in main.js
-                if (res && !res.rawResponse) res.rawResponse = JSON.stringify(res);
-                return res;
-            }
-        };
-
-        const intentResponse = await askAIBrain(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
+        const intentResponse = await askGemini(intentPrompt, state.history, [], getActiveTextApiKey(state.selectedModel), state.selectedModel);
         let intent = extractJSON(intentResponse.rawResponse) || { actions: [intentResponse.action || 'chat'], query: cmd, entities: [] };
         const fallbackIntentAction = intent.action || intentResponse.action || 'chat';
         if (Array.isArray(intent.actions)) {
@@ -14230,7 +13081,7 @@ Return a simple JSON object: {
             .map((e) => String(e || '').trim())
             .filter(Boolean);
 
-        const lowerCmd = cmd.toLowerCase();
+        const reasoningLowerCmd = cmd.toLowerCase();
         const isLookForIt = /\b(look for it|search for it|find it|get it|look it up|go find|go look|just search|then search)\b/i.test(cmd);
         if (isLookForIt && state.lastContext.lastSearchTopic) {
             intent.query = state.lastContext.lastSearchTopic;
@@ -14249,8 +13100,8 @@ Return a simple JSON object: {
 
         // Optimization: Skip research for pure chat/none or extremely short inputs (unless "look for it")
         const isPureChat = !isLookForIt && intent.actions.every(a => a === 'chat' || a === 'none' || a === 'time');
-        const wantsChart = intent.actions.includes('chart') || lowerCmd.includes('graph') || lowerCmd.includes('chart');
-        const wantsPopulation = lowerCmd.includes('population') || lowerCmd.includes('demographic') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('male') || lowerCmd.includes('female');
+        const wantsChart = intent.actions.includes('chart') || reasoningLowerCmd.includes('graph') || reasoningLowerCmd.includes('chart');
+        const wantsPopulation = reasoningLowerCmd.includes('population') || reasoningLowerCmd.includes('demographic') || reasoningLowerCmd.includes('men') || reasoningLowerCmd.includes('women') || reasoningLowerCmd.includes('male') || reasoningLowerCmd.includes('female');
         const hasNumbers = /\d/.test(cmd);
         const isLocalNumericChart = wantsChart && hasNumbers && !wantsPopulation;
 
@@ -14263,7 +13114,7 @@ Return a simple JSON object: {
                 const lastTopicWantsData = /population|demographic|men|women|stat|graph|chart/i.test(lastTopic);
                 const runDataResearch = wantsPopulation || (wantsChart && (lowerCmd.includes('population') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('demographic') || lowerCmd.includes('stat') || lowerCmd.includes('data'))) || (isLookForIt && lastTopicWantsData);
                 if (runDataResearch) {
-                    const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || [], state.geminiKey);
+                    const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || [], getActiveTextApiKey(state.selectedModel), state.selectedModel);
                     evidence += (research?.text != null ? String(research.text) : '') + "\n";
                     const searchQuery = (intent.query || cmd).replace(/\b(graph|chart|make me a)\b/gi, '').trim() || intent.query || cmd;
                     const standardResult = await actionHandlers.search({ tool_params: { query: searchQuery } }, state);
@@ -14302,7 +13153,7 @@ Return a simple JSON object: {
         console.log("✍️ Step 3: Synthesizing Final Answer");
         const synthesisContextBlock = getContextBlock();
         const valuesLine = BLIP_VALUES.slice(0, 3).join(', ');
-        const synthesisPrompt = `${synthesisContextBlock}You are Blip.
+        const synthesisPrompt = `${synthesisContextBlock}${getCompanionPromptBlock()}You are Blip.
 Deep reasoning review:
 - Original request: "${cmd}"
 - Reviewed request: "${deepReasoning.reviewedMessage || cmd}"
@@ -14346,7 +13197,10 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
             synthesisResponse = { emotion: 'happy', text: finalReplyPlain };
             setBlipEmotion('happy');
         } else {
-            synthesisResponse = await askAIBrain(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
+            const useGeminiVisionFallback = Array.isArray(images) && images.length > 0 && isMiniMaxModel(state.selectedModel);
+            const synthesisApiKey = useGeminiVisionFallback ? state.geminiKey : getActiveTextApiKey(state.selectedModel);
+            const synthesisModel = useGeminiVisionFallback ? 'gemini-2.5-flash' : state.selectedModel;
+            synthesisResponse = await askGemini(synthesisPrompt, state.history, images, synthesisApiKey, synthesisModel);
             setBlipEmotion(synthesisResponse.emotion);
             synthData = extractJSON(synthesisResponse.rawResponse);
             let conclusion = synthData?.conclusion || synthData?.text || synthesisResponse.text;
@@ -14356,8 +13210,8 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
                 else if (parsedConclusion?.conclusion) conclusion = parsedConclusion.conclusion;
             }
             const compactConclusion = sanitizeBlipReplyText(toCompactReply(conclusion, BLIP_REPLY_MAX_WORDS));
-            finalReply = compactConclusion;
-            finalReplyPlain = compactConclusion;
+            finalReply = adaptReplyToCompanionMode(compactConclusion);
+            finalReplyPlain = finalReply;
         }
 
         // Auto-Chart Rendering: from model or fallback from evidence (V4.3.12)
@@ -14452,7 +13306,7 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
         state.history.push({ user: cmd, blip: finalReplyPlain });
         if (state.history.length > HISTORY_MAX) state.history.shift();
         try {
-            localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX)));
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
         } catch (e) { /* quota or private */ }
 
         // BlipContextAgent: observe real signals, decide mode/tone/action, apply
@@ -14499,7 +13353,9 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
         let errorMsg = "I'm sorry, I'm having trouble connecting to my brain.";
 
         // Handle specific "model not found" errors
-        if (state.selectedModel.startsWith('gemini')) {
+        if (isMiniMaxModel(state.selectedModel)) {
+            errorMsg = `MiniMax Brain Error: ${error.message}`;
+        } else if (state.selectedModel.startsWith('gemini')) {
             errorMsg = `Gemini Brain Error: ${error.message}`;
         } else if (error.message.includes('not found') || error.message.includes('pull') || error.message.includes('llava')) {
             errorMsg = "I can't see yet because my vision model is still downloading! Please wait a moment.";
@@ -14516,6 +13372,7 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
         document.body.classList.remove('thinking-mode');
         face.classList.remove('thinking');
         talkBtn.classList.remove('thinking');
+        updateDevBrainBanner({ thinking: false });
         if (state.isActive) {
             startListeningLoop();
         } else {
@@ -14599,24 +13456,15 @@ function unmuteYouTubePlayer() {
     // Preferred path: IFrame API player (works reliably when available).
     if (blipYtPlayer && typeof blipYtPlayer.unMute === 'function') {
         try {
-            const wasPlaying = getYouTubePlayerState() === 1;
             // Some browsers/policies are finicky; do a short "retry burst".
             const attempt = () => {
                 try { if (typeof blipYtPlayer.setVolume === 'function') blipYtPlayer.setVolume(100); } catch (_) {}
                 try { blipYtPlayer.unMute(); } catch (_) {}
-            };
-            const restorePlaybackIfNeeded = () => {
-                if (!wasPlaying || !blipYtPlayer || typeof blipYtPlayer.playVideo !== 'function') return;
-                try {
-                    if (getYouTubePlayerState() === 2) blipYtPlayer.playVideo();
-                } catch (_) { }
+                try { if (typeof blipYtPlayer.playVideo === 'function') blipYtPlayer.playVideo(); } catch (_) {}
             };
             attempt();
-            setTimeout(restorePlaybackIfNeeded, 60);
             setTimeout(attempt, 180);
-            setTimeout(restorePlaybackIfNeeded, 240);
             setTimeout(attempt, 520);
-            setTimeout(restorePlaybackIfNeeded, 580);
             return true;
         } catch (e) {
             console.warn('YouTube unmute failed:', e.message);
@@ -14636,26 +13484,6 @@ function unmuteYouTubePlayer() {
         return true;
     } catch (e) {
         return false;
-    }
-}
-
-function isYouTubePlayerMuted() {
-    if (blipYtPlayer && typeof blipYtPlayer.isMuted === 'function') {
-        try {
-            return !!blipYtPlayer.isMuted();
-        } catch (_) { }
-    }
-    const mount = document.getElementById('blip-yt-player');
-    const iframe = mount?.querySelector?.('iframe');
-    const src = String(iframe?.getAttribute?.('src') || '');
-    if (!src) return null;
-    try {
-        const url = new URL(src, window.location.origin);
-        const muteValue = url.searchParams.get('mute');
-        if (muteValue == null) return null;
-        return muteValue !== '0';
-    } catch (_) {
-        return null;
     }
 }
 
@@ -14766,10 +13594,10 @@ function closeAuxiliaryPanelsForGallery() {
         chartContainer.style.display = 'none';
     }
     const sidePanel = document.getElementById('blip-side-panel');
-    if (sidePanel && (sidePanel.classList.contains('blip-calendar-mirror-panel') || sidePanel.classList.contains('blip-calendar-orb')) && sidePanel.style.display !== 'none') {
+    if (sidePanel?.classList.contains('blip-calendar-orb') && sidePanel.style.display !== 'none') {
         sidePanel.style.display = 'none';
         sidePanel.innerHTML = '';
-        sidePanel.classList.remove('blip-calendar-mirror-panel', 'blip-calendar-orb');
+        sidePanel.classList.remove('blip-calendar-orb');
         clearSidePanelContext();
     } else if (isSidePanelVisible()) {
         closeYouTubePanel();
@@ -14797,10 +13625,27 @@ function closeAuxiliaryPanelsForCalendar() {
 }
 
 function closeCalendarPanel() {
+    const sidePanel = document.getElementById('blip-side-panel');
     state.activeCalendarViewRequest = null;
-    const ok = closeCalendarAgendaPanelUi();
-    if (ok) clearSidePanelContext();
-    return ok;
+    if (!sidePanel || sidePanel.style.display === 'none') return false;
+    if (!sidePanel.classList.contains('blip-calendar-orb')) return false;
+    sidePanel.innerHTML = '';
+    sidePanel.style.display = 'none';
+    sidePanel.classList.remove('blip-calendar-orb', 'blip-side-panel-centered');
+    sidePanel.style.top = '120px';
+    sidePanel.style.left = 'auto';
+    sidePanel.style.right = '32px';
+    sidePanel.style.transform = 'none';
+    sidePanel.style.width = '280px';
+    sidePanel.style.height = '340px';
+    sidePanel.style.padding = '12px';
+    sidePanel.style.borderRadius = '12px';
+    sidePanel.style.overflow = 'auto';
+    sidePanel.style.background = 'rgba(10, 10, 30, 0.96)';
+    sidePanel.style.border = '1px solid rgba(99, 102, 241, 0.4)';
+    sidePanel.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
+    clearSidePanelContext();
+    return true;
 }
 
 /** YT.PlayerState: unstarted=-1, ended=0, playing=1, paused=2, buffering=3, cued=5 */
@@ -15022,84 +13867,12 @@ function syncMiniBlipEmotion() {
         mini.classList.remove(...Array.from(mini.classList).filter(c => c.startsWith('emotion-')));
         mini.classList.add(emotionClass);
     }
-
-    const miniContainer = mini.closest('#face-container') || mini.parentElement;
-    if (miniContainer && faceContainer) {
-        const motionClass = Array.from(faceContainer.classList).find(c => c.startsWith('face-anim-'));
-        miniContainer.classList.remove(...Array.from(miniContainer.classList).filter(c => c.startsWith('face-anim-')));
-        if (motionClass) {
-            miniContainer.classList.add(motionClass);
-        }
-    }
-
-    styleMiniBlipFace(mini, state.videoCompanionSize);
-}
-
-function getBlipMiniEyeShadow(emotion = 'idle', sizeMode = 'mini') {
-    const isBig = sizeMode === 'big';
-    const base = isBig
-        ? '0 0 14px rgba(147, 197, 253, 0.48), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-        : '0 0 11px rgba(147, 197, 253, 0.42), inset 0 -3px 6px rgba(172, 208, 255, 0.12)';
-    const shadows = {
-        idle: base,
-        happy: isBig
-            ? '0 0 18px rgba(147, 197, 253, 0.76), 0 0 32px rgba(96, 165, 250, 0.32), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 15px rgba(147, 197, 253, 0.70), 0 0 26px rgba(96, 165, 250, 0.26), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        sad: isBig
-            ? '0 0 8px rgba(147, 197, 253, 0.24), 0 0 15px rgba(96, 165, 250, 0.08), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 7px rgba(147, 197, 253, 0.20), 0 0 12px rgba(96, 165, 250, 0.06), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        angry: isBig
-            ? '0 0 16px rgba(191, 219, 254, 0.68), 0 0 26px rgba(59, 130, 246, 0.26), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 13px rgba(191, 219, 254, 0.62), 0 0 22px rgba(59, 130, 246, 0.22), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        curious: isBig
-            ? '0 0 18px rgba(191, 219, 254, 0.74), 0 0 34px rgba(103, 232, 249, 0.22), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 15px rgba(191, 219, 254, 0.68), 0 0 28px rgba(103, 232, 249, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        surprised: isBig
-            ? '0 0 22px rgba(255, 255, 255, 0.82), 0 0 42px rgba(147, 197, 253, 0.34), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 18px rgba(255, 255, 255, 0.76), 0 0 34px rgba(147, 197, 253, 0.28), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        thinking: isBig
-            ? '0 0 13px rgba(147, 197, 253, 0.48), 0 0 24px rgba(59, 130, 246, 0.12), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 11px rgba(147, 197, 253, 0.40), 0 0 18px rgba(59, 130, 246, 0.10), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        sleepy: isBig
-            ? '0 0 6px rgba(147, 197, 253, 0.16), 0 0 10px rgba(96, 165, 250, 0.06), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 5px rgba(147, 197, 253, 0.12), 0 0 8px rgba(96, 165, 250, 0.04), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        excited: isBig
-            ? '0 0 22px rgba(191, 219, 254, 0.80), 0 0 40px rgba(147, 197, 253, 0.36), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 18px rgba(191, 219, 254, 0.72), 0 0 32px rgba(147, 197, 253, 0.30), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        serious: isBig
-            ? '0 0 11px rgba(147, 197, 253, 0.42), 0 0 20px rgba(96, 165, 250, 0.12), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 9px rgba(147, 197, 253, 0.36), 0 0 16px rgba(96, 165, 250, 0.08), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        playful: isBig
-            ? '0 0 19px rgba(147, 197, 253, 0.66), 0 0 36px rgba(34, 211, 238, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 15px rgba(147, 197, 253, 0.58), 0 0 28px rgba(34, 211, 238, 0.14), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        confident: isBig
-            ? '0 0 17px rgba(191, 219, 254, 0.72), 0 0 32px rgba(96, 165, 250, 0.26), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 14px rgba(191, 219, 254, 0.64), 0 0 26px rgba(96, 165, 250, 0.20), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        celebrate: isBig
-            ? '0 0 24px rgba(255, 255, 255, 0.90), 0 0 44px rgba(147, 197, 253, 0.34), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 20px rgba(255, 255, 255, 0.82), 0 0 38px rgba(147, 197, 253, 0.28), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        affectionate: isBig
-            ? '0 0 18px rgba(191, 219, 254, 0.68), 0 0 34px rgba(244, 114, 182, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 15px rgba(191, 219, 254, 0.60), 0 0 28px rgba(244, 114, 182, 0.14), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        focused: isBig
-            ? '0 0 14px rgba(147, 197, 253, 0.50), 0 0 28px rgba(59, 130, 246, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 12px rgba(147, 197, 253, 0.44), 0 0 22px rgba(59, 130, 246, 0.14), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        listening: isBig
-            ? '0 0 20px rgba(224, 242, 254, 0.80), 0 0 36px rgba(147, 197, 253, 0.22), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 16px rgba(224, 242, 254, 0.72), 0 0 28px rgba(147, 197, 253, 0.18), inset 0 -3px 6px rgba(172, 208, 255, 0.12)',
-        despair: isBig
-            ? '0 0 7px rgba(147, 197, 253, 0.16), 0 0 12px rgba(59, 130, 246, 0.06), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-            : '0 0 6px rgba(147, 197, 253, 0.12), 0 0 10px rgba(59, 130, 246, 0.04), inset 0 -3px 6px rgba(172, 208, 255, 0.12)'
-    };
-    return shadows[emotion] || base;
 }
 
 /** Apply explicit companion-face styling so side Blip remains visible and can switch between mini and big. */
 function styleMiniBlipFace(faceEl, sizeMode = 'mini') {
     if (!faceEl) return;
     const isBig = sizeMode === 'big';
-    const emotionClass = Array.from(faceEl.classList).find((c) => c.startsWith('emotion-'));
-    const emotion = emotionClass ? emotionClass.slice('emotion-'.length) : 'idle';
     const s = isBig
         ? {
             face: 176, core: 144, eyeTop: 52, eye: 22, eyeOffset: 36, pupil: 8,
@@ -15140,8 +13913,8 @@ function styleMiniBlipFace(faceEl, sizeMode = 'mini') {
         el.style.width = `${s.eye}px`;
         el.style.height = `${s.eye}px`;
         el.style.borderRadius = '50%';
-        el.style.background = 'var(--blip-eye-color, rgba(147, 197, 253, 0.72))';
-        el.style.boxShadow = getBlipMiniEyeShadow(emotion, sizeMode);
+        el.style.background = '#ffffff';
+        el.style.boxShadow = '0 0 7px rgba(255,255,255,0.55)';
         el.style.overflow = 'hidden';
     });
     const leftEye = faceEl.querySelector('.eye-left');
@@ -15419,7 +14192,40 @@ function getReminderCancelVoiceCommand(cmd) {
 }
 
 function getHubVoiceCommand(cmd) {
-    return getStudentDeskVoiceCommand(cmd);
+    if (!cmd || typeof cmd !== 'string') return null;
+    const lower = normalizeVoiceTokens(cmd);
+    const hubNoun = '(?:hub)';
+    if (/\b(close|hide|dismiss|exit)\s+(the\s+)?hub\b/.test(lower)) return { action: 'close' };
+    if (/\b(open|go to|enter)\s+(the\s+)?hub\b/.test(lower)) return { action: 'open' };
+    if (new RegExp(`\\b(clear|empty|wipe|reset|erase|trash|delete|remove)\\s+(?:the\\s+)?${hubNoun}\\b`).test(lower)) return { action: 'clear' };
+    if (/\b(show|review|read|list)\s+(?:me\s+)?(?:the\s+)?hub\b/.test(lower) ||
+        /\bwhat(?:'s| is)\s+(?:in|inside)\s+(?:the\s+)?hub\b/.test(lower)) return { action: 'review' };
+    if (/\b(save|store|keep)\s+(this|that|it|current)\b[\s\w]{0,18}\b(to|in)\s+(?:the\s+)?hub\b/.test(lower)) return { action: 'saveCurrent' };
+
+    const removeMatch = lower.match(new RegExp(`\\b(?:remove|delete|drop|erase|trash)\\s+(.+?)(?:\\s+from)?\\s+(?:the\\s+)?${hubNoun}\\b`));
+    if (removeMatch) {
+        const query = sanitizeVoiceQuery(removeMatch[1] || '')
+            .replace(/^(?:the\s+)?/, '')
+            .replace(/^(?:item|note|link|photo|image)\s+/, '')
+            .trim();
+        if (!query || /^(?:it|this|that|one|item|note|link|photo|image|last|latest|newest)$/.test(query)) {
+            return { action: 'removeLatest' };
+        }
+        return { action: 'removeMatch', query };
+    }
+
+    const notePatterns = [
+        /^(?:please\s+)?(?:save|add|put|store|remember)\s+(?:note\s+)?(?:to|in)\s+(?:the\s+)?hub[:\s,-]*(.+)$/,
+        /^(?:please\s+)?(?:save|add|put|store|remember)\s+(.+?)\s+(?:to|in)\s+(?:the\s+)?hub$/
+    ];
+    for (const re of notePatterns) {
+        const match = lower.match(re);
+        const note = sanitizeVoiceQuery(match?.[1] || '');
+        if (!note) continue;
+        if (/^(?:this|that|it|current)$/.test(note)) return { action: 'saveCurrent' };
+        return { action: 'saveNote', note };
+    }
+    return null;
 }
 
 function getNotesVoiceCommand(cmd) {
@@ -15647,8 +14453,7 @@ function getDirectProductVoiceQuery(cmd) {
     return query;
 }
 
-function parseVoiceDateFromText(text, options = {}) {
-    const requireTime = options.requireTime !== false;
+function parseVoiceDateFromText(text) {
     const lower = normalizeVoiceTokens(text);
     const now = new Date();
     let target = parseMonthDayReferenceFromText(lower) || new Date(now);
@@ -15692,9 +14497,6 @@ function parseVoiceDateFromText(text, options = {}) {
     if (!matchedDate) return null;
 
     const parsedTime = parseVoiceTimeFromText(lower);
-    if (!requireTime && !parsedTime) {
-        return startOfCalendarDay(target);
-    }
     const hours = parsedTime?.hours;
     const minutes = parsedTime?.minutes ?? 0;
     if (!Number.isFinite(hours) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
@@ -15818,11 +14620,10 @@ function resolvePendingCalendarFollowUp(cmd) {
                 message: 'What is the event?'
             };
         }
-        const hasScheduledTime = !!(draft.start && draft.end);
         state.pendingCalendarDraft = {
             ...draft,
             title,
-            stage: hasScheduledTime ? 'awaiting_reminder' : 'awaiting_time'
+            stage: 'awaiting_reminder'
         };
         return {
             needsScheduleInfo: true,
@@ -15973,7 +14774,7 @@ function getDirectCalendarVoiceRequest(cmd) {
             title: draftTitle,
             anchorDate: resolvedAnchorDate ? startOfCalendarDay(resolvedAnchorDate).toISOString() : '',
             durationMs: 60 * 60 * 1000,
-            stage: isGenericCalendarDraftTitle(draftTitle) ? 'awaiting_title' : 'awaiting_time'
+            stage: resolvedAnchorDate ? 'awaiting_time' : 'awaiting_time'
         };
         return {
             needsScheduleInfo: true,
@@ -16062,15 +14863,9 @@ function getCalendarAgendaVoiceRequest(cmd) {
     const directCalendarOpenIntent = /^(?:can you\s+)?(?:please\s+)?open\s+(?:(?:my|the)\s+)?(?:calendar|schedule|agenda|events?)$/.test(lower);
     const conversationalCalendarOpenIntent = /\b(?:open|show|view|check)\b[\s\w]{0,24}\b(?:calendar|schedule|agenda|events?)\b/.test(lower);
     const explicitViewMatch = lower.match(/\b(day|week|month)\s+view\b/);
-    const navToDateCue = /\b(?:show|display|view|go\s+to|jump\s+to|navigate\s+to|take\s+me\s+to|head\s+to)\b/;
-    const directDateOpenIntent = navToDateCue.test(lower) && (
-        Boolean(parseCalendarDayNumberFromText(lower))
-        || Boolean(parseMonthDayReferenceFromText(lower))
-        || /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/.test(lower)
-        || Boolean(parseVoiceDateFromText(lower, { requireTime: false }))
-    );
+    const directDateOpenIntent = /\b(show|display|view)\b/.test(lower) && (Boolean(parseCalendarDayNumberFromText(lower)) || Boolean(parseMonthDayReferenceFromText(lower)));
     if (!hasCalendarIntent && !explicitViewMatch && !directDateOpenIntent && !directCalendarOpenIntent && !conversationalCalendarOpenIntent) return null;
-    if (!explicitViewMatch && !directDateOpenIntent && !directCalendarOpenIntent && !conversationalCalendarOpenIntent && !/\b(open|show|display|view|what(?:'s| is)|list|tell me|give me|see|check|my|go|jump|navigate|head|take)\b/.test(lower)) return null;
+    if (!explicitViewMatch && !directCalendarOpenIntent && !conversationalCalendarOpenIntent && !/\b(open|show|display|view|what(?:'s| is)|list|tell me|give me|see|check|my)\b/.test(lower)) return null;
 
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -16080,23 +14875,11 @@ function getCalendarAgendaVoiceRequest(cmd) {
     dayAfterTomorrowStart.setDate(dayAfterTomorrowStart.getDate() + 1);
     const monthEnd = new Date(todayStart);
     monthEnd.setDate(monthEnd.getDate() + 30);
-    const monthNav = parseNavigateToMonthAnchor(lower);
-    if (monthNav?.monthOnly) {
-        const anchor = monthNav.anchor;
-        return {
-            label: anchor.toLocaleDateString('en-US', { month: 'long' }),
-            view: 'month',
-            anchorDate: anchor.toISOString(),
-            timeMin: todayStart.toISOString(),
-            timeMax: monthEnd.toISOString(),
-            maxResults: 60
-        };
-    }
     const requestedView = explicitViewMatch?.[1] || (/\bmonth\b/.test(lower) ? 'month' : /\bday\b/.test(lower) ? 'day' : /\bweek\b/.test(lower) ? 'week' : '');
     const requestedDay = parseDayOnlyRange(lower);
     const explicitCommandDate = getCalendarDateFromCommand(lower, state.activeCalendarViewRequest || { anchorDate: state.calendarAnchorDate });
 
-    if (!explicitViewMatch && explicitCommandDate && navToDateCue.test(lower) && !(/\bweek\b|\bmonth\b/.test(lower))) {
+    if (!explicitViewMatch && explicitCommandDate && /\b(show|display|view)\b/.test(lower) && !(/\bweek\b|\bmonth\b/.test(lower))) {
         const anchor = startOfCalendarDay(explicitCommandDate);
         const nextDay = new Date(anchor);
         nextDay.setDate(nextDay.getDate() + 1);
@@ -16597,7 +15380,7 @@ function parseCalendarDayWordFromText(text) {
 
 function parseCalendarDayNumberFromText(text) {
     const lower = normalizeVoiceTokens(text);
-    const match = lower.match(/\bday\s+(\d{1,2})(?:st|nd|rd|th)?\b|\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b/);
+    const match = lower.match(/\bday\s+(\d{1,2})(?:st|nd|rd|th)?\b|\b(?:the\s+)?(\d{1,2})(st|nd|rd|th)\b/);
     const dayNumber = Number(match?.[1] || match?.[2] || parseCalendarDayWordFromText(lower) || 0);
     return Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= 31 ? dayNumber : null;
 }
@@ -16605,7 +15388,7 @@ function parseCalendarDayNumberFromText(text) {
 function getCalendarDateFromCommand(text, request = {}) {
     const explicitDate = parseMonthDayReferenceFromText(text);
     if (explicitDate) return explicitDate;
-    const parsedDate = parseVoiceDateFromText(text, { requireTime: false });
+    const parsedDate = parseVoiceDateFromText(text);
     if (parsedDate) return parsedDate;
     const dayNumber = parseCalendarDayNumberFromText(text);
     if (dayNumber) {
@@ -16630,27 +15413,6 @@ function parseMonthDayReferenceFromText(text) {
     const date = new Date(year, monthIndex, dayNumber);
     if (Number.isNaN(date.getTime()) || date.getMonth() !== monthIndex) return null;
     return date;
-}
-
-/** "Jump to April" / "go to September" (month name only, no day). */
-function parseNavigateToMonthAnchor(lower) {
-    const normalized = typeof lower === 'string' ? normalizeVoiceTokens(lower) : lower;
-    if (!/\b(?:go\s+to|jump\s+to|navigate\s+to|take\s+me\s+to|head\s+to)\b/.test(normalized)) return null;
-    if (parseMonthDayReferenceFromText(normalized)) return null;
-    const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-    const monthMatch = normalized.match(new RegExp(`\\b(${months.join('|')})\\b`));
-    if (!monthMatch) return null;
-    const monthIndex = months.indexOf(monthMatch[1]);
-    if (monthIndex < 0) return null;
-    const now = new Date();
-    const todayStart = startOfCalendarDay(now);
-    let year = now.getFullYear();
-    const endOfMonth = new Date(year, monthIndex + 1, 0);
-    if (endOfMonth < todayStart) {
-        year += 1;
-    }
-    const anchor = startOfCalendarDay(new Date(year, monthIndex, 1));
-    return { anchor, monthOnly: true };
 }
 
 function createEmptyLastContext() {
@@ -16864,11 +15626,12 @@ function buildCalendarAgendaHtml(events, calendarUrl, request = {}) {
     ].filter(Boolean).join(' ');
 
     return `
-        <div class="blip-calendar-mirror-shell" data-calendar-view-mode="${panelState.view}">
-            <div class="blip-calendar-mirror-header">
-                <div class="blip-calendar-mirror-heading">
+        <div class="blip-calendar-shell">
+            <div class="blip-calendar-topbar">
+                <div>
                     <div class="blip-calendar-kicker">Blip Calendar</div>
                     <div class="blip-calendar-title">${escapeHtml(panelState.title)}</div>
+                    <div class="blip-calendar-subtitle">${escapeHtml(panelState.subtitle)}</div>
                 </div>
                 <div class="blip-calendar-topbar-actions">
                     <button type="button" class="blip-calendar-nav-btn" data-calendar-nav="prev" aria-label="Previous range">←</button>
@@ -16876,17 +15639,15 @@ function buildCalendarAgendaHtml(events, calendarUrl, request = {}) {
                     <button type="button" class="blip-calendar-nav-btn" data-calendar-nav="next" aria-label="Next range">→</button>
                 </div>
             </div>
-            <div class="blip-calendar-mirror-toolbar">
+            <div class="blip-calendar-toolbar">
                 <div class="blip-calendar-view-switch" aria-label="Calendar mode">
                     <div class="blip-calendar-view-pill is-active">Month</div>
                 </div>
                 <a href="${calendarUrl}" target="_blank" class="blip-calendar-google-link">Open Google</a>
             </div>
             <div class="blip-calendar-status${authState.connected ? ' connected' : ''}">${escapeHtml(statusBits || 'Calendar ready.')}</div>
-            <div class="blip-calendar-mirror-content">
-                <div class="blip-calendar-mirror-surface">
-                    ${bodyHtml}
-                </div>
+            <div class="blip-calendar-body" data-calendar-view-mode="${panelState.view}">
+                ${bodyHtml}
             </div>
         </div>
     `;
@@ -17268,16 +16029,6 @@ async function showCalendarOverview(request = { label: 'upcoming' }) {
     setCalendarDisplayMode(panelState.view);
     setCalendarAnchorDate(panelState.anchorDate);
     const calendarUrl = 'https://calendar.google.com/calendar/u/0/r';
-    const bootHtml = buildCalendarAgendaHtml(getCachedCalendarEvents(panelRequest), calendarUrl, panelRequest)
-        || '<div class="blip-calendar-shell"><p class="blip-calendar-status">Opening calendar…</p></div>';
-    renderActionInSidePanel({
-        action: 'calendarAgenda',
-        tool_params: {
-            title: 'Blip Calendar',
-            html: bootHtml
-        },
-        text: 'Blip Calendar open.'
-    });
     const initiallyConnected = await ensureGoogleCalendarConnected({ silent: true });
     const authState = getGoogleCalendarAuthState();
 
@@ -17394,7 +16145,7 @@ async function showCalendarOverview(request = { label: 'upcoming' }) {
                 }
                 const summary = 'Blip Calendar open.';
                 renderActionInSidePanel({
-                    action: 'calendaragenda',
+                    action: 'calendarAgenda',
                     tool_params: {
                         title: `Blip Calendar`,
                         html: buildCalendarAgendaHtml(visibleEvents, calendarUrl, panelRequest)
@@ -17469,7 +16220,7 @@ async function forceOpenCalendarOverview(request = { label: 'upcoming' }) {
 async function refreshOpenCalendarPanel() {
     const sidePanel = document.getElementById('blip-side-panel');
     if (!sidePanel || sidePanel.style.display === 'none') return null;
-    if (!sidePanel.classList.contains('blip-calendar-mirror-panel') && !sidePanel.classList.contains('blip-calendar-orb')) return null;
+    if (!sidePanel.classList.contains('blip-calendar-orb')) return null;
     const request = state.activeCalendarViewRequest || { label: 'upcoming' };
     return showCalendarOverview(request);
 }
@@ -17701,6 +16452,8 @@ function getDirectYouTubeVoiceQuery(cmd) {
     if (controlOnly.test(lower) && !/\b(about|of|for|on)\b/.test(lower)) return null;
 
     const patterns = [
+        // e.g. "open youtube with yo-yo ma"
+        /^(?:please\s+)?(?:open|show|watch|play)\s+(?:the\s+)?youtube\s+(?:with|about|for|of|on)?\s+(.+)$/,
         /^(?:find|search|look(?:\s+for)?|play|open|show|watch)\s+(?:me\s+)?(?:a\s+)?(?:youtube\s+)?video\s+(?:about|of|for|on)\s+(.+)$/,
         /\b(?:youtube|yt|video)\s+(?:about|of|for|on)\s+(.+)$/,
         /^(?:play|watch|show|open)\s+(.+?)\s+on\s+(?:youtube|yt)\b/,
@@ -17713,7 +16466,9 @@ function getDirectYouTubeVoiceQuery(cmd) {
             .replace(/\b(?:and|then)\s+(?:un\s*-?\s*mute|sound\s+on|audio\s+on)\b[\s\S]*$/i, '')
             .replace(/\b(?:with\s+)?sound\s+on\b[\s\S]*$/i, '')
             .trim();
-        const query = sanitizeVoiceQuery(cleaned);
+        let query = sanitizeVoiceQuery(cleaned);
+        // Often STT captures leading "with/about/for/of/on" as part of the query.
+        query = String(query || '').replace(/^(?:with|about|for|of|on)\s+/i, '').trim();
         if (!query) continue;
         if (/^(?:video|youtube|yt|it|something|anything|please|thanks|thank you)$/.test(query)) continue;
         return query;
@@ -17884,17 +16639,25 @@ function getSystemVoiceCommand(cmd) {
     const systemCandidate = stripped.replace(/^play\s+/, '').trim();
     const sleepPhrase = '(?:go\\s+back\\s+to\\s+sleep|go\\s+to\\s+sleep)';
     const condensedSleep = systemCandidate.replace(/\bsleep\b/g, 'sleep').replace(/\s+/g, ' ').trim();
-    // STT often says "scrolling down" / "scrolled down" — \bscroll\b alone does not match inside "scrolling".
+    // Match "self-diagnostic" and "self diagnostic" (hyphen was breaking the old regex).
+    // Also treat "… and make a note" as part of the same utterance.
+    const selfDiagnosticIntent =
+        (!/\b(?:don'?t|do\s+not|never|skip)\s+.*\bself[\s-]*diagnostic\b/.test(trimmed)
+            && (
+                /\bself[\s-]*diagnostic\b/.test(trimmed)
+                || /\b(?:tools?|system)\s*health\s*check\b/.test(trimmed)
+                || /\bdiagnos(?:e|is)\s+(?:tools?|system|blip)\b/.test(trimmed)
+            ))
+        || /^(?:run\s+)?(?:a\s+)?(?:self|system|tools?)[\s-]*(?:diagnostic|health\s*check|check)\b/.test(stripped)
+        || /^(?:can|could|would|please)\s+you\s+(?:run|do)\s+(?:a\s+)?(?:self|system|tools?)[\s-]*(?:diagnostic|health\s*check)\b/.test(trimmed);
     const wantsScrollDown =
         /\bscroll\b[\s\w]{0,28}\bdown\b/.test(trimmed) ||
-        /\b(?:scroll(?:ed|ing)?|scrolled|scrolling)\s+down\b/.test(trimmed) ||
         /\b(?:go|move|page)\s+down\b/.test(trimmed) ||
         /\bscroll\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?(?:lower|below)\b/.test(trimmed) ||
         /^(?:down|lower)\s+please$/.test(stripped) ||
         /^(?:scroll|move|go|page)\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?down(?:\s+please)?$/.test(stripped);
     const wantsScrollUp =
         /\bscroll\b[\s\w]{0,28}\bup\b/.test(trimmed) ||
-        /\b(?:scroll(?:ed|ing)?|scrolled|scrolling)\s+up\b/.test(trimmed) ||
         /\b(?:go|move|page)\s+up\b/.test(trimmed) ||
         /\bscroll\s+(?:a\s+bit\s+|a\s+little\s+|more\s+)?(?:higher|above)\b/.test(trimmed) ||
         /^(?:up|higher)\s+please$/.test(stripped) ||
@@ -17931,11 +16694,11 @@ function getSystemVoiceCommand(cmd) {
 
     if (/\b(close|hide|exit|dismiss)\s+(everything|all(?:\s+panels?)?|all\s+windows?)\b/.test(trimmed) && /\b(go to sleep|sleep(?:\s+mode)?)\b/.test(trimmed)) return 'closeAllSleep';
     if (/\b(close|hide|exit|dismiss)\s+(?:them\s+)?(?:it\s+)?(?:everything|all(?:\s+panels?)?|all\s+windows?)\b/.test(trimmed)) return 'closeAll';
-    if (/^(?:close(?:\s+(?:it|this|that|them|everything|all(?:\s+panels?)?|all\s+windows?))?)(?:\s+please)?$/.test(trimmed)) return 'closeAll';
     if (anythingOpen && /^(?:everything|all|all\s+of\s+it|them\s+all)$/i.test(stripped)) return 'closeAll';
     if (closeAlertIntent) return 'closeAlert';
     if (stopScrollIntent) return 'stopScroll';
     if (wakeIntent) return 'wake';
+    if (selfDiagnosticIntent) return 'selfDiagnostic';
     if (/^(?:sleep|sleep\s+blip|blip\s+sleep)$/.test(stripped)) return 'sleepHelp';
     if (sleepIntent || sleepPromptIntent || politeSleepIntent || embeddedSleepIntent) return 'sleep';
     if (wantsScrollDown && !wantsScrollUp) return 'scrollDown';
@@ -17943,10 +16706,6 @@ function getSystemVoiceCommand(cmd) {
     if (/^(?:make|set)\s+(?:you|your)?\s*size\s+(?:bigger|larger|big|up)\b|^(?:size\s+(?:up|bigger|larger)|grow|be\s+bigger|bigger|larger)\b/.test(trimmed)) return 'sizeUp';
     if (/^(?:make|set)\s+(?:you|your)?\s*size\s+(?:smaller|small|down)\b|^(?:size\s+(?:down|smaller)|shrink|be\s+smaller|smaller)\b/.test(trimmed)) return 'sizeDown';
     if (/^(?:reset|normal(?:ize)?)\s+(?:you|your)?\s*size\b|^(?:size\s+(?:normal|default)|default\s+size)\b/.test(trimmed)) return 'sizeReset';
-    if (/\b(?:open|show|view|inspect|launch)\s+(?:the\s+|my\s+)?(?:conversation(?:\s+inspector)?|thread(?:\s+inspector)?|tool\s+conversation)\b/.test(trimmed) ||
-        /^(?:conversation(?:\s+inspector)?|thread(?:\s+inspector)?|tool\s+conversation|blip\s+thread)\b/.test(trimmed) ||
-        /\b(?:conversation(?:\s+inspector)?|tool\s+conversation)\b/.test(trimmed) && /\b(?:open|show|view|inspect|launch)\b/.test(trimmed)) return 'conversation';
-    if (/\b(?:close|hide|dismiss|exit)\s+(?:the\s+|my\s+)?(?:conversation(?:\s+inspector)?|thread(?:\s+inspector)?|tool\s+conversation|blip\s+thread)\b/.test(trimmed)) return 'closeConversation';
 
     return null;
 }
@@ -18024,19 +16783,11 @@ function getLearningGamesVoiceCommand(cmd) {
         return Number.isFinite(answerWords[cleaned]) ? answerWords[cleaned] : null;
     };
     const gamesNoun = '(?:learning\\s+games|learning\\s+game|kids\\s+games|math\\s+games|games|game\\s+panel)';
-    const intervalIntent = /\b(?:intervals?|ear\s+training)\b/.test(lower);
-    const harmonyIntent = /\b(?:harmony|chords?|triads?)\b/.test(lower);
     // If games is already open, bare "game/games" often means close (verb dropped).
     if (state.currentMode === 'games' && /^(?:game|games|learning\s+game|learning\s+games|math\s+game|math\s+games)$/.test(lower)) {
         return { action: 'close' };
     }
     if (/^(?:the\s+)?(?:learning\s+games|learning\s+game|kids\s+games|math\s+games|games)$/.test(lower)) return { action: 'open' };
-    if (intervalIntent && (/^(?:the\s+)?(?:intervals?|ear\s+training)(?:\s+game)?$/.test(lower) || /^(?:interval\s+game|ear\s+training\s+game)$/.test(lower) || /\b(?:open|show|play|start|launch|begin)\b/.test(lower))) {
-        return { action: 'open', mode: 'interval' };
-    }
-    if (harmonyIntent && (/^(?:the\s+)?(?:harmony|triads?|chords?)(?:\s+game)?$/.test(lower) || /^(?:harmony\s+game|triads?\s+game|chords?\s+game)$/.test(lower) || /\b(?:open|show|play|start|launch|begin)\b/.test(lower))) {
-        return { action: 'open', mode: 'harmony' };
-    }
     if ((wantsMathGame && /\b(start|play|open|launch|begin|do)\b/.test(lower)) ||
         /\b(start|play|open|launch|begin)\s+(?:the\s+)?math\s+games?\b/.test(lower) ||
         /^(?:math\s+games?|play\s+math|do\s+math)$/.test(lower) ||
@@ -18239,6 +16990,7 @@ function getMediaGalleryVoiceCommand(cmd) {
     const lower = normalizeVoiceTokens(cmd);
     if (resolveYouTubeLibraryViewFromVoice(lower)) return null;
     const inPhotosContext = state.isMediaStripOpen && normalizeMediaLane(state.mediaStripLane) === 'shots';
+    const canEditPhoto = inPhotosContext || !!mediaLightbox?.classList?.contains?.('active');
     const photoWordsRe = /\b(?:photos?|fotos?|pictures?|shots?|snapshots?|images?)\b/;
     const ordinalWordsRe = /^(?:latest|last|newest|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)$/;
     const namedPhotoOpenMatch = lower.match(/^(?:open|show|view)\s+(.+)$/);
@@ -18317,6 +17069,7 @@ function getMediaGalleryVoiceCommand(cmd) {
     const deleteLatestRe = new RegExp(`\\b(delete|remove|erase|trash)\\s+(?:the\\s+)?(?:last|latest)\\s+${mediaDeleteNouns}\\b`);
     const deleteCurrentRe = new RegExp(`\\b(delete|remove|erase|trash|clear)\\s+(?:the\\s+)?(?:(?:current|this|that)(?:\\s+one|\\s+item)?(?:\\s+${mediaDeleteNouns})?|(?:current|this|that)\\s+${mediaDeleteNouns})\\b`);
     const clearMediaRe = /\b(delete|remove|erase|trash|clear)\b[\s\w]{0,16}\b(?:all|every|entire|whole)\s+(media|gallery|photos?|fotos?|pictures?|snapshots?|shots?|videos?|clips?)\b/;
+    const clearMediaSimpleRe = /^(?:hey\s+blip\s+)?(?:(?:please|can|could|would|will)\s+you\s+)?(?:please\s+)?(?:delete|remove|erase|trash|clear)\s+(?:my\s+|the\s+)?(?:media|media\s+gallery|photos?|fotos?|pictures?|snapshots?|shots?|videos?|clips?)(?:\s+please)?$/;
     const showThemRe = /\b(show|open|view)\s+(them|those|pictures?|photos?|fotos?|snapshots?|shots)\b/;
     const showCollectionRe = /\b(show|open|view|display)\b(?:\s+me)?(?:\s+the)?(?:\s+(all|any|my|these|those|last))?(?:\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))?\s+(photos?|fotos?|pictures?|snapshots?|shots?|gallery)\b/;
     const showRecordingsCollectionRe = /\b(show|open|view|display)\b(?:\s+me)?(?:\s+the)?(?:\s+(all|any|my|these|those|last|latest))?\s+(recordings?|video\s+clips?|clips?)\b/;
@@ -18352,21 +17105,26 @@ function getMediaGalleryVoiceCommand(cmd) {
     if (makeLastVideoBigRe.test(lower)) return { action: 'openLatestVideo' };
     if (openRecordingRe.test(lower)) return { action: 'openLatestVideo' };
     if (openVideoRe.test(lower)) return { action: 'openLatestVideo' };
-    if (rotateLeftRe.test(lower)) return { action: 'rotateCurrentImage', delta: -90 };
-    if (rotateAgainRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
-    if (rotateRightRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
-    if (brightenAgainRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
-    if (brightenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
-    if (darkenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: -0.35 };
-    if (undoEditsRe.test(lower)) return { action: 'undoCurrentImageEdits' };
-    if (resetPhotoRe.test(lower)) return { action: 'resetCurrentImageEdits' };
-    if (cropRe.test(lower)) return { action: 'cropCurrentImageUnsupported' };
-    if (sharePhotoRe.test(lower)) return { action: 'shareCurrentImage' };
-    if (downloadPhotoRe.test(lower)) return { action: 'downloadCurrentImage' };
-    if (wallpaperPhotoRe.test(lower)) return { action: 'wallpaperCurrentImage' };
+    // Only allow destructive/transform edits when a photo context is actually open.
+    // This prevents STT noise like "turn it again" from accidentally rotating while the user
+    // is trying to do something else (e.g. Telegram).
+    if (canEditPhoto) {
+        if (rotateLeftRe.test(lower)) return { action: 'rotateCurrentImage', delta: -90 };
+        if (rotateAgainRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
+        if (rotateRightRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
+        if (brightenAgainRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
+        if (brightenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
+        if (darkenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: -0.35 };
+        if (undoEditsRe.test(lower)) return { action: 'undoCurrentImageEdits' };
+        if (resetPhotoRe.test(lower)) return { action: 'resetCurrentImageEdits' };
+        if (cropRe.test(lower)) return { action: 'cropCurrentImageUnsupported' };
+        if (sharePhotoRe.test(lower)) return { action: 'shareCurrentImage' };
+        if (downloadPhotoRe.test(lower)) return { action: 'downloadCurrentImage' };
+        if (wallpaperPhotoRe.test(lower)) return { action: 'wallpaperCurrentImage' };
+    }
     if (deleteLatestRe.test(lower)) return 'deleteLatest';
     if (deleteCurrentRe.test(lower)) return 'deleteCurrent';
-    if (clearMediaRe.test(lower) && deleteVerbAnyRe.test(lower)) return 'clear';
+    if ((clearMediaRe.test(lower) && deleteVerbAnyRe.test(lower)) || clearMediaSimpleRe.test(lower)) return 'clear';
     if (showThemRe.test(lower)) return 'open';
     if (showCollectionRe.test(lower)) return 'open';
 
@@ -18464,10 +17222,6 @@ function getYouTubeVoiceCommand(cmd) {
     if (!cmd || typeof cmd !== 'string') return null;
     const lower = normalizeVoiceTokens(cmd);
     if (/\bcalendar\b/.test(lower)) return null;
-    // Saved shots / camera roll — keep on media gallery path, not YouTube saved lists.
-    if (/\b(?:photos?|fotos?|pictures?|shots?|snapshots?)\b/.test(lower) && !/\b(?:youtube|yt)\b/.test(lower)) {
-        return null;
-    }
     const libraryView = resolveYouTubeLibraryViewFromVoice(lower);
     if (libraryView === 'Music') return 'openMusic';
     if (libraryView === 'Videos') return 'openVideos';
@@ -18481,10 +17235,9 @@ function getYouTubeVoiceCommand(cmd) {
     if (/^(?:please\s+)?(?:play|resume|play\s+(?:the\s+)?(?:video|youtube|player|it)|resume\s+(?:the\s+)?(?:video|youtube|player|it))(?:\s+please)?$/.test(lower)) return 'play';
     if (/^(?:please\s+)?(?:stop|stop\s+(?:the\s+)?(?:video|youtube|player|it))(?:\s+please)?$/.test(lower)) return 'stop';
     if (/^(?:please\s+)?open\s+music(?:\s+please)?$/.test(lower) || /^(?:please\s+)?show\s+music(?:\s+please)?$/.test(lower)) return 'openMusic';
-    if (/^(?:please\s+)?open\s+videos\b(?:\s+please)?$/.test(lower) || /^(?:please\s+)?show\s+videos\b(?:\s+please)?$/.test(lower)) return 'openVideos';
+    if (/^(?:please\s+)?open\s+videos?(?:\s+please)?$/.test(lower) || /^(?:please\s+)?show\s+videos?(?:\s+please)?$/.test(lower)) return 'openVideos';
     if (youtubePanelOpen && /\b(?:switch|change|go|move|set)\s+(?:to\s+)?music\b/.test(lower)) return 'openMusic';
-    // Require plural "videos" — singular "video" collides with STT errors for "photos".
-    if (youtubePanelOpen && /\b(?:switch|change|go|move|set)\s+(?:to\s+)?videos\b/.test(lower)) return 'openVideos';
+    if (youtubePanelOpen && /\b(?:switch|change|go|move|set)\s+(?:to\s+)?videos?\b/.test(lower)) return 'openVideos';
     if ((state.pendingYouTubeAction === 'unmute' || youtubePanelOpen) && /^(ok|yes|play)\s*$/.test(lower)) return 'unmute';
     if (/\bun\s*-?\s*mute\b/.test(lower) ||
         /\bsound\s+on\b/.test(lower) ||
@@ -18540,7 +17293,6 @@ function getYouTubeVoiceCommand(cmd) {
 
 function getYouTubeLibraryBrowseVoiceCommand(cmd) {
     if (!cmd || typeof cmd !== 'string' || !isYouTubeLibraryVoiceContextOpen()) return null;
-    if (isCalendarPanelActuallyVisible()) return null;
     const lower = normalizeVoiceTokens(cmd);
     if (isYouTubeLibraryOnlyPanelOpen()) {
         if (/^(?:please\s+)?(?:next|next\s+one|next\s+video|go\s+next|move\s+down)(?:\s+please)?$/.test(lower)) return 'next';
@@ -18594,11 +17346,10 @@ function ensureYouTubeAPI(callback) {
 }
 
 function renderYouTubeIframeFallback(videoId) {
+    state.pendingYouTubeAction = null;
     const fallback = document.getElementById('blip-yt-player');
     if (!fallback || !videoId) return;
-    const wantsSoundOn = state.pendingYouTubeAction === 'unmute' || state.pendingYouTubeAction === 'play';
-    fallback.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=${wantsSoundOn ? '0' : '1'}&playsinline=1&rel=0" width="100%" height="200" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="border:none;border-radius:12px;"></iframe>`;
-    if (wantsSoundOn) state.pendingYouTubeAction = null;
+    fallback.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&rel=0" width="100%" height="200" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="border:none;border-radius:12px;"></iframe>`;
 }
 
 function mountYouTubePlayer(videoId) {
@@ -18679,10 +17430,8 @@ function mountYouTubeSearchPlayer(query = '') {
                         // Fall back to a plain iframe search embed (still playable, but no JS control).
                         const fallback = document.getElementById('blip-yt-player');
                         if (!fallback) return;
-                        const wantsSoundOn = state.pendingYouTubeAction === 'unmute' || state.pendingYouTubeAction === 'play';
-                        const src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(q)}&autoplay=1&mute=${wantsSoundOn ? '0' : '1'}&playsinline=1&rel=0`;
+                        const src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(q)}&autoplay=1&mute=1&playsinline=1&rel=0`;
                         fallback.innerHTML = `<iframe src="${src}" width="100%" height="200" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="border:none;border-radius:12px;"></iframe>`;
-                        if (wantsSoundOn) state.pendingYouTubeAction = null;
                     }
                 }
             });
@@ -18690,10 +17439,8 @@ function mountYouTubeSearchPlayer(query = '') {
             console.warn('YT.Player search mode failed:', error?.message || error);
             const fallback = document.getElementById('blip-yt-player');
             if (!fallback) return;
-            const wantsSoundOn = state.pendingYouTubeAction === 'unmute' || state.pendingYouTubeAction === 'play';
-            const src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(q)}&autoplay=1&mute=${wantsSoundOn ? '0' : '1'}&playsinline=1&rel=0`;
+            const src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(q)}&autoplay=1&mute=1&playsinline=1&rel=0`;
             fallback.innerHTML = `<iframe src="${src}" width="100%" height="200" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" style="border:none;border-radius:12px;"></iframe>`;
-            if (wantsSoundOn) state.pendingYouTubeAction = null;
         }
     });
 }
@@ -18738,7 +17485,7 @@ function wantsToSeeMediaAgain(cmd) {
         /\bshow\s+me\s+.*\b(display|screen)\b/.test(lower);
 }
 
-/** Build a short "memory" block from lastContext + recent history for better continuity. */
+/** Build a short "memory" block from lastContext + recent history + shared objects for better continuity. */
 function getContextBlock() {
     const c = state.lastContext;
     const parts = [];
@@ -18746,12 +17493,23 @@ function getContextBlock() {
     if (c.lastChartTitle) parts.push(`Last chart shown: ${c.lastChartTitle}`);
     if (c.lastLocation) parts.push(`Last location/map: ${c.lastLocation}`);
     if (c.lastSearchTopic) parts.push(`Last search topic: ${c.lastSearchTopic}`);
+
+    if (Array.isArray(state.hubItems) && state.hubItems.length > 0) {
+        const hubList = state.hubItems.slice(0, 5).map(item => `[${item.type}] ${item.content || item.data?.title || 'item'}`).join(', ');
+        parts.push(`Recent Hub items: ${hubList}`);
+    }
+
+    if (Array.isArray(state.sharedObjects) && state.sharedObjects.length > 0) {
+        const sharedList = state.sharedObjects.slice(-5).map(obj => `[${obj.kind}] ${obj.label}`).join(', ');
+        parts.push(`Recent Shared objects: ${sharedList}`);
+    }
+
     if (state.history.length > 0) {
         const recent = state.history.slice(-3).map(h => `User: ${h.user.slice(0, 60)}${h.user.length > 60 ? '…' : ''} → Blip replied.`).join(' | ');
         parts.push(`Recent turns: ${recent}`);
     }
     if (parts.length === 0) return '';
-    return `[Context from this session — use it when the user says "that", "another graph", "there", "same place", etc.]\n${parts.join('\n')}\n\n`;
+    return `[Context from this session — use it when the user says "that", "this video", "send to", etc.]\n${parts.join('\n')}\n\n`;
 }
 
 function extractJSON(text) {
@@ -18828,6 +17586,7 @@ async function speak(text, emotion = 'serious') {
         surprised: { pitch: 1.1, rate: 1.05 },
         serious: { pitch: 1, rate: 1 }
     }[emotion] || { pitch: 1, rate: 1 };
+    cfg.rate = getCompanionSpeechRate(cfg.rate || 1);
 
     if (state.voiceEngine === 'gemini') {
         if (!state.geminiKey || !state.geminiKey.trim()) {
@@ -18864,6 +17623,7 @@ async function speak(text, emotion = 'serious') {
 async function speakWithGuard(text, emotion = 'serious') {
     state.lastSpeechStartedAt = Date.now();
     state.lastSpokenText = String(text || '').trim();
+    companionModeController.pauseForSpeech();
     syncScenerySuppression();
     try {
         await speak(text, emotion);
@@ -18875,6 +17635,7 @@ async function speakWithGuard(text, emotion = 'serious') {
     } finally {
         state.lastSpeechStartedAt = 0;
         state.lastSpokenFinishedAt = Date.now();
+        companionModeController.resumeAfterSpeech().catch(() => { });
         syncScenerySuppression();
     }
 }
@@ -18932,7 +17693,6 @@ function setFaceAnimation(name) {
     if (!faceContainer) return;
     FACE_ANIMATIONS.forEach(c => faceContainer.classList.remove(c));
     if (name && FACE_ANIMATIONS.includes(name)) faceContainer.classList.add(name);
-    syncMiniBlipEmotion();
 }
 
 function getReplyPersonaKey(emotion = 'happy') {
@@ -19124,175 +17884,6 @@ function stopDreamThoughts() {
         state.sleepDreamInterval = null;
     }
     if (dreamThoughts) dreamThoughts.innerHTML = '';
-}
-
-function queueSleepArcadeTimeout(callback, delay) {
-    const safeDelay = Math.max(0, Number(delay) || 0);
-    const timeoutId = setTimeout(() => {
-        state.sleepArcadeTimers = (state.sleepArcadeTimers || []).filter((id) => id !== timeoutId);
-        callback();
-    }, safeDelay);
-    state.sleepArcadeTimers.push(timeoutId);
-    return timeoutId;
-}
-
-function clearSleepArcadeTimers() {
-    if (Array.isArray(state.sleepArcadeTimers)) {
-        state.sleepArcadeTimers.forEach((id) => clearTimeout(id));
-        state.sleepArcadeTimers = [];
-    }
-    if (!spaceOverlay) return;
-    spaceOverlay.querySelectorAll('.sleep-fighter-jet, .sleep-laser, .sleep-burst').forEach((node) => node.remove());
-    getSleepArcadeUfos().forEach((ufo) => {
-        ufo.classList.remove('ufo-hit');
-        ufo.style.removeProperty('--sleep-arcade-hit-x');
-        ufo.style.removeProperty('--sleep-arcade-hit-y');
-    });
-}
-
-function getSleepArcadeUfos() {
-    return Array.from(document.querySelectorAll('#space-overlay .ufo-drift'));
-}
-
-function isSleepArcadeEnabled() {
-    return !!(
-        spaceOverlay &&
-        state.isActive &&
-        state.softSleepMode &&
-        !state.isThinking &&
-        !speech.isSpeaking &&
-        !state.activeAlert &&
-        !document.body.classList.contains('reduce-motion')
-    );
-}
-
-function spawnSleepArcadeBurst(x, y) {
-    if (!spaceOverlay) return;
-    const burst = document.createElement('div');
-    burst.className = 'sleep-burst';
-    burst.style.left = `${x}px`;
-    burst.style.top = `${y}px`;
-
-    const sparkCount = 6;
-    for (let i = 0; i < sparkCount; i += 1) {
-        const spark = document.createElement('span');
-        const angle = (360 / sparkCount) * i + (Math.random() * 22 - 11);
-        const distance = 16 + Math.random() * 28;
-        spark.className = 'sleep-burst-spark';
-        spark.style.setProperty('--spark-angle', `${angle}deg`);
-        spark.style.setProperty('--spark-distance', `${distance.toFixed(1)}px`);
-        spark.style.setProperty('--spark-delay', `${(Math.random() * 0.08).toFixed(2)}s`);
-        burst.appendChild(spark);
-    }
-
-    spaceOverlay.appendChild(burst);
-    queueSleepArcadeTimeout(() => burst.remove(), 900);
-}
-
-function spawnSleepArcadeLaser(startX, startY, endX, endY) {
-    if (!spaceOverlay) return;
-    const beam = document.createElement('div');
-    beam.className = 'sleep-laser';
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const distance = Math.max(64, Math.hypot(dx, dy));
-    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-    beam.style.left = `${startX}px`;
-    beam.style.top = `${startY}px`;
-    beam.style.width = `${distance}px`;
-    beam.style.transform = `translate3d(0, 0, 0) rotate(${angle}deg)`;
-    spaceOverlay.appendChild(beam);
-    queueSleepArcadeTimeout(() => beam.remove(), SLEEP_ARCADE_BEAM_MS);
-}
-
-function hitSleepArcadeUfo(ufo) {
-    if (!ufo) return;
-    const rect = ufo.getBoundingClientRect();
-    const overlayRect = spaceOverlay?.getBoundingClientRect?.();
-    const localX = overlayRect ? (rect.left - overlayRect.left) + (rect.width / 2) : rect.left + (rect.width / 2);
-    const localY = overlayRect ? (rect.top - overlayRect.top) + (rect.height / 2) : rect.top + (rect.height / 2);
-
-    ufo.classList.add('ufo-hit');
-    spawnSleepArcadeBurst(localX, localY);
-    queueSleepArcadeTimeout(() => {
-        ufo.classList.remove('ufo-hit');
-    }, SLEEP_ARCADE_HIT_HOLD_MS + Math.random() * 900);
-}
-
-function runSleepArcadeEncounter() {
-    if (!isSleepArcadeEnabled()) return;
-    const ufos = getSleepArcadeUfos().filter((ufo) => !ufo.classList.contains('ufo-hit'));
-    if (!ufos.length) {
-        scheduleSleepArcadeEncounter(1200);
-        return;
-    }
-
-    const target = ufos[Math.floor(Math.random() * ufos.length)];
-    const overlayRect = spaceOverlay.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    if (!overlayRect.width || !overlayRect.height || !targetRect.width || !targetRect.height) {
-        scheduleSleepArcadeEncounter(1000);
-        return;
-    }
-
-    const targetCenterX = (targetRect.left - overlayRect.left) + (targetRect.width / 2);
-    const targetCenterY = (targetRect.top - overlayRect.top) + (targetRect.height / 2);
-    const fromLeft = Math.random() > 0.5;
-    const startX = fromLeft ? -120 : overlayRect.width + 120;
-    const startY = Math.max(34, Math.min(overlayRect.height - 42, targetCenterY + (Math.random() * 70 - 35)));
-    const endX = targetCenterX + (Math.random() * 28 - 14);
-    const endY = targetCenterY + (Math.random() * 18 - 9);
-    const angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
-
-    const jet = document.createElement('div');
-    jet.className = 'sleep-fighter-jet';
-    jet.style.left = '0px';
-    jet.style.top = '0px';
-    jet.style.setProperty('--jet-start-x', `${startX}px`);
-    jet.style.setProperty('--jet-start-y', `${startY}px`);
-    jet.style.setProperty('--jet-end-x', `${endX}px`);
-    jet.style.setProperty('--jet-end-y', `${endY}px`);
-    jet.style.setProperty('--jet-angle', `${angle}deg`);
-    jet.style.setProperty('--jet-duration', `${SLEEP_ARCADE_JET_MS}ms`);
-    jet.style.setProperty('--jet-flip', fromLeft ? '1' : '-1');
-    jet.innerHTML = '<span class="sleep-jet-canopy"></span><span class="sleep-jet-wing sleep-jet-wing-left"></span><span class="sleep-jet-wing sleep-jet-wing-right"></span><span class="sleep-jet-tail"></span>';
-    spaceOverlay.appendChild(jet);
-
-    queueSleepArcadeTimeout(() => {
-        const beamStartX = startX + (fromLeft ? 58 : -6);
-        const beamStartY = startY - 2;
-        spawnSleepArcadeLaser(beamStartX, beamStartY, targetCenterX, targetCenterY);
-        hitSleepArcadeUfo(target);
-        jet.classList.add('is-firing');
-    }, 620);
-
-    queueSleepArcadeTimeout(() => {
-        jet.remove();
-    }, SLEEP_ARCADE_JET_MS + 160);
-
-    queueSleepArcadeTimeout(() => {
-        scheduleSleepArcadeEncounter(SLEEP_ARCADE_MIN_DELAY_MS + Math.random() * (SLEEP_ARCADE_MAX_DELAY_MS - SLEEP_ARCADE_MIN_DELAY_MS));
-    }, SLEEP_ARCADE_JET_MS + 420);
-}
-
-function scheduleSleepArcadeEncounter(delay = SLEEP_ARCADE_MIN_DELAY_MS) {
-    if (!isSleepArcadeEnabled()) return;
-    queueSleepArcadeTimeout(() => {
-        if (!isSleepArcadeEnabled()) return;
-        runSleepArcadeEncounter();
-    }, delay);
-}
-
-function syncSleepArcadeMode() {
-    const enabled = isSleepArcadeEnabled();
-    document.body.classList.toggle('sleep-arcade-mode', enabled);
-    if (!enabled) {
-        clearSleepArcadeTimers();
-        return;
-    }
-    if (!state.sleepArcadeTimers.length) {
-        scheduleSleepArcadeEncounter(280);
-    }
 }
 
 // Deprecated: Alias for backward compatibility
@@ -19656,29 +18247,6 @@ function setBlipTimer(text, ms, dueAt = null) {
 
     const timerEntry = { id: timerId, text, time: targetTime };
     state.timers.push(timerEntry);
-    recordConversationAction(state, {
-        tool: 'timer',
-        action_type: 'timer_created',
-        target_object: String(timerId),
-        previous_state: null,
-        new_state: { id: timerId, text, time: targetTime },
-        undo_strategy: 'cancel_timer',
-        undo_window: 'session',
-        user_visible_summary: `Set timer for ${text}`
-    });
-    setToolBranchState(state, 'timer', {
-        currentTask: 'timer active',
-        currentIntent: {
-            family: 'timer',
-            action: 'timer',
-            confidence: 0.95
-        },
-        activePanel: 'timer',
-        panelStack: ['timer'],
-        draft: { id: timerId, text, time: targetTime },
-        lastUtterance: text,
-        note: `Timer set for ${text}`
-    });
     persistTimers();
     renderCountdownDisplay();
     return timerEntry;
@@ -19781,7 +18349,7 @@ function downloadChart() {
  * @param {{ action: string, tool_params?: object, text?: string }} parsedResponse
  */
 function bindCalendarPanelControls(sidePanel) {
-    sidePanel.querySelector('.blip-calendar-mirror-close, .blip-calendar-orb-close')?.addEventListener('click', () => {
+    sidePanel.querySelector('.blip-calendar-orb-close')?.addEventListener('click', () => {
         closeCalendarPanel();
     });
 
@@ -20025,12 +18593,186 @@ async function buildEmailPayloadFromContext(request = {}) {
         const payload = await usePayload(formatYouTubeShareForEmail());
         if (payload) return payload;
     }
-    if (state.currentSidePanelAction === 'calendaragenda' || state.activeCalendarViewRequest || (state.calendarCache || []).length) {
+    if (state.currentSidePanelAction === 'calendarAgenda' || state.activeCalendarViewRequest || (state.calendarCache || []).length) {
         const payload = await usePayload(getPreferredCalendarSharePayload());
         if (payload) return payload;
     }
 
     return null;
+}
+
+async function ensureGmailProfileLoaded() {
+    const authState = getGoogleGmailAuthState();
+    if (!authState.connected) return null;
+    try {
+        const profile = await getGoogleGmailProfile();
+        state.gmailProfile = profile || null;
+        return state.gmailProfile;
+    } catch (error) {
+        console.warn('Gmail profile load failed:', error?.message || error);
+        throw error;
+    }
+}
+
+async function loadGmailInboxState(options = {}) {
+    const authState = getGoogleGmailAuthState();
+    if (!authState.connected) {
+        throw new Error('Google Gmail is not connected. Press Connect Gmail in Settings first.');
+    }
+
+    const profile = await ensureGmailProfileLoaded();
+    const messages = await listGoogleGmailMessages({ maxResults: Number(options.maxResults) || 12 });
+    state.gmailMessages = Array.isArray(messages) ? messages : [];
+
+    const requestedId = String(options.selectId || '').trim();
+    const fallbackId = requestedId
+        || state.gmailSelectedMessageId
+        || state.gmailMessages[0]?.id
+        || '';
+    state.gmailSelectedMessageId = fallbackId;
+
+    if (fallbackId) {
+        try {
+            state.gmailSelectedMessage = await getGoogleGmailMessage(fallbackId);
+        } catch (error) {
+            console.warn('Gmail message load failed:', error?.message || error);
+            state.gmailSelectedMessage = null;
+        }
+    } else {
+        state.gmailSelectedMessage = null;
+    }
+
+    return {
+        profile,
+        messages: state.gmailMessages,
+        selectedMessage: state.gmailSelectedMessage
+    };
+}
+
+function buildGmailPanelHtml(toolParams = {}) {
+    const authState = toolParams.authState || getGoogleGmailAuthState();
+    const messages = Array.isArray(toolParams.messages) ? toolParams.messages : [];
+    const selectedMessage = toolParams.selectedMessage || null;
+    const composeDraft = toolParams.composeDraft || state.gmailComposeDraft || { to: '', subject: '', text: '' };
+    const profile = toolParams.profile || state.gmailProfile || null;
+    const selectedId = String(selectedMessage?.id || state.gmailSelectedMessageId || '');
+    const bodyText = getGmailPreviewText(selectedMessage);
+
+    return `
+        <div class="blip-gmail-shell">
+            <div class="blip-gmail-toolbar">
+                <div class="blip-gmail-status${authState.connected ? ' connected' : ' warning'}">
+                    ${escapeHtml(
+                        authState.connected
+                            ? (profile?.email ? `Connected as ${profile.email}` : 'Gmail connected.')
+                            : 'Connect Gmail in Settings first.'
+                    )}
+                </div>
+                <div class="blip-gmail-toolbar-actions">
+                    <button type="button" class="action-link outline" data-gmail-refresh>Refresh</button>
+                    <button type="button" class="action-link outline" data-gmail-compose-clear>New Email</button>
+                </div>
+            </div>
+            <div class="blip-gmail-layout">
+                <div class="blip-gmail-list blip-panel-scroll">
+                    ${messages.length ? messages.map((message, index) => `
+                        <button
+                            type="button"
+                            class="blip-gmail-message${String(message?.id || '') === selectedId ? ' is-active' : ''}"
+                            data-gmail-open="${escapeHtml(String(message?.id || ''))}">
+                            <div class="blip-gmail-message-head">
+                                <span class="blip-gmail-index">#${index + 1}</span>
+                                <span class="blip-gmail-from">${escapeHtml(String(message?.from || 'Unknown sender'))}</span>
+                                <span class="blip-gmail-date">${escapeHtml(formatGmailMessageDate(message))}</span>
+                            </div>
+                            <div class="blip-gmail-subject">${escapeHtml(String(message?.subject || '(No subject)'))}</div>
+                            <div class="blip-gmail-snippet">${escapeHtml(getGmailPreviewText(message) || 'No preview available.')}</div>
+                        </button>
+                    `).join('') : '<div class="blip-panel-empty">No Gmail messages loaded yet.</div>'}
+                </div>
+                <div class="blip-gmail-detail">
+                    <div class="blip-gmail-compose blip-panel-card">
+                        <div class="blip-gmail-compose-title">Compose</div>
+                        <input type="email" data-gmail-to class="blip-gmail-input" placeholder="To" value="${escapeHtml(String(composeDraft.to || ''))}">
+                        <input type="text" data-gmail-subject class="blip-gmail-input" placeholder="Subject" value="${escapeHtml(String(composeDraft.subject || ''))}">
+                        <textarea data-gmail-body class="blip-gmail-textarea" placeholder="Write your message...">${escapeHtml(String(composeDraft.text || ''))}</textarea>
+                        <div class="blip-gmail-compose-actions">
+                            <button type="button" class="action-link outline" data-gmail-send>Send</button>
+                        </div>
+                    </div>
+                    <div class="blip-gmail-reader blip-panel-card">
+                        <div class="blip-gmail-reader-kicker">Inbox</div>
+                        ${selectedMessage ? `
+                            <div class="blip-gmail-reader-subject">${escapeHtml(String(selectedMessage.subject || '(No subject)'))}</div>
+                            <div class="blip-gmail-reader-meta">${escapeHtml(String(selectedMessage.from || 'Unknown sender'))}${selectedMessage?.date ? ` · ${escapeHtml(String(selectedMessage.date))}` : ''}</div>
+                            <div class="blip-gmail-reader-body blip-panel-scroll">${escapeHtml(bodyText || 'No body text available.')}</div>
+                        ` : '<div class="blip-panel-empty">Pick an email on the left, or say "read email 1".</div>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function openGmailInboxPanel(options = {}) {
+    const authState = getGoogleGmailAuthState();
+    if (!authState.connected) {
+        throw new Error('Google Gmail is not connected. Press Connect Gmail in Settings first.');
+    }
+
+    await loadGmailInboxState({
+        maxResults: Number(options.maxResults) || 12,
+        selectId: options.selectId || ''
+    });
+
+    renderActionInSidePanel({
+        action: 'gmail',
+        tool_params: {
+            authState: getGoogleGmailAuthState(),
+            profile: state.gmailProfile,
+            messages: state.gmailMessages,
+            selectedMessage: state.gmailSelectedMessage,
+            composeDraft: state.gmailComposeDraft
+        },
+        text: options.summary || (state.gmailMessages.length
+            ? `Inbox open. ${state.gmailMessages.length} message${state.gmailMessages.length === 1 ? '' : 's'} loaded.`
+            : 'Inbox open.')
+    });
+
+    if (!isSidePanelActuallyVisible('gmail')) {
+        throw new Error('I tried to open Gmail, but the window did not appear.');
+    }
+}
+
+async function openGmailMessageByIndex(index) {
+    const list = Array.isArray(state.gmailMessages) && state.gmailMessages.length
+        ? state.gmailMessages
+        : await listGoogleGmailMessages({ maxResults: 12 });
+    state.gmailMessages = Array.isArray(list) ? list : [];
+    const target = state.gmailMessages[index - 1];
+    if (!target?.id) {
+        return { ok: false, text: `I could not find email ${index}.` };
+    }
+    state.gmailSelectedMessageId = target.id;
+    state.gmailSelectedMessage = await getGoogleGmailMessage(target.id);
+    await openGmailInboxPanel({
+        selectId: target.id,
+        summary: `Opened email ${index}.`
+    });
+    return { ok: true, text: `Opened email ${index}.` };
+}
+
+async function sendCurrentGmailDraft(draft = {}) {
+    const to = String(draft?.to || '').trim();
+    const subject = String(draft?.subject || '').trim();
+    const text = String(draft?.text || '').trim();
+    if (!to || !text) {
+        return { ok: false, text: 'Need at least To and Message before I can send the email.' };
+    }
+    await sendGoogleGmailMessage({ to, subject, text });
+    resetGmailComposeDraft();
+    await openGmailInboxPanel({ summary: `Gmail accepted the email for ${to}.` });
+    return { ok: true, text: `Gmail accepted the email for ${to}.` };
 }
 
 function bindCreationsPanelControls(sidePanel) {
@@ -20055,55 +18797,134 @@ function bindCreationsPanelControls(sidePanel) {
     });
 }
 
+function bindGmailPanelControls(sidePanel) {
+    const syncDraftFromInputs = () => {
+        const toInput = sidePanel.querySelector('[data-gmail-to]');
+        const subjectInput = sidePanel.querySelector('[data-gmail-subject]');
+        const bodyInput = sidePanel.querySelector('[data-gmail-body]');
+        resetGmailComposeDraft({
+            to: toInput?.value || '',
+            subject: subjectInput?.value || '',
+            text: bodyInput?.value || ''
+        });
+    };
+
+    sidePanel.querySelectorAll('[data-gmail-to], [data-gmail-subject], [data-gmail-body]').forEach((input) => {
+        input.addEventListener('input', syncDraftFromInputs);
+        input.addEventListener('change', syncDraftFromInputs);
+    });
+
+    sidePanel.querySelectorAll('[data-gmail-open]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const messageId = button.getAttribute('data-gmail-open');
+            if (!messageId) return;
+            syncDraftFromInputs();
+            try {
+                state.gmailSelectedMessageId = messageId;
+                state.gmailSelectedMessage = await getGoogleGmailMessage(messageId);
+                await openGmailInboxPanel({ selectId: messageId, summary: 'Email open.' });
+                if (transcriptText) transcriptText.innerText = 'Email open.';
+            } catch (error) {
+                console.warn('Open Gmail message failed:', error?.message || error);
+                if (transcriptText) transcriptText.innerText = error?.message || 'Could not open that email.';
+            }
+        });
+    });
+
+    sidePanel.querySelector('[data-gmail-refresh]')?.addEventListener('click', async () => {
+        syncDraftFromInputs();
+        try {
+            await openGmailInboxPanel({ summary: 'Inbox refreshed.' });
+            if (transcriptText) transcriptText.innerText = 'Inbox refreshed.';
+        } catch (error) {
+            console.warn('Refresh Gmail inbox failed:', error?.message || error);
+            if (transcriptText) transcriptText.innerText = error?.message || 'Could not refresh Gmail.';
+        }
+    });
+
+    sidePanel.querySelector('[data-gmail-compose-clear]')?.addEventListener('click', async () => {
+        resetGmailComposeDraft();
+        await openGmailInboxPanel({ summary: 'New email ready.' });
+        if (transcriptText) transcriptText.innerText = 'New email ready.';
+    });
+
+    sidePanel.querySelector('[data-gmail-send]')?.addEventListener('click', async () => {
+        const toInput = sidePanel.querySelector('[data-gmail-to]');
+        const subjectInput = sidePanel.querySelector('[data-gmail-subject]');
+        const bodyInput = sidePanel.querySelector('[data-gmail-body]');
+        resetGmailComposeDraft({
+            to: toInput?.value || '',
+            subject: subjectInput?.value || '',
+            text: bodyInput?.value || ''
+        });
+        try {
+            const result = await sendCurrentGmailDraft(state.gmailComposeDraft);
+            if (transcriptText) transcriptText.innerText = result.text;
+        } catch (error) {
+            console.warn('Send Gmail from panel failed:', error?.message || error);
+            if (transcriptText) transcriptText.innerText = error?.message || 'Could not send that email.';
+        }
+    });
+}
+
 // ── UI: SIDE PANEL RENDER (timer, notes, youtube, chart, etc.) ─────────────────
 function renderActionInSidePanel(parsedResponse) {
-    const { tool_params = {}, text = '' } = parsedResponse;
-    const action = String(parsedResponse?.action || '').trim().toLowerCase();
+    const { action, tool_params = {}, text = '' } = parsedResponse;
     if (action === 'none' || !action) return;
-    document.body.classList.toggle('blip-calendar-panel-open', action === 'calendaragenda');
     if (action !== 'timer') stopTimerPanelTicker();
-
-    if (action === 'calendaragenda') {
-        state.currentSidePanelAction = 'calendaragenda';
-        state.currentSidePanelVisualUrl = '';
-        document.body.classList.remove('blip-gmail-panel-open', 'blip-telegram-panel-open');
-        if (sidePanelChart) {
-            sidePanelChart.destroy();
-            sidePanelChart = null;
-        }
-        const sidePanel = mountCalendarAgendaPanel(tool_params.html || '');
-        bindCalendarPanelControls(sidePanel);
-        return;
-    }
-
     state.currentSidePanelAction = action;
     state.currentSidePanelVisualUrl = '';
-    document.body.classList.toggle('blip-gmail-panel-open', action === 'gmail');
-    document.body.classList.toggle('blip-telegram-panel-open', action === 'telegram');
 
     let sidePanel = document.getElementById('blip-side-panel');
     if (!sidePanel) {
         sidePanel = document.createElement('div');
         sidePanel.id = 'blip-side-panel';
         sidePanel.style.position = 'fixed';
-        sidePanel.style.zIndex = '1200';
+        sidePanel.style.zIndex = '1000';
         sidePanel.style.color = '#e5eefc';
         sidePanel.style.fontFamily = 'Inter, sans-serif';
         document.body.appendChild(sidePanel);
     }
     applyDefaultSidePanelLayout(sidePanel, action);
-    if (action === 'gmail') {
-        applyGmailSidePanelLayout(sidePanel);
-    } else if (action === 'telegram') {
-        applyTelegramSidePanelLayout(sidePanel);
-    } else if (isWideWorkspaceAction(action)) {
+    if (isWideWorkspaceAction(action)) {
         applyWorkspaceSidePanelLayout(sidePanel, action);
     }
-    sidePanel.style.display = panelUsesFlexColumnLayout(action) ? 'flex' : 'block';
+    if (action === 'calendarAgenda') {
+        sidePanel.classList.add('blip-side-panel-centered');
+        sidePanel.style.top = '50%';
+        sidePanel.style.left = '50%';
+        sidePanel.style.right = 'auto';
+        sidePanel.style.transform = 'translate(-50%, -50%)';
+        sidePanel.style.width = 'min(520px, calc(100vw - 120px))';
+        sidePanel.style.height = 'min(680px, calc(100vh - 140px))';
+    }
+    sidePanel.style.display = isWideWorkspaceAction(action) ? 'flex' : 'block';
 
     if (sidePanelChart) {
         sidePanelChart.destroy();
         sidePanelChart = null;
+    }
+
+    if (action === 'calendarAgenda') {
+        sidePanel.classList.add('blip-calendar-orb');
+        state.currentSidePanelVisualUrl = '';
+        sidePanel.style.width = 'min(980px, calc(100vw - 36px))';
+        sidePanel.style.height = 'min(760px, calc(100vh - 48px))';
+        sidePanel.style.padding = '0';
+        sidePanel.style.borderRadius = '32px';
+        sidePanel.style.overflow = 'hidden';
+        sidePanel.style.background = '';
+        sidePanel.style.border = '';
+        sidePanel.style.boxShadow = '';
+        sidePanel.innerHTML = `
+            <button type="button" aria-label="Close panel" class="blip-calendar-orb-close">×</button>
+            <div class="blip-calendar-orb-inner">
+                <div class="blip-calendar-orb-body">${tool_params.html || '<p style="margin:8px 0 0 0; color:#a0a0b8;">No calendar items ready yet.</p>'}</div>
+            </div>
+        `;
+        bindCalendarPanelControls(sidePanel);
+        sidePanel.style.display = 'block';
+        return;
     }
 
     const title = (action && action.length) ? action.charAt(0).toUpperCase() + action.slice(1) : 'Panel';
@@ -20180,7 +19001,8 @@ function renderActionInSidePanel(parsedResponse) {
                 <div id="blip-timer-panel-body"></div>
             `;
             sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
-                closeSidePanel();
+                sidePanel.style.display = 'none';
+                clearSidePanelContext();
             });
             startTimerPanelTicker({ focusId });
             break;
@@ -20321,14 +19143,14 @@ function renderActionInSidePanel(parsedResponse) {
                     ${buildYouTubeShellHtml(buildYouTubeLibraryHtml({ simple: true }), 'library')}
                 `;
                 sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
-                    closeSidePanel();
+                    closeYouTubePanel();
                 });
                 sidePanel.querySelectorAll('[data-yt-library]').forEach((btn) => {
                     btn.addEventListener('click', () => {
                         const next = btn.getAttribute('data-yt-library') || 'Music';
                         state.youtubeLibraryView = next === 'Videos' ? 'Videos' : 'Music';
                         state.youtubeLibraryBrowseIndex = 0;
-                        try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
+                                safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
                         renderActionInSidePanel({ action: 'youtube', tool_params: { ...tool_params, query: state.youtubeLibraryView, libraryOnly: true }, text });
                     });
                 });
@@ -20436,7 +19258,7 @@ function renderActionInSidePanel(parsedResponse) {
                     `, isFocusedPlayer ? 'focus' : 'player')}
                 `;
                 sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
-                    closeSidePanel();
+                    closeYouTubePanel();
                 });
                 document.getElementById('blip-video-big-btn')?.addEventListener('click', () => {
                     setVideoBigMode(!state.videoBigMode);
@@ -20452,7 +19274,7 @@ function renderActionInSidePanel(parsedResponse) {
                     if (transcriptText) transcriptText.innerText = ok ? 'Sound on!' : 'No active video.';
                 });
                 document.getElementById('blip-yt-back-media-btn')?.addEventListener('click', () => {
-                    closeSidePanel();
+                    closeYouTubePanel();
                     toggleMediaGallery(true, focusedMediaView === 'Videos' ? 'videos' : 'music');
                 });
                 document.getElementById('blip-yt-player')?.addEventListener('click', () => {
@@ -20464,7 +19286,7 @@ function renderActionInSidePanel(parsedResponse) {
                         const next = btn.getAttribute('data-yt-library') || 'Music';
                         state.youtubeLibraryView = next === 'Videos' ? 'Videos' : 'Music';
                         state.youtubeLibraryBrowseIndex = 0;
-                        try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
+                                safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
                         renderActionInSidePanel({ action: 'youtube', tool_params, text });
                     });
                 });
@@ -20544,14 +19366,15 @@ function renderActionInSidePanel(parsedResponse) {
                     `, 'search')}
                 `;
                 sidePanel.querySelector('button')?.addEventListener('click', () => {
-                    closeSidePanel();
+                    sidePanel.style.display = 'none';
+                    clearSidePanelContext();
                 });
                 sidePanel.querySelectorAll('[data-yt-library]').forEach((btn) => {
                     btn.addEventListener('click', () => {
                         const next = btn.getAttribute('data-yt-library') || 'Music';
                         state.youtubeLibraryView = next === 'Videos' ? 'Videos' : 'Music';
                         state.youtubeLibraryBrowseIndex = 0;
-                        try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
+                                safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
                         renderActionInSidePanel({ action: 'youtube', tool_params, text });
                     });
                 });
@@ -20654,7 +19477,7 @@ function renderActionInSidePanel(parsedResponse) {
             sidePanel.innerHTML = `
                 ${buildSidePanelHeaderHtml({
                     title: 'Email',
-                    summary: summaryText || '',
+                    summary: summaryText || 'Read your inbox or compose a new email.',
                     kicker: 'Mail'
                 })}
                 ${emailFeature.buildGmailPanelHtml(tool_params)}
@@ -20666,7 +19489,7 @@ function renderActionInSidePanel(parsedResponse) {
             sidePanel.innerHTML = `
                 ${buildSidePanelHeaderHtml({
                     title: 'Telegram',
-                    summary: summaryText || '',
+                    summary: summaryText || 'Send a quick message or your latest photo.',
                     kicker: 'Telegram'
                 })}
                 ${telegramFeature.buildTelegramPanelHtml(tool_params)}
@@ -20746,36 +19569,21 @@ function renderActionInSidePanel(parsedResponse) {
             });
             break;
         }
-        case 'conversation': {
-            const snapshot = tool_params.snapshot && typeof tool_params.snapshot === 'object'
-                ? tool_params.snapshot
-                : getConversationSnapshot(state) || {};
-            sidePanel.innerHTML = `
-                ${buildSidePanelHeaderHtml({
-                    title: 'Conversation Inspector',
-                    summary: summaryText || 'Branch state, shared memory, recent actions, and undo history.',
-                    kicker: 'Thread'
-                })}
-                ${buildConversationInspectorHtml(snapshot)}
-            `;
-            bindConversationInspectorControls(sidePanel);
-            break;
-        }
         default:
             sidePanel.innerHTML += '<p class="blip-panel-empty">Handling action...</p>';
     }
 
     sidePanel.querySelector('button[aria-label="Close panel"]')?.addEventListener('click', () => {
-        closeSidePanel();
+        sidePanel.style.display = 'none';
+        if (sidePanelChart) {
+            sidePanelChart.destroy();
+            sidePanelChart = null;
+        }
+        clearSidePanelContext();
     });
 
-    if (action === 'gmail') {
-        applyGmailSidePanelLayout(sidePanel);
-    } else if (action === 'telegram') {
-        applyTelegramSidePanelLayout(sidePanel);
-    }
     ensureWorkspaceDock(sidePanel, action);
-    sidePanel.style.display = panelUsesFlexColumnLayout(action) ? 'flex' : 'block';
+    sidePanel.style.display = isWideWorkspaceAction(action) ? 'flex' : 'block';
 }
 
 // Start Audio Visualizer (Minimal)

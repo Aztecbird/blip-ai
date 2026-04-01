@@ -1,5 +1,4 @@
 import { defineConfig } from 'vite'
-import basicSsl from '@vitejs/plugin-basic-ssl'
 
 export default defineConfig({
     // Set base to repo name for aztecbird.github.io/blip-ai/
@@ -9,7 +8,9 @@ export default defineConfig({
     },
     server: {
         port: 5173,
-        host: true,
+        // Local-only host avoids Vite crashing in some environments
+        // when it tries to enumerate network interfaces.
+        host: '127.0.0.1',
         cors: true,
         // Avoid stale UI when the browser caches dev responses aggressively.
         headers: { 'Cache-Control': 'no-store' },
@@ -40,6 +41,10 @@ export default defineConfig({
             },
             '/api/hub': {
                 target: 'http://127.0.0.1:8795',
+                changeOrigin: true
+            },
+            '/api/hume': {
+                target: 'http://127.0.0.1:8796',
                 changeOrigin: true
             },
             '/api/openai-image': {

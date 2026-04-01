@@ -43,7 +43,10 @@ const server = http.createServer(async (req, res) => {
             try {
                 // Extract model from path or use default
                 const modelMatch = parsedUrl.pathname.match(/\/models\/([^:]+):generateContent/);
-                const model = modelMatch ? modelMatch[1] : 'gemini-2.5-flash';
+                const requestedModel = modelMatch ? modelMatch[1] : 'gemini-2.5-flash';
+                const model = /^minimax(?:[-\s_]?)/i.test(String(requestedModel || '').trim())
+                    ? 'gemini-2.5-flash'
+                    : requestedModel;
                 
                 const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
                 

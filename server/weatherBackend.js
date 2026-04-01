@@ -1,5 +1,6 @@
 import http from 'http';
 import url from 'url';
+import { logApiExpense } from './utils/expenseLogger.js';
 
 // Unified secret management: reading safely from environment variables
 // (These are loaded from .env.local by start-dev.sh / blip-stack.sh)
@@ -80,6 +81,16 @@ const server = http.createServer(async (req, res) => {
                     provider: 'openweather',
                     fetchTime: Date.now()
                 }));
+                void logApiExpense({
+                    provider: 'openweathermap',
+                    product: 'current_weather',
+                    operation: 'requests',
+                    model: 'openweather-current',
+                    quantity: 1,
+                    unit: 'per_request',
+                    status: 'success',
+                    metadata: { city: String(city) }
+                });
                 return;
             }
 
@@ -114,6 +125,16 @@ const server = http.createServer(async (req, res) => {
                 provider: 'wttr',
                 fetchTime: Date.now()
             }));
+            void logApiExpense({
+                provider: 'wttr',
+                product: 'current_weather',
+                operation: 'requests',
+                model: 'wttr-j1',
+                quantity: 1,
+                unit: 'per_request',
+                status: 'success',
+                metadata: { city: String(city) }
+            });
         } catch (error) {
             console.error('[Weather Backend Error]:', error);
             res.writeHead(500, { 'Content-Type': 'application/json' });

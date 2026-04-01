@@ -30,6 +30,11 @@ test('getTelegramVoiceCommand closes telegram from common close phrasing', () =>
     assert.deepEqual(getTelegramVoiceCommand('close my telegram panel'), { action: 'close' });
 });
 
+test('getTelegramVoiceCommand accepts natural telegram test-send phrasing', () => {
+    assert.deepEqual(getTelegramVoiceCommand('test send in telegram'), { action: 'sendTest' });
+    assert.deepEqual(getTelegramVoiceCommand('send test in telegram'), { action: 'sendTest' });
+});
+
 test('getTelegramVoiceCommand detects photo-share requests', () => {
     assert.deepEqual(
         getTelegramVoiceCommand('send this photo on telegram'),
@@ -38,6 +43,33 @@ test('getTelegramVoiceCommand detects photo-share requests', () => {
     assert.deepEqual(
         getTelegramVoiceCommand('send latest photo on telegram'),
         { action: 'sharePhoto', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send me the latest photo in my telegram'),
+        { action: 'sharePhoto', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('can you send a pic my latest picture in telegram'),
+        { action: 'sharePhoto', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send to my telegram the latest picture you took'),
+        { action: 'sharePhoto', quickSend: true, draft: { chatId: '' } }
+    );
+});
+
+test('getTelegramVoiceCommand detects video-share requests including “to telegram”', () => {
+    assert.deepEqual(
+        getTelegramVoiceCommand('send latest video to telegram'),
+        { action: 'shareVideo', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send latest video on telegram'),
+        { action: 'shareVideo', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('please send this video to telegram to joy'),
+        { action: 'shareVideo', quickSend: true, draft: { chatId: 'joy' } }
     );
 });
 
@@ -52,6 +84,41 @@ test('getTelegramVoiceCommand parses targeted Telegram photo shares', () => {
     assert.deepEqual(
         getTelegramVoiceCommand('send this photo on telegram to -1001234567890'),
         { action: 'sharePhoto', quickSend: true, draft: { chatId: '-1001234567890' } }
+    );
+});
+
+test('getTelegramVoiceCommand parses cross-tool share requests', () => {
+    assert.deepEqual(
+        getTelegramVoiceCommand('send a note to telegram'),
+        { action: 'shareNote', shareType: 'note', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('can you send a note to telegram or i should open telegram directly'),
+        { action: 'shareNote', shareType: 'note', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send this note to telegram'),
+        { action: 'shareNote', shareType: 'note', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send this youtube link to telegram'),
+        { action: 'shareLink', shareType: 'youtube', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send me that link in my telegram'),
+        { action: 'shareLink', shareType: 'link', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send this calendar event to telegram'),
+        { action: 'shareCurrent', shareType: 'calendar', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send the following message in the notes to telegram'),
+        { action: 'shareNote', shareType: 'note', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('share this event on telegram for joy'),
+        { action: 'shareCurrent', shareType: 'event', quickSend: false, draft: { chatId: 'joy' } }
     );
 });
 
@@ -110,5 +177,16 @@ test('getTelegramVoiceCommand keeps non-send verbs as drafts', () => {
     assert.deepEqual(
         getTelegramVoiceCommand('write telegram to joy message hello from blip'),
         { action: 'compose', draft: { chatId: 'joy', text: 'hello from blip' } }
+    );
+});
+
+test('getTelegramVoiceCommand falls back with best-effort deduction for noisy telegram phrasing', () => {
+    assert.deepEqual(
+        getTelegramVoiceCommand('please can you maybe send latest pic in telegram'),
+        { action: 'sharePhoto', quickSend: true, draft: { chatId: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send that in telegram'),
+        { action: 'compose', draft: { chatId: '', text: '' } }
     );
 });

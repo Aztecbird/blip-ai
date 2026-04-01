@@ -6,7 +6,12 @@
 
 import { askGemini, generateWithPrompt } from './geminiText.js';
 import { askOllama } from './ollama.js';
-import { web } from './web.js';
+import { web, fetchJsonWithTimeout } from './web.js';
+
+function isMiniMaxModel(model = '') {
+  const normalized = String(model || '').trim().toLowerCase();
+  return /^minimax(?:[-\s_]?)/.test(normalized);
+}
 
 function normalizeMessage(value = '') {
   return String(value || '').trim();
@@ -142,7 +147,9 @@ export async function runFastReasoning(message, context = {}) {
   ].join('\n');
 
   const askAIBrain = async (prompt, history, images, apiKey, model) => {
-    if (model.startsWith('gemini')) {
+    // MiniMax is implemented inside geminiText.js (it calls MiniMax API),
+    // but the model string is "MiniMax-..." which does NOT start with "gemini".
+    if (String(model || '').startsWith('gemini') || isMiniMaxModel(model)) {
       return await askGemini(prompt, history, images, apiKey, model);
     } else {
       const res = await askOllama(prompt, history, images, model);
@@ -248,21 +255,17 @@ export async function interpretIntent(userInput) {
   };
 }
 
-export async function synthesizeAnswer(steps, apiKey = null) {
+export async function synthesizeAnswer(steps, apiKey = null, model = null) {
   const context = JSON.stringify(steps, null, 2);
   const promptText = `Using the reasoning steps below produce the best answer.\n\n${context}`;
 
   try {
-    const response = await fetch('/api/ai', {
+    const data = await fetchJsonWithTimeout('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: promptText }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.answer != null) return data.answer;
-    }
+    }, 20000);
+    if (data.answer != null) return data.answer;
   } catch (_) {
     // Fall through to Gemini fallback when available.
   }
@@ -271,7 +274,8 @@ export async function synthesizeAnswer(steps, apiKey = null) {
     const answer = await generateWithPrompt(
       'You are a concise research assistant. Given reasoning steps (interpret + search results), produce a single clear, helpful answer. Reply with plain text only.',
       promptText,
-      apiKey
+      apiKey,
+      model || 'gemini-2.5-flash'
     );
     return answer || 'I could not synthesize an answer from the steps.';
   }
@@ -279,7 +283,7 @@ export async function synthesizeAnswer(steps, apiKey = null) {
   throw new Error('AI synthesis failed. No /api/ai and no Gemini key.');
 }
 
-export async function reasoningLoop(userInput, apiKey = null) {
+export async function reasoningLoop(userInput, apiKey = null, model = null) {
   console.log('Blip reasoning start');
 
   const steps = [];
@@ -290,10 +294,10 @@ export async function reasoningLoop(userInput, apiKey = null) {
 
   steps.push({
     step: 'search',
-    result: await web.deepDemographicSearch(userInput, [], apiKey),
+    result: await web.deepDemographicSearch(userInput, [], apiKey, model),
   });
 
-  const synthesized = await synthesizeAnswer(steps, apiKey);
+  const synthesized = await synthesizeAnswer(steps, apiKey, model);
   steps.push({
     step: 'synthesize',
     result: synthesized,

@@ -1,15 +1,6 @@
-import { normalizeVoiceCommandText } from './textParsing.js';
-
 function normalizeText(value = '') {
-    let s = normalizeVoiceCommandText(value)
-        .replace(/\b(i\s+)wanna\b/g, '$1want to')
-        .replace(/\b(i\s+)gonna\b/g, '$1going to')
-        .replace(/\be-mail\b/g, 'email');
-    // ASR: "send and email" for "send an email"
-    s = s.replace(/\b(send|write|compose)\s+and\s+email\b/g, '$1 an email');
-    // ASR: "i want send email" missing "to"
-    s = s.replace(/\b(i\s+want|i\s+need)\s+(send|write|compose)\s+(an?\s+)?email\b/g, '$1 to $2 $3email');
-    return s
+    return String(value || '')
+        .toLowerCase()
         .replace(/[^\w\s@.]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -20,12 +11,19 @@ function isValidEmail(value = '') {
 }
 
 function cleanRecipientReference(fragment = '') {
-    let s = String(fragment || '')
+    const lower = String(fragment || '').toLowerCase().trim();
+    // Proactively reject phrases that look like structural field commands for the email tool
+    if (
+        /^(?:(?:can\s+you\s+)?(?:change|correct|update|set|fix|edit)\s+(?:the\s+)?(?:subject|message|body|text|recipient|email|to))\b/.test(lower)
+        || /^(?:subject|message|body|text)\s+(?:is|to)\b/.test(lower)
+    ) {
+        return '';
+    }
+
+    return String(fragment || '')
         .toLowerCase()
         .replace(/[!?,'"()]/g, ' ')
         .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/\.+$/g, '')
         .trim()
         .replace(/^(?:send|mail|email)\s+(?:it|this|that)\s+(?:to\s+)?/g, '')
         .replace(/^(?:send|mail|email)\s+to\s+/g, '')
@@ -33,37 +31,6 @@ function cleanRecipientReference(fragment = '') {
         .replace(/^(?:to\s+)?(?:(?:the\s+)?(?:mail|email)\s+)+/, '')
         .replace(/\s+(?:please|pls|thanks|thank you|for me|now)\s*$/g, '')
         .trim();
-
-    // ASR often merges "no / I / just / send it" into a bogus recipient fragment.
-    const sendOnlyWhole = /^(?:no\s+)?(?:i\s+)?just\s+send(?:\s+it)?$/;
-    if (sendOnlyWhole.test(s)) return '';
-    if (/^no\s+just\s+send(?:\s+it)?$/.test(s)) return '';
-    if (/^i\s+just\s+send(?:\s+it)?$/.test(s)) return '';
-    if (/^(?:and\s+)?just\s+send(?:\s+it)?$/.test(s)) return '';
-    if (/^send(?:\s+it)?$/.test(s)) return '';
-    if (/^go\s+(?:on\s+)?send(?:\s+it)?$/.test(s)) return '';
-    if (/^now\s+send(?:\s+it)?$/.test(s)) return '';
-
-    let prev;
-    do {
-        prev = s;
-        s = s
-            .replace(/^(?:no\s+)?(?:i\s+)?just\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
-            .replace(/^no\s+just\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
-            .replace(/^i\s+just\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
-            .replace(/^(?:and\s+)?just\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
-            .replace(/^(?:please\s+)?go\s+(?:on\s+)?send(?:\s+it)?(?:\s+to\s+)?/, '')
-            .replace(/^now\s+send(?:\s+it)?(?:\s+to\s+)?/, '')
-            .trim();
-    } while (s !== prev);
-
-    s = s
-        .replace(/\s+(?:no\s+)?(?:i\s+)?just\s+send(?:\s+it)?$/, '')
-        .replace(/\s+(?:and\s+)?just\s+send(?:\s+it)?$/, '')
-        .replace(/\s+just\s+send(?:\s+it)?$/, '')
-        .trim();
-
-    return s;
 }
 
 export function extractSpokenEmailAddress(fragment = '') {
@@ -168,13 +135,6 @@ export function extractGmailShareRecipientRequest(command = '') {
         rest = rest.replace(/^(?:note|email|message|video|youtube|link|photo|foto|picture|image|date|calendar|event)\b/, '').trim();
     }
 
-    // Commands like "send photo in email" should stay in the email flow,
-    // not treat "in email" as if it were the recipient.
-    rest = rest
-        .replace(/^(?:in|on|via|with)\s+(?:the\s+)?(?:email|mail|gmail)\b/, '')
-        .replace(/\b(?:in|on|via|with)\s+(?:the\s+)?(?:email|mail|gmail)\b$/, '')
-        .trim();
-
     const subjectMatch = rest.match(/\bsubject\s+(.+)$/);
     if (subjectMatch) {
         subject = String(subjectMatch[1] || '').trim();
@@ -193,16 +153,9 @@ export function extractGmailShareRecipientRequest(command = '') {
         recipient = extractSpokenEmailAddress(recipientQuery);
     }
 
-    // Bare "send it" / "share that" with no thing to share, no recipient, no subject — not a new
-    // context share (prevents shareCurrent from re-opening compose when the user means send/confirm).
-    if (
-        shareType === 'auto'
-        && !recipient
-        && !recipientQuery
-        && !subject
-        && !String(rest || '').trim()
-    ) {
-        return null;
+    if (/^(?:email|mail|gmail|inbox)$/.test(recipientQuery)) {
+        recipientQuery = '';
+        recipient = '';
     }
 
     return {
@@ -214,48 +167,17 @@ export function extractGmailShareRecipientRequest(command = '') {
     };
 }
 
-/** Spoken left-hand side means “use the address in the To field / current draft.” */
-function isSaveContactDraftReference(fragment = '') {
-    const t = String(fragment || '')
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .trim();
-    return /^(?:this|the)\s+(?:recipient|address|email|to\s+field)$/.test(t)
-        || /^this\s+to$/.test(t);
-}
-
 export function extractGmailSaveContactRequest(command = '') {
     const lower = normalizeText(command);
     const match = lower.match(/^(?:save|remember|store)\s+(.+?)\s+as\s+(.+)$/);
     if (!match) return null;
     const alias = String(match[2] || '').trim();
     if (!alias) return null;
-    const leftRaw = String(match[1] || '').trim();
-    if (isSaveContactDraftReference(leftRaw)) {
-        return {
-            recipient: '',
-            recipientQuery: '',
-            alias
-        };
-    }
     return {
-        recipient: extractSpokenEmailAddress(leftRaw),
-        recipientQuery: extractRecipientReference(leftRaw),
+        recipient: extractSpokenEmailAddress(match[1] || ''),
+        recipientQuery: extractRecipientReference(match[1] || ''),
         alias
     };
-}
-
-export function extractGmailClearContactsRequest(command = '') {
-    const lower = normalizeText(command);
-    if (
-        /^(?:clear|reset|erase)\s+(?:my\s+)?(?:saved\s+)?(?:email\s+|mail\s+)?contacts$/.test(lower)
-        || /^(?:clear|reset|erase)\s+(?:my\s+)?(?:saved\s+)?(?:email\s+|mail\s+)?addresses$/.test(lower)
-        || /^(?:clear|reset)\s+(?:my\s+)?(?:email\s+)?contact\s+list$/.test(lower)
-        || /^(?:forget|remove|delete)\s+(?:all\s+)?(?:my\s+)?(?:saved\s+)?(?:email\s+|mail\s+)?(?:contacts|addresses)$/.test(lower)
-    ) {
-        return { action: 'clearContacts' };
-    }
-    return null;
 }
 
 export function extractGmailListContactsRequest(command = '') {
@@ -290,36 +212,11 @@ export function extractGmailCheckContactRequest(command = '') {
     return null;
 }
 
-/**
- * Email subject line only: "subject is …" / "subject: …".
- * Also "note subject is …" — speech often inserts "note" before "subject is …"; that is not compose-from-note.
- */
-export function extractGmailSubjectLineOnly(command = '') {
-    const lower = normalizeText(command);
-    const misheardNote = lower.match(/^note\s+subject\s+is\s+(.+)$/);
-    if (misheardNote) {
-        const subject = String(misheardNote[1] || '').trim();
-        return subject ? { subject } : null;
-    }
-    // Require "is" or ":" so "subject shopping list" (compose-from-note) is not grabbed here
-    const direct = lower.match(/^subject\s*(?:is|:)\s+(.+)$/);
-    if (direct) {
-        const subject = String(direct[1] || '').trim();
-        return subject ? { subject } : null;
-    }
-    return null;
-}
-
 export function extractGmailNoteSubjectRequest(command = '') {
     const lower = normalizeText(command);
-    // "note subject is …" is handled by extractGmailSubjectLineOnly (email subject), not a saved note
-    if (/^note\s+subject\s+is\s+/.test(lower)) {
-        return null;
-    }
-    // Require "note subject …" (without "is" right after) for compose-from-note
-    const noteSubjectLine = lower.match(/^note\s+subject\s+(.+)$/);
-    if (noteSubjectLine) {
-        return { subject: String(noteSubjectLine[1] || '').trim() };
+    const directSubject = lower.match(/^(?:(?:email|mail|note)\s+)?subject\s+(.+)$/);
+    if (directSubject) {
+        return { subject: String(directSubject[1] || '').trim() };
     }
     const noteSubject = lower.match(/^(?:send|email|mail|share)\s+(?:this\s+)?note\s+subject\s+(.+)$/);
     if (noteSubject) {
@@ -396,10 +293,7 @@ export function getGmailVoiceCommand(command = '') {
         || /^(?:can\s+you\s+)?(?:please\s+)?(?:open|show|check|view)\s+(?:my\s+)?(?:gmail|email|mail|inbox)\b/.test(lower)
         || (/\b(?:open|show|check|view)\b/.test(lower) && /\b(?:gmail|email|mail|inbox|mail tool|email tool|mail client|email client)\b/.test(lower))
     ) {
-        if (/\b(?:verify|verify it|check|read|show me|see|look at|list)\b/.test(lower) || /\binbox\b/.test(lower)) {
-            return { action: 'openInbox' };
-        }
-        return { action: 'openEmail' };
+        return { action: 'openInbox' };
     }
     if (
         /^(?:open|show|check|read|view)\s+(?:my\s+)?sent(?:\s+mail|\s+emails?|\s+folder)?$/.test(lower)
@@ -407,10 +301,7 @@ export function getGmailVoiceCommand(command = '') {
     ) {
         return { action: 'openSent' };
     }
-    if (
-        /^(?:close|hide|dismiss|exit)\s+(?:my\s+)?(?:gmail|google\s+mail|email|mail|inbox|sent|draft|drafts)$/.test(lower)
-        || /^(?:close|hide|dismiss|exit)\s+(?:my\s+)?(?:sent\s+mail|sent\s+emails?|sent\s+folder)$/.test(lower)
-    ) {
+    if (/^(?:close|hide|dismiss|exit)\s+(?:my\s+)?(?:gmail|email|mail|inbox)$/.test(lower)) {
         return { action: 'close' };
     }
     if (/^(?:refresh|reload)\s+(?:my\s+)?(?:gmail|email|mail|inbox)$/.test(lower)) {
@@ -419,52 +310,12 @@ export function getGmailVoiceCommand(command = '') {
     if (/^(?:refresh|reload)\s+(?:my\s+)?sent(?:\s+mail|\s+emails?|\s+folder)?$/.test(lower)) {
         return { action: 'refreshSent' };
     }
-    const tail = '(?:\\s+(?:please|thanks|thank you|now|already|ok|okay))?';
     if (
-        new RegExp(`^(?:compose|write)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
-        || new RegExp(`^(?:send)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
-        || new RegExp(`^(?:i\\s+want\\s+to|i\\s+need\\s+to|i\\s+would\\s+like\\s+to|help\\s+me)\\s+(?:send|write|compose)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
-        || new RegExp(`^(?:can\\s+you|could\\s+you|will\\s+you|please)\\s+(?:send|write|compose)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
-        || new RegExp(`^(?:can\\s+i|could\\s+i|may\\s+i)\\s+(?:to\\s+)?(?:send|write|compose)\\s+(?:an?\\s+)?email${tail}$`).test(lower)
+        /^(?:compose|write|send|let\s+s\s+send|let's\s+send)\s+(?:an?\s+)?email$/.test(lower)
+        || /^(?:i\s+want\s+to|i\s+need\s+to|help\s+me)\s+(?:send|write|compose)\s+(?:an?\s+)?email$/.test(lower)
+        || /^(?:can\s+you|could\s+you|will\s+you|please)\s+(?:send|write|compose)\s+(?:an?\s+)?email$/.test(lower)
     ) {
         return { action: 'compose' };
-    }
-
-    const needToEmail = lower.match(/^(?:i\s+need\s+to|i\s+want\s+to)\s+email\s+(.+)$/);
-    if (needToEmail) {
-        const recipientQuery = extractRecipientReference(needToEmail[1] || '');
-        const to = extractSpokenEmailAddress(recipientQuery);
-        if (to || recipientQuery) {
-            return {
-                action: 'compose',
-                draft: {
-                    to: to,
-                    recipientQuery: to ? '' : recipientQuery,
-                    subject: '',
-                    text: ''
-                }
-            };
-        }
-    }
-
-    const bareEmailTo = lower.match(/^email\s+(.+)$/);
-    if (bareEmailTo) {
-        const tail = String(bareEmailTo[1] || '').trim();
-        if (tail && !/^(please|thanks|thank you|now|ok|okay|blip)$/i.test(tail)) {
-            const recipientQuery = extractRecipientReference(tail);
-            const to = extractSpokenEmailAddress(recipientQuery);
-            if (to || recipientQuery) {
-                return {
-                    action: 'compose',
-                    draft: {
-                        to: to,
-                        recipientQuery: to ? '' : recipientQuery,
-                        subject: '',
-                        text: ''
-                    }
-                };
-            }
-        }
     }
 
     const listContacts = extractGmailListContactsRequest(lower);
@@ -472,9 +323,6 @@ export function getGmailVoiceCommand(command = '') {
 
     const checkContact = extractGmailCheckContactRequest(lower);
     if (checkContact?.alias) return checkContact;
-
-    const clearContacts = extractGmailClearContactsRequest(lower);
-    if (clearContacts?.action === 'clearContacts') return clearContacts;
 
     const saveContact = extractGmailSaveContactRequest(lower);
     if (saveContact?.alias) {
@@ -490,22 +338,12 @@ export function getGmailVoiceCommand(command = '') {
     }
 
     const shareRequest = extractGmailShareRecipientRequest(lower);
-    const hasShareTarget = Boolean(
-        shareRequest
-        && (
-            shareRequest.recipient
-            || shareRequest.recipientQuery
-            || shareRequest.subject
-            || (shareRequest.shareType && shareRequest.shareType !== 'auto')
-        )
-    );
-    if (hasShareTarget) {
+    if (shareRequest && (shareRequest.recipient || shareRequest.recipientQuery || shareRequest.shareType || shareRequest.subject)) {
         return { action: 'shareCurrent', ...shareRequest };
     }
 
-    const subjectLineOnly = extractGmailSubjectLineOnly(lower);
-    if (subjectLineOnly?.subject) {
-        return { action: 'setSubject', subject: subjectLineOnly.subject };
+    if (/\b(?:save|store|keep|put)\b.*\b(?:notes?|hub|notebook)\b/.test(lower)) {
+        return { action: 'saveToNotes' };
     }
 
     const noteSubject = extractGmailNoteSubjectRequest(lower);
@@ -515,16 +353,6 @@ export function getGmailVoiceCommand(command = '') {
 
     const sendStatus = extractGmailSendStatusRequest(lower);
     if (sendStatus) return sendStatus;
-
-    // Short mailbox phrases (voice-first panel)
-    if (/^(?:inbox|my inbox)$/.test(lower)) return { action: 'openInbox' };
-    if (/^(?:sent|my sent|sent folder)$/.test(lower)) return { action: 'openSent' };
-    if (
-        /^(?:show\s+me\s+)?(?:the\s+)?(?:email\s+)?list$/.test(lower)
-        || /^show\s+(?:my\s+)?(?:mail|email)$/.test(lower)
-    ) {
-        return { action: 'openInbox' };
-    }
 
     return null;
 }

@@ -34,7 +34,7 @@ function formatOffsetTime(offsetSeconds) {
     return `${h}:${m}`;
 }
 
-async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 10000) {
+export async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 10000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -169,9 +169,7 @@ export const web = {
     async getExchangeRate(from, to) {
         console.log(`💱 Fetching exchange rate: ${from} to ${to}`);
         try {
-            const res = await fetch(`https://open.er-api.com/v6/latest/${from.toUpperCase()}`);
-            if (!res.ok) throw new Error('Currency service unavailable');
-            const data = await res.json();
+            const data = await fetchJsonWithTimeout(`https://open.er-api.com/v6/latest/${from.toUpperCase()}`, {}, 10000);
 
             const rate = data.rates[to.toUpperCase()];
             if (!rate) throw new Error('Currency code not found');
@@ -201,10 +199,11 @@ export const web = {
 
             console.log(`📈 Fetching history: ${startStr} to ${endStr}`);
 
-            const res = await fetch(`https://api.frankfurter.app/${startStr}..${endStr}?from=${from.toUpperCase()}&to=${to.toUpperCase()}`);
-            if (!res.ok) throw new Error('History service unavailable');
-
-            const data = await res.json();
+            const data = await fetchJsonWithTimeout(
+                `https://api.frankfurter.app/${startStr}..${endStr}?from=${from.toUpperCase()}&to=${to.toUpperCase()}`,
+                {},
+                10000
+            );
             const labels = [];
             const rates = [];
 
@@ -336,8 +335,11 @@ export const web = {
     async _wikiPlaceInfo(query, location) {
         try {
             const searchTerms = encodeURIComponent(`${query} ${location}`);
-            const res = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`);
-            const data = await res.json();
+            const data = await fetchJsonWithTimeout(
+                `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${searchTerms}&utf8=&format=json&origin=*`,
+                {},
+                10000
+            );
             const results = data.query.search;
             if (!results || results.length === 0) return "I couldn't find specific information for that place right now.";
             const cleanSnippet = results[0].snippet.replace(/<\/?[^>]+(>|$)/g, '');
@@ -391,7 +393,8 @@ export const web = {
                 const optionText = await generateWithPrompt(
                     'You recommend products. Reply with exactly 3 short product options, one per line. No intro, no bullets beyond the product names.',
                     `User wants: ${query}\nGive 3 concrete shopping options or product types that would make sense to compare.`,
-                    options.apiKey
+                    options.apiKey,
+                    options.model || 'gemini-2.5-flash'
                 );
                 items = normalizeProductOptionList(optionText);
             } catch (error) {
@@ -655,7 +658,7 @@ export const web = {
      * When apiKey is provided, uses Gemini with a research-assistant prompt.
      * Otherwise falls back to Wikipedia + data-bank.
      */
-    async deepDemographicSearch(query, entities = [], apiKey = null) {
+    async deepDemographicSearch(query, entities = [], apiKey = null, model = null) {
         console.log(`📡 Deep Demographic Search: ${query}`, entities);
 
         if (apiKey && apiKey.trim()) {
@@ -676,7 +679,8 @@ Return:
                 const text = await generateWithPrompt(
                     "You are a research assistant. Reply with clear, structured demographic insights. No JSON, plain text.",
                     prompt.trim(),
-                    apiKey
+                    apiKey,
+                    model || 'gemini-2.5-flash'
                 );
                 return {
                     text: text || "No demographic insights could be generated.",

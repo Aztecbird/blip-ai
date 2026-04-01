@@ -1,36 +1,4 @@
 import { extractRecipientReference, extractSpokenEmailAddress } from '../../services/gmailVoice.js';
-import { generateWithPrompt } from '../../services/geminiText.js';
-import {
-    isCorrectionIntentUtterance,
-    isGmailSendAffirmation,
-    isRecipientNoiseOnly,
-    isStrongEmailSendDraftCommand,
-    isSubjectSlotNoiseOnly,
-    isVideoOpenVoiceRequest,
-    parseEmailOpenChoice,
-    parseEmailDraftFollowUp,
-    parseEmailStatusFollowUp
-} from '../../services/voiceDialog/emailFollowUpParse.js';
-import { normalizeVoiceUtterance } from '../../services/voiceDialog/utterance.js';
-import {
-    buildGmailVoiceReplyDraft,
-    getGmailPanelPlaceholder,
-    getGmailPanelStagePrompt,
-    getGmailPanelStageTitle,
-    getGmailVoicePills
-} from '../../services/voiceDialog/gmailPrompts.js';
-import {
-    recordConversationAction,
-    setToolBranchState
-} from '../../services/toolConversation.js';
-
-export function canConfirmGmailSend({
-    pendingEmailReview = null,
-    currentSidePanelAction = '',
-    isGmailPanelVisible = false,
-} = {}) {
-    return Boolean(pendingEmailReview && currentSidePanelAction === 'gmail' && isGmailPanelVisible);
-}
 
 export function createEmailFeature(env = {}) {
     const {
@@ -61,6 +29,7 @@ export function createEmailFeature(env = {}) {
         quickReply,
         getNoteItems,
         getEmailPhotoAttachmentPayload,
+        getEmailVideoAttachmentPayload,
         isMediaLightboxActuallyVisible,
         normalizeMediaLane,
         getSelectedCalendarDate,
@@ -70,6 +39,7 @@ export function createEmailFeature(env = {}) {
         getCurrentYouTubeTitle,
         playEmailSendConfirm,
         persistEmailContacts,
+        publishConversationObject,
     } = helpers;
 
     const {
@@ -173,10 +143,7 @@ export function createEmailFeature(env = {}) {
 
     function resolveEmailRecipient(recipient = '', recipientQuery = '') {
         const direct = String(recipient || '').trim().toLowerCase();
-        if (direct) {
-            if (isRecipientNoiseOnly(direct)) return '';
-            return direct;
-        }
+        if (direct) return direct;
         const query = normalizeEmailContactAlias(recipientQuery);
         if (!query) return '';
         if (state.emailContacts?.[query]) return String(state.emailContacts[query] || '').trim().toLowerCase();
@@ -186,23 +153,9 @@ export function createEmailFeature(env = {}) {
     function resolveRecipientInput(input = '') {
         const raw = String(input || '').trim();
         if (!raw) return { recipient: '', recipientQuery: '' };
-        if (isRecipientNoiseOnly(raw)) return { recipient: '', recipientQuery: '' };
         const recipient = extractSpokenEmailAddress(raw);
         const recipientQuery = recipient ? '' : extractRecipientReference(raw);
-        if (!recipient && recipientQuery && isRecipientNoiseOnly(recipientQuery)) {
-            return { recipient: '', recipientQuery: '' };
-        }
         return { recipient, recipientQuery };
-    }
-
-    function hasMeaningfulRecipientFields(draft = {}) {
-        const to = String(draft?.to || '').trim();
-        const rq = String(draft?.recipientQuery || '').trim();
-        if (to.includes('@')) return true;
-        if (to && !isRecipientNoiseOnly(to)) return true;
-        if (rq && !isRecipientNoiseOnly(rq)) return true;
-        if (rq && resolveEmailRecipient('', rq)) return true;
-        return false;
     }
 
     function buildUnknownRecipientReply(recipientQuery = '') {
@@ -306,13 +259,9 @@ export function createEmailFeature(env = {}) {
 
     function resetGmailComposeDraft(nextDraft = {}) {
         const resolvedRecipient = resolveEmailRecipient(nextDraft?.to || '', nextDraft?.recipientQuery || '');
-        let to = String(resolvedRecipient || nextDraft?.to || '').trim();
-        let recipientQuery = String(nextDraft?.recipientQuery || '').trim();
-        if (to && isRecipientNoiseOnly(to)) to = '';
-        if (recipientQuery && isRecipientNoiseOnly(recipientQuery)) recipientQuery = '';
         state.gmailComposeDraft = {
-            to,
-            recipientQuery,
+            to: String(resolvedRecipient || nextDraft?.to || '').trim(),
+            recipientQuery: String(nextDraft?.recipientQuery || '').trim(),
             subject: String(nextDraft?.subject || '').trim(),
             subjectSkipped: !!nextDraft?.subjectSkipped,
             text: String(nextDraft?.text || '').trim(),
@@ -327,20 +276,56 @@ export function createEmailFeature(env = {}) {
         state.pendingEmailReview = null;
     }
 
+    function normalizeEmailFollowUpText(value = '') {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/[^\w\s@.]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function parseEmailStatusFollowUp(command = '') {
+        const lower = normalizeEmailFollowUpText(command);
+        if (!lower) return null;
+
+        if (
+            /^(?:really|are\s+you\s+sure|sure|prove\s+it|verify\s+it|confirm\s+it)$/.test(lower)
+            || /^(?:show\s+me|show\s+me\s+that|show\s+it|show\s+me\s+the\s+email|show\s+me\s+the\s+sent\s+email)$/.test(lower)
+            || /^(?:can\s+you\s+show\s+me|can\s+you\s+prove\s+it|can\s+you\s+confirm\s+that)$/.test(lower)
+        ) {
+            return { action: 'statusCheck' };
+        }
+
+        return null;
+    }
+
     function getEmailDraftStage(draft = state.gmailComposeDraft || {}) {
-        if (!hasMeaningfulRecipientFields(draft)) return 'awaitingRecipient';
+        if (!String(draft?.to || '').trim()) return 'awaitingRecipient';
         if (!String(draft?.subject || '').trim() && !draft?.subjectSkipped) return 'awaitingSubject';
         if (!String(draft?.text || '').trim()) return 'awaitingMessage';
         return 'awaitingApproval';
     }
 
     function buildDraftReviewReply(draft = state.gmailComposeDraft || {}, stage = getEmailDraftStage(draft)) {
-        const offerPolish = !!(state.pendingEmailReview?.offerPolish && stage === 'awaitingApproval');
-        return buildGmailVoiceReplyDraft(stage, draft, {
-            getEmailContactLabel,
-            getDefaultSenderEmail,
-            offerPolish
-        });
+        const recipient = String(draft?.to || draft?.recipientQuery || '').trim();
+        const subject = String(draft?.subject || '').trim();
+        const body = String(draft?.text || '').trim();
+        
+        if (stage === 'awaitingRecipient') {
+            return recipient 
+                ? `Ready. recipient is ${recipient}. What's the subject or message?` 
+                : 'Okay. Who are we emailing?';
+        }
+        if (stage === 'awaitingSubject') {
+            return `Got it. Subject for ${recipient}? or say no subject.`;
+        }
+        if (stage === 'awaitingMessage') {
+            return `Subject set. What's the message for ${recipient}?`;
+        }
+        if (stage === 'awaitingSendDecision') return 'Okay. Send it or correct it?';
+        
+        const subjectLine = draft.subjectSkipped ? 'no subject' : (subject ? `subject ${subject}` : 'no subject');
+        return `Email to ${recipient}, ${subjectLine}. Body: ${body.slice(0, 60)}${body.length > 60 ? '...' : ''}. Send it?`;
     }
 
     async function openDraftForReview(draft = {}, options = {}) {
@@ -350,29 +335,6 @@ export function createEmailFeature(env = {}) {
             stage,
             source: String(options.source || 'email').trim() || 'email'
         };
-        setToolBranchState(state, 'gmail', {
-            currentTask: 'review draft',
-            currentIntent: {
-                family: 'gmail',
-                action: 'compose',
-                confidence: 0.9
-            },
-            activePanel: 'gmail',
-            panelStack: ['gmail'],
-            draft: cloneEmailDraft(state.gmailComposeDraft),
-            lastUtterance: String(options.source || 'email').trim() || 'email',
-            note: String(options.summary || 'Email draft ready.').trim()
-        });
-        recordConversationAction(state, {
-            tool: 'gmail',
-            action_type: 'draft_opened',
-            target_object: 'gmail-draft',
-            previous_state: null,
-            new_state: cloneEmailDraft(state.gmailComposeDraft),
-            undo_strategy: 'restore_previous_draft',
-            undo_window: 'session',
-            user_visible_summary: 'Opened an email draft'
-        });
         await openGmailInboxPanel({ summary: options.summary || 'Email draft ready.' });
         return buildDraftReviewReply(state.gmailComposeDraft, stage);
     }
@@ -397,18 +359,70 @@ export function createEmailFeature(env = {}) {
         });
     }
 
-    function pushUndoDraftSnapshot() {
-        if (!hasMeaningfulDraft(state.gmailComposeDraft)) return;
-        const stack = Array.isArray(state.gmailDraftUndoStack) ? state.gmailDraftUndoStack : [];
-        stack.push(cloneEmailDraft(state.gmailComposeDraft));
-        while (stack.length > 8) stack.shift();
-        state.gmailDraftUndoStack = stack;
+    function parseEmailDraftFollowUp(command = '') {
+        const lower = normalizeEmailFollowUpText(command);
+        if (!lower) return null;
+
+        if (
+            /^(?:yes|yeah|yep|correct|that s okay|thats okay|looks good|looks perfect|sounds perfect|ok|okay|perfect|exactly|that is okay|that is correct|that sounds perfect|that looks good)$/.test(lower)
+            || /^(?:yes|yeah|yep|ok|okay|perfect)\s+(?:can\s+you\s+)?confirm(?:\s+when\s+you\s+send\s+it)?$/.test(lower)
+        ) {
+            return { action: 'confirmDraft' };
+        }
+        if (
+            /^(?:send|send it|send now|send that|send the email|send this email|yes send|please send|go ahead|go ahead and send|do it|mail it|mail this|ship it|fire it off)$/.test(lower)
+            || /^(?:you|ya)\s+can\s+send(?:\s+it)?$/.test(lower)
+            || /^(?:you|ya)\s+may\s+send(?:\s+it)?$/.test(lower)
+            || /^alright[,]?\s+send(?:\s+it)?$/.test(lower)
+            || /^okay[,]?\s+send(?:\s+it)?$/.test(lower)
+            || /^ok[,]?\s+send(?:\s+it)?$/.test(lower)
+            || /^just\s+send(?:\s+it)?$/.test(lower)
+        ) {
+            return { action: 'sendDraft' };
+        }
+        if (/^(?:save|save it|keep it|store it|hold on|save for later|save draft|save and close)$/.test(lower) || lower.includes('continue tomorrow')) {
+            return { action: 'saveDraft' };
+        }
+        if (/^(?:no|not yet|change it|correct it|needs changes?|fix it|edit it)$/.test(lower)) {
+            return { action: 'requestCorrection' };
+        }
+        if (/^(?:no\s+subject|without\s+subject|skip\s+subject|subject\s+not\s+needed|i\s+do\s+not\s+need\s+a\s+subject)$/.test(lower)) {
+            return { action: 'skipSubject' };
+        }
+        if (/\b(?:need|want)\s+a\s+subject\b/.test(lower) || /\bask\s+me\s+if\s+i\s+need\s+a\s+subject\b/.test(lower)) {
+            return { action: 'promptSubjectChoice' };
+        }
+
+        // Field specific overrides (can be bare commands or followed by content)
+        const recipientMatch = lower.match(/^(?:(?:can\s+you\s+)?(?:change|correct|update|set|fix|edit)\s+(?:the\s+)?(?:recipient|email|to)(?:\s+to)?)(?:\s+(.+))?$/)
+            || lower.match(/^(?:recipient|email|to)(?:\s+is|\s+to)?\s+(.+)$/)
+            || lower.match(/^(?:send it|send this|mail it)\s+to\s+(.+)$/);
+        if (recipientMatch) {
+            if (!recipientMatch[1]) return { action: 'switchToRecipient' };
+            const resolved = resolveRecipientInput(recipientMatch[1] || '');
+            if (resolved.recipient || resolved.recipientQuery) {
+                return { action: 'updateRecipient', recipient: resolved.recipient, recipientQuery: resolved.recipientQuery };
+            }
+        }
+
+        const subjectMatch = lower.match(/^(?:(?:can\s+you\s+)?(?:change|correct|update|set|fix|edit)\s+(?:the\s+)?subject(?:\s+to)?)(?:\s+(.+))?$/)
+            || lower.match(/^(?:subject)(?:\s+is|\s+to)?\s+(.+)$/);
+        if (subjectMatch) {
+            if (!subjectMatch[1]) return { action: 'switchToSubject' };
+            return { action: 'updateSubject', subject: String(subjectMatch[1] || '').trim() };
+        }
+
+        const messageMatch = lower.match(/^(?:(?:can\s+you\s+)?(?:change|correct|update|set|fix|edit)\s+(?:the\s+)?(?:message|body|text)(?:\s+to)?)(?:\s+(.+))?$/)
+            || lower.match(/^(?:message|body|text)(?:\s+is|\s+to)?\s+(.+)$/);
+        if (messageMatch) {
+            if (!messageMatch[1]) return { action: 'switchToMessage' };
+            return { action: 'updateMessage', text: String(messageMatch[1] || '').trim() };
+        }
+
+        return { action: 'raw', text: String(command || '').trim() };
     }
 
     async function applyDraftUpdate(partial = {}, summary = 'Email draft updated.') {
-        const previousDraft = cloneEmailDraft(state.gmailComposeDraft);
-        pushUndoDraftSnapshot();
-        const prevStage = state.pendingEmailReview?.stage;
         resetGmailComposeDraft({
             ...state.gmailComposeDraft,
             ...partial,
@@ -418,185 +432,41 @@ export function createEmailFeature(env = {}) {
                 : !!state.gmailComposeDraft.subjectSkipped
         });
         const nextStage = getEmailDraftStage(state.gmailComposeDraft);
-        let offerPolish = false;
-        if (prevStage === 'awaitingMessage' && nextStage === 'awaitingApproval') {
-            offerPolish = true;
-        } else if (nextStage === 'awaitingApproval') {
-            offerPolish = !!state.pendingEmailReview?.offerPolish;
-        }
         state.pendingEmailReview = {
             ...(state.pendingEmailReview || {}),
-            stage: nextStage,
-            offerPolish
+            stage: nextStage
         };
-        setToolBranchState(state, 'gmail', {
-            currentTask: 'edit draft',
-            currentIntent: {
-                family: 'gmail',
-                action: nextStage === 'awaitingApproval' ? 'review' : 'compose',
-                confidence: 0.92
-            },
-            activePanel: 'gmail',
-            panelStack: ['gmail'],
-            draft: cloneEmailDraft(state.gmailComposeDraft),
-            lastUtterance: summary,
-            note: summary
-        });
-        recordConversationAction(state, {
-            tool: 'gmail',
-            action_type: 'draft_updated',
-            target_object: 'gmail-draft',
-            previous_state: previousDraft,
-            new_state: cloneEmailDraft(state.gmailComposeDraft),
-            undo_strategy: 'restore_previous_draft',
-            undo_window: 'session',
-            user_visible_summary: summary
-        });
         await openGmailInboxPanel({ summary });
         return buildDraftReviewReply(state.gmailComposeDraft, nextStage);
     }
 
-    function parseJsonObjectFromModel(raw = '') {
-        let s = String(raw || '').trim();
-        const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (fence) s = fence[1].trim();
-        const brace = s.match(/\{[\s\S]*\}/);
-        if (!brace) throw new Error('No JSON object in model output');
-        return JSON.parse(brace[0]);
-    }
-
-    async function applyDraftPolishWithGemini() {
-        const draft = state.gmailComposeDraft || {};
-        const subject = String(draft.subject || '').trim();
-        const text = String(draft.text || '').trim();
-        if (!subject && !text) {
-            await quickReply('There’s nothing to polish yet. Add a subject or message, or say who should receive it.', 'happy');
-            return true;
-        }
-        try {
-            const raw = await generateWithPrompt(
-                'You improve short email drafts. Reply with ONLY a JSON object: {"subject":"...","text":"..."}. Use the same language as the draft. Keep the same meaning; make wording clearer and more natural. You may slightly adjust tone (friendlier, more formal, or warmer) if it helps. If the body was empty but the subject clearly implies a short note, add a brief polite body line. Plain text only, no markdown. Do not add recipient lines.',
-                `Subject: ${subject || '(none)'}\nBody:\n${text || '(empty)'}`,
-                state.geminiKey || ''
-            );
-            const parsed = parseJsonObjectFromModel(raw);
-            const nextSubject = typeof parsed.subject === 'string' ? parsed.subject.trim() : subject;
-            const nextText = typeof parsed.text === 'string' ? parsed.text.trim() : text;
-            const reply = await applyDraftUpdate({
-                subject: nextSubject,
-                text: nextText,
-                subjectSkipped: nextSubject ? false : !!draft.subjectSkipped
-            }, 'Polished your draft.');
-            if (state.pendingEmailReview) {
-                state.pendingEmailReview = {
-                    ...state.pendingEmailReview,
-                    offerPolish: false,
-                    stage: 'awaitingSendDecision'
-                };
-            }
-            await quickReply(reply, 'happy');
-        } catch (err) {
-            console.warn('applyDraftPolishWithGemini', err);
-            await quickReply('I couldn’t polish that just now. Try again in a moment.', 'sad');
-        }
-        return true;
-    }
-
     async function handlePendingVoiceFollowUp(command = '') {
-        if (isVideoOpenVoiceRequest(command)) {
-            return false;
-        }
-        const openChoice = parseEmailOpenChoice(command);
-        if (state.pendingEmailReview?.stage === 'awaitingOpenChoice' && openChoice) {
-            if (openChoice.action === 'create') {
-                state.pendingEmailReview = null;
-                const reply = await openDraftForReview({}, {
-                    summary: 'Email draft ready. Follow the steps: who to send to, subject, then message.',
-                    source: 'open-email-create'
-                });
-                await quickReply(reply, 'happy');
-                return true;
-            }
-            if (openChoice.action === 'review') {
-                state.pendingEmailReview = null;
-                await openGmailInboxPanel({ summary: 'Email list open.' });
-                await quickReply('Email list open. Say open inbox, read 1, or create a new email.', 'happy');
-                return true;
-            }
-        }
-        let followUp = parseEmailDraftFollowUp(command);
-        if (followUp?.action === 'raw' && isStrongEmailSendDraftCommand(command)) {
-            followUp = { action: 'sendDraft' };
-        }
+        const followUp = parseEmailDraftFollowUp(command);
         const statusFollowUp = parseEmailStatusFollowUp(command);
-        const inGmailContext = !!(state.pendingEmailReview || state.currentSidePanelAction === 'gmail');
 
-        const pendingPolish = state.pendingEmailReview;
-        if (
-            followUp
-            && inGmailContext
-            && pendingPolish?.stage === 'awaitingApproval'
-            && pendingPolish?.offerPolish
-        ) {
-            const lower = normalizeVoiceUtterance(command);
-            if (followUp.action === 'improveDraft' || /^(yes|yeah|yep|ok|okay|sure|please|go ahead)$/.test(lower)) {
-                state.pendingEmailReview = { ...pendingPolish, offerPolish: false };
-                return applyDraftPolishWithGemini();
-            }
-            if (/^(no|nope|no thanks|skip|not now)$/.test(lower)) {
-                state.pendingEmailReview = { ...pendingPolish, offerPolish: false };
-                await quickReply('Okay. Say send when you want it to go, or tell me what to change.', 'happy');
-                return true;
-            }
+        // Handle explicit field switches first
+        if (followUp?.action === 'switchToRecipient') {
+            state.pendingEmailReview = { ...(state.pendingEmailReview || {}), stage: 'awaitingRecipient' };
+            await openGmailInboxPanel({ summary: 'Recipient ready.' });
+            await quickReply('Okay. Who should I send it to?', 'happy');
+            return true;
         }
-
-        if (inGmailContext && followUp?.action === 'cancelDraft') {
+        if (followUp?.action === 'switchToSubject') {
+            state.pendingEmailReview = { ...(state.pendingEmailReview || {}), stage: 'awaitingSubject' };
+            await openGmailInboxPanel({ summary: 'Subject ready.' });
+            await quickReply('Got it. What is the subject?', 'happy');
+            return true;
+        }
+        if (followUp?.action === 'switchToMessage') {
+            state.pendingEmailReview = { ...(state.pendingEmailReview || {}), stage: 'awaitingMessage' };
+            await openGmailInboxPanel({ summary: 'Message ready.' });
+            await quickReply('Understood. What is the message?', 'happy');
+            return true;
+        }
+        if (followUp?.action === 'saveDraft') {
+            await quickReply('Got it. I have saved your draft for later. Talk to you tomorrow!', 'happy');
             clearPendingEmailReview();
-            state.gmailDraftUndoStack = [];
-            resetGmailComposeDraft({ to: '', subject: '', text: '', attachments: [] });
-            try {
-                await openGmailInboxPanel({ summary: 'Draft cleared.' });
-            } catch (_) { /* panel optional */ }
-            await quickReply('Okay, I cleared that draft.', 'happy');
-            return true;
-        }
-
-        if (inGmailContext && followUp?.action === 'appendMessage' && followUp.text) {
-            const prev = String(state.gmailComposeDraft?.text || '').trim();
-            const next = prev ? `${prev} ${followUp.text}` : followUp.text;
-            const reply = await applyDraftUpdate({ text: next }, 'Added to your message.');
-            await quickReply(reply, 'happy');
-            return true;
-        }
-
-        if (inGmailContext && followUp?.action === 'undoDraft') {
-            const stack = Array.isArray(state.gmailDraftUndoStack) ? state.gmailDraftUndoStack : [];
-            const prev = stack.pop();
-            state.gmailDraftUndoStack = stack;
-            if (!prev) {
-                await quickReply('Nothing to undo yet.', 'happy');
-                return true;
-            }
-            resetGmailComposeDraft(prev);
-            const nextStage = getEmailDraftStage(state.gmailComposeDraft);
-            state.pendingEmailReview = {
-                ...(state.pendingEmailReview || {}),
-                stage: nextStage
-            };
-            try {
-                await openGmailInboxPanel({ summary: 'Draft restored.' });
-            } catch (_) { /* panel optional */ }
-            await quickReply('Okay, I took that back.', 'happy');
-            return true;
-        }
-
-        if (inGmailContext && followUp?.action === 'improveDraft') {
-            return applyDraftPolishWithGemini();
-        }
-
-        if (inGmailContext && followUp?.action === 'requestCorrection' && state.pendingEmailReview) {
-            state.pendingEmailReview = { ...state.pendingEmailReview, stage: 'awaitingCorrection' };
-            await quickReply('Okay. Tell me recipient, subject, or message.', 'happy');
+            try { closeSidePanel(); } catch (_) { }
             return true;
         }
 
@@ -691,12 +561,6 @@ export function createEmailFeature(env = {}) {
                 return true;
             }
 
-            if (followUp.action === 'clearRecipient') {
-                const reply = await applyDraftUpdate({ to: '', recipientQuery: '' }, 'Recipient cleared.');
-                await quickReply(reply, 'happy');
-                return true;
-            }
-
             if (followUp.action === 'sendDraft') {
                 const result = await sendCurrentGmailDraft(state.gmailComposeDraft);
                 await quickReply(result.text, result.ok ? 'happy' : 'sad');
@@ -748,25 +612,12 @@ export function createEmailFeature(env = {}) {
             return false;
         }
 
-        if (followUp.action === 'clearRecipient') {
-            const reply = await applyDraftUpdate({ to: '', recipientQuery: '' }, 'Recipient cleared.');
-            await quickReply(reply, 'happy');
-            return true;
-        }
-
         if (pending.stage === 'awaitingRecipient') {
-            if (followUp.action === 'sendDraft' || followUp.action === 'confirmDraft') {
-                await quickReply(
-                    'I still need a real recipient first. Say an email address or a name I know — not “send.”',
-                    'happy'
-                );
-                return true;
-            }
             const resolved = followUp.action === 'updateRecipient'
                 ? { recipient: followUp.recipient || '', recipientQuery: followUp.recipientQuery || '' }
                 : resolveRecipientInput(command);
             if (!resolved.recipient && !resolved.recipientQuery) {
-                await quickReply('Please tell me who to send it to — an email or a saved contact name.', 'happy');
+                await quickReply('Please tell me who to send it to.', 'happy');
                 return true;
             }
             const reply = await applyDraftUpdate({
@@ -774,47 +625,6 @@ export function createEmailFeature(env = {}) {
                 recipientQuery: resolved.recipientQuery
             }, resolved.recipient ? 'Recipient updated.' : 'Recipient noted.');
             await quickReply(reply, 'happy');
-            return true;
-        }
-
-        if (pending.stage === 'awaitingSendDecision') {
-            if (followUp.action === 'sendDraft' || followUp.action === 'confirmDraft' || isGmailSendAffirmation(command)) {
-                const result = await sendCurrentGmailDraft(state.gmailComposeDraft);
-                await quickReply(result.text, result.ok ? 'happy' : 'sad');
-                return true;
-            }
-            if (followUp.action === 'requestCorrection' || followUp.action === 'improveDraft') {
-                state.pendingEmailReview = { ...pending, stage: 'awaitingCorrection' };
-                await quickReply('Okay. Tell me what to change.', 'happy');
-                return true;
-            }
-            if (followUp.action === 'cancelDraft') {
-                clearPendingEmailReview();
-                state.gmailDraftUndoStack = [];
-                resetGmailComposeDraft({ to: '', subject: '', text: '', attachments: [] });
-                try {
-                    await openGmailInboxPanel({ summary: 'Draft cleared.' });
-                } catch (_) { /* panel optional */ }
-                await quickReply('Okay, I cleared that draft.', 'happy');
-                return true;
-            }
-        }
-
-        // "Send" / "really" while on subject or message step must send (or confirm), not become field text
-        if (
-            (followUp.action === 'sendDraft' || followUp.action === 'confirmDraft')
-            && (pending.stage === 'awaitingSubject' || pending.stage === 'awaitingMessage')
-        ) {
-            if (followUp.action === 'sendDraft') {
-                const result = await sendCurrentGmailDraft(state.gmailComposeDraft);
-                await quickReply(result.text, result.ok ? 'happy' : 'sad');
-                return true;
-            }
-            state.pendingEmailReview = { ...pending, stage: 'awaitingSendDecision' };
-            try {
-                await openGmailInboxPanel({ summary: 'Draft looks good. Say send when you want it to go.' });
-            } catch (_) { /* panel optional */ }
-            await quickReply(buildDraftReviewReply(state.gmailComposeDraft, 'awaitingSendDecision'), 'happy');
             return true;
         }
 
@@ -828,21 +638,12 @@ export function createEmailFeature(env = {}) {
                 await quickReply(reply, 'happy');
                 return true;
             }
-            const strippedForSubject = String(
+            const subject = String(
                 followUp.subject
                 || command.replace(/^(?:the\s+)?subject(?:\s+is|\s+to)?\s+/i, '').trim()
             ).trim();
-            if (isCorrectionIntentUtterance(strippedForSubject) || isCorrectionIntentUtterance(command)) {
-                state.pendingEmailReview = { ...pending, stage: 'awaitingCorrection' };
-                await quickReply('Okay. Tell me recipient, subject, or message.', 'happy');
-                return true;
-            }
-            const subject = strippedForSubject;
-            if (!subject || isSubjectSlotNoiseOnly(subject)) {
-                await quickReply(
-                    'Say your subject line — for example “subject is dinner tomorrow” — or say “no subject.” To polish wording, say improve it.',
-                    'happy'
-                );
+            if (!subject) {
+                await quickReply('Do you want a subject? Say subject and then the title, or say no subject.', 'happy');
                 return true;
             }
             const reply = await applyDraftUpdate({ subject, subjectSkipped: false }, 'Subject updated.');
@@ -967,9 +768,17 @@ export function createEmailFeature(env = {}) {
     }
 
     function formatYouTubeShareForEmail() {
-        const url = String(state.lastContext?.lastYoutubeUrl || '').trim();
+        let url = String(state.lastContext?.lastYoutubeUrl || '').trim();
+        let title = String(getCurrentYouTubeTitle?.() || state.lastContext?.lastYoutubeQuery || 'YouTube link').trim() || 'YouTube link';
+
+        if (!url && Array.isArray(state.sharedObjects)) {
+            const yt = state.sharedObjects.find(obj => obj.kind === 'youtube' || obj.kind === 'link');
+            if (yt) {
+                url = String(yt.value || '').trim();
+                title = String(yt.label || title).trim();
+            }
+        }
         if (!url) return null;
-        const title = String(getCurrentYouTubeTitle?.() || state.lastContext?.lastYoutubeQuery || 'YouTube link').trim() || 'YouTube link';
         return {
             kind: 'youtube',
             subject: title,
@@ -1043,13 +852,26 @@ export function createEmailFeature(env = {}) {
         };
 
         if (shareType === 'note') return usePayload(formatLatestNoteForEmail(latestNote));
-        if (shareType === 'youtube' || shareType === 'video' || shareType === 'link') return usePayload(formatYouTubeShareForEmail());
+        if (shareType === 'youtube' || shareType === 'link') return usePayload(formatYouTubeShareForEmail());
+        if (shareType === 'video' || shareType === 'recording' || shareType === 'clip') {
+            const localVideoPayload = await usePayload(() => getEmailVideoAttachmentPayload().catch(() => null));
+            if (localVideoPayload) return localVideoPayload;
+            return usePayload(formatYouTubeShareForEmail());
+        }
         if (shareType === 'photo' || shareType === 'foto' || shareType === 'picture' || shareType === 'image') return usePayload(() => getEmailPhotoAttachmentPayload());
         if (shareType === 'date' || shareType === 'calendar' || shareType === 'event') return usePayload(getPreferredCalendarSharePayload());
 
         // Auto mode: infer what to send from the current UI context.
         if (state.currentSidePanelAction === 'gmail') {
             const payload = await usePayload(formatComposeDraftForEmail(state.gmailComposeDraft));
+            if (payload) return payload;
+        }
+        if (isMediaLightboxActuallyVisible('video')) {
+            const payload = await usePayload(() => getEmailVideoAttachmentPayload().catch(() => null));
+            if (payload) return payload;
+        }
+        if (normalizeMediaLane(state.mediaStripLane) === 'videos') {
+            const payload = await usePayload(() => getEmailVideoAttachmentPayload().catch(() => null));
             if (payload) return payload;
         }
         if (isMediaLightboxActuallyVisible('image') || normalizeMediaLane(state.mediaStripLane) === 'shots') {
@@ -1063,6 +885,18 @@ export function createEmailFeature(env = {}) {
         if (state.currentSidePanelAction === 'youtube' || state.lastContext?.lastYoutubeUrl) {
             const payload = await usePayload(formatYouTubeShareForEmail());
             if (payload) return payload;
+        }
+
+        // Shared objects fallback
+        if (Array.isArray(state.sharedObjects) && state.sharedObjects.length > 0) {
+            const latest = state.sharedObjects[0];
+            if (latest.kind === 'note') return usePayload(formatLatestNoteForEmail(latest.payload || latest));
+            if (latest.kind === 'link' || latest.kind === 'youtube') {
+              return usePayload({
+                subject: latest.label || 'YouTube link',
+                text: `${latest.label}\n\n${latest.value}`
+              });
+            }
         }
         if (state.currentSidePanelAction === 'calendarAgenda' || state.activeCalendarViewRequest || (state.calendarCache || []).length) {
             const payload = await usePayload(getPreferredCalendarSharePayload());
@@ -1136,14 +970,12 @@ export function createEmailFeature(env = {}) {
         const composeToValue = String(composeDraft.to || composeDraft.recipientQuery || '').trim();
         const composeSubjectValue = String(composeDraft.subject || '').trim();
         const composeMessageValue = String(composeDraft.text || '').trim();
-        const attachmentCount = Array.isArray(composeDraft.attachments) ? composeDraft.attachments.length : 0;
         const profile = toolParams.profile || state.gmailProfile || null;
         const selectedId = String(selectedMessage?.id || state.gmailSelectedMessageId || '');
         const bodyText = getGmailPreviewText(selectedMessage);
         const mailbox = normalizeGmailMailbox(toolParams.mailbox || state.gmailMailbox || 'inbox');
         const mailboxLabel = getGmailMailboxLabel(mailbox);
         const stage = state.pendingEmailReview?.stage || getEmailDraftStage(composeDraft);
-        const offerPolish = !!state.pendingEmailReview?.offerPolish;
         const sender = getDefaultSenderEmail();
         const latestSend = state.lastGmailSendResult || null;
         const contactEntries = Object.entries(state.emailContacts || {})
@@ -1151,11 +983,29 @@ export function createEmailFeature(env = {}) {
             .sort((left, right) => left[0].localeCompare(right[0]))
             .slice(0, 5);
 
-        const panelStageKey = stage === 'awaitingApproval' ? 'draftReady' : stage;
-        const stageTitle = getGmailPanelStageTitle(panelStageKey);
-        const stagePrompt = getGmailPanelStagePrompt(panelStageKey, composeDraft, { getEmailContactLabel, offerPolish });
-        const pills = getGmailVoicePills(panelStageKey, { offerPolish });
-        const pillsHtml = pills.map((p) => `<span class="blip-gmail-voice-pill">${escapeHtml(p)}</span>`).join('');
+        let stageTitle = 'Voice Draft';
+        let stagePrompt = 'Speak naturally. I will mirror the email here.';
+        if (stage === 'awaitingRecipient') {
+            stageTitle = 'Listening For Recipient';
+            stagePrompt = composeDraft.recipientQuery
+                ? `I heard ${getEmailContactLabel(composeDraft.recipientQuery)}. Tell me the email address, or save that contact.`
+                : 'Say who the email is for.';
+        } else if (stage === 'awaitingSubject') {
+            stageTitle = 'Listening For Subject';
+            stagePrompt = 'Recipient is ready. Now say the subject.';
+        } else if (stage === 'awaitingMessage') {
+            stageTitle = 'Listening For Message';
+            stagePrompt = 'Subject is ready. Now dictate the message.';
+        } else if (stage === 'awaitingSendDecision') {
+            stageTitle = 'Ready To Send';
+            stagePrompt = 'Say send, or say correct recipient, subject, or message.';
+        } else if (stage === 'awaitingCorrection') {
+            stageTitle = 'Correction Mode';
+            stagePrompt = 'Say recipient, subject, or message to update the draft.';
+        } else if (composeToValue || composeSubjectValue || composeMessageValue) {
+            stageTitle = 'Draft Ready';
+            stagePrompt = 'Review the draft below. Say send or correct.';
+        }
 
         const latestSendText = latestSend?.ok
             ? (latestSend.verified
@@ -1165,7 +1015,7 @@ export function createEmailFeature(env = {}) {
 
         return `
             <div class="blip-gmail-shell">
-                <div class="blip-gmail-toolbar blip-gmail-toolbar--voice">
+                <div class="blip-gmail-toolbar">
                     <div class="blip-gmail-status${authState.connected ? ' connected' : ' warning'}">
                         ${escapeHtml(
                             authState.connected
@@ -1173,11 +1023,15 @@ export function createEmailFeature(env = {}) {
                                 : 'Connect Gmail in Settings first.'
                         )}
                     </div>
-                    <div class="blip-gmail-mailbox-badge" aria-live="polite">${escapeHtml(mailboxLabel)}</div>
-                    <p class="blip-gmail-voice-cheatsheet">Say: <span class="blip-gmail-voice-kw">inbox</span> · <span class="blip-gmail-voice-kw">sent</span> · <span class="blip-gmail-voice-kw">refresh email</span> · <span class="blip-gmail-voice-kw">compose email</span> · <span class="blip-gmail-voice-kw">read email 1</span> · <span class="blip-gmail-voice-kw">scroll down</span></p>
+                    <div class="blip-gmail-toolbar-actions">
+                        <button type="button" class="action-link outline blip-gmail-mailbox-tab${mailbox === 'inbox' ? ' is-active' : ''}" data-gmail-mailbox="inbox">Inbox</button>
+                        <button type="button" class="action-link outline blip-gmail-mailbox-tab${mailbox === 'sent' ? ' is-active' : ''}" data-gmail-mailbox="sent">Sent</button>
+                        <button type="button" class="action-link outline" data-gmail-refresh>Refresh</button>
+                        <button type="button" class="action-link outline" data-gmail-compose-clear>New Email</button>
+                    </div>
                 </div>
                 <div class="blip-gmail-compose-simplified blip-panel-card">
-                    <div class="blip-gmail-compose-title">Compose</div>
+                    <div class="blip-gmail-compose-title">Simple Email</div>
                     <div class="blip-gmail-draft-state">
                         <div class="blip-gmail-draft-state-label">${escapeHtml(stageTitle)}</div>
                         <div class="blip-gmail-draft-state-prompt">${escapeHtml(stagePrompt)}</div>
@@ -1188,8 +1042,8 @@ export function createEmailFeature(env = {}) {
                     </div>
                     ${latestSendText ? `<div class="blip-gmail-send-status${latestSend?.ok ? (latestSend.verified ? ' verified' : ' pending') : ' warning'}">${escapeHtml(latestSendText)}</div>` : ''}
                     ${contactEntries.length ? `
-                        <div class="blip-gmail-contact-chips blip-gmail-contact-chips--compact">
-                            ${contactEntries.slice(0, 4).map(([alias, email]) => `
+                        <div class="blip-gmail-contact-chips">
+                            ${contactEntries.map(([alias, email]) => `
                                 <button type="button" class="blip-gmail-contact-chip" data-gmail-contact="${escapeHtml(String(email || ''))}">
                                     <span>${escapeHtml(getEmailContactLabel(alias))}</span>
                                     <small>${escapeHtml(String(email || ''))}</small>
@@ -1199,25 +1053,30 @@ export function createEmailFeature(env = {}) {
                     ` : ''}
                     <label class="blip-gmail-slot ${stage === 'awaitingRecipient' ? 'is-active' : ''}">
                         <span class="blip-gmail-slot-label">To Whom</span>
-                        <input type="text" data-gmail-to class="blip-gmail-input" placeholder="${escapeHtml(getGmailPanelPlaceholder('to', panelStageKey))}" value="${escapeHtml(composeToValue)}">
+                        <input type="text" data-gmail-to class="blip-gmail-input" placeholder="Type or say who it is for..." value="${escapeHtml(composeToValue)}">
                     </label>
                     <label class="blip-gmail-slot ${stage === 'awaitingSubject' ? 'is-active' : ''}">
                         <span class="blip-gmail-slot-label">Subject</span>
-                        <input type="text" data-gmail-subject class="blip-gmail-input" placeholder="${escapeHtml(getGmailPanelPlaceholder('subject', panelStageKey))}" value="${escapeHtml(composeSubjectValue)}">
+                        <input type="text" data-gmail-subject class="blip-gmail-input" placeholder="Type or say the subject..." value="${escapeHtml(composeSubjectValue)}">
                     </label>
                     <label class="blip-gmail-slot ${stage === 'awaitingMessage' ? 'is-active' : ''}">
                         <span class="blip-gmail-slot-label">Message</span>
-                        <textarea data-gmail-body class="blip-gmail-textarea" placeholder="${escapeHtml(getGmailPanelPlaceholder('message', panelStageKey))}">${escapeHtml(composeMessageValue)}</textarea>
+                        <textarea data-gmail-body class="blip-gmail-textarea" placeholder="Type or dictate the message...">${escapeHtml(composeMessageValue)}</textarea>
                     </label>
-                    ${attachmentCount ? `<div class="blip-gmail-send-status pending">${escapeHtml(attachmentCount === 1 ? '1 attachment ready' : `${attachmentCount} attachments ready`)}</div>` : ''}
-                    <div class="blip-gmail-voice-hints" aria-label="Things you can say for this step">
-                        ${pillsHtml}
+                    <div class="blip-gmail-voice-hints">
+                        <span class="blip-gmail-voice-pill">recipient ...</span>
+                        <span class="blip-gmail-voice-pill">subject ...</span>
+                        <span class="blip-gmail-voice-pill">message ...</span>
+                        <span class="blip-gmail-voice-pill">send</span>
+                    </div>
+                    <div class="blip-gmail-compose-actions">
+                        <button type="button" class="action-link outline" data-gmail-send>Send</button>
                     </div>
                 </div>
                 <div class="blip-gmail-secondary">
-                    <div class="blip-gmail-secondary-header blip-gmail-secondary-header--voice">
-                        <div class="blip-gmail-secondary-title">${escapeHtml(mailboxLabel)}</div>
-                        <p class="blip-gmail-voice-cheatsheet blip-gmail-voice-cheatsheet--sub">Say <span class="blip-gmail-voice-kw">show my email</span> or tap a row · <span class="blip-gmail-voice-kw">do you have … email</span> for saved contacts</p>
+                    <div class="blip-gmail-secondary-header">
+                        <div class="blip-gmail-reader-kicker">${escapeHtml(mailboxLabel)}</div>
+                        <div class="blip-gmail-secondary-copy">Optional mailbox view while you draft.</div>
                     </div>
                     <div class="blip-gmail-layout blip-gmail-layout-secondary">
                         <div class="blip-gmail-list blip-panel-scroll">
@@ -1242,7 +1101,7 @@ export function createEmailFeature(env = {}) {
                                 <div class="blip-gmail-reader-subject">${escapeHtml(String(selectedMessage.subject || '(No subject)'))}</div>
                                 <div class="blip-gmail-reader-meta">${escapeHtml(String(selectedMessage.from || 'Unknown sender'))}${selectedMessage?.date ? ` · ${escapeHtml(String(selectedMessage.date))}` : ''}</div>
                                 <div class="blip-gmail-reader-body blip-panel-scroll">${escapeHtml(bodyText || 'No body text available.')}</div>
-                            ` : '<div class="blip-panel-empty">Pick a message in the list or say “read email 1”.</div>'}
+                            ` : '<div class="blip-panel-empty">Pick an email on the left, or say "read email 1".</div>'}
                         </div>
                     </div>
                 </div>
@@ -1343,42 +1202,6 @@ export function createEmailFeature(env = {}) {
             threadId: String(sendResult?.threadId || '').trim(),
             verified
         };
-        setToolBranchState(state, 'gmail', {
-            currentTask: 'email sent',
-            currentIntent: {
-                family: 'gmail',
-                action: 'sendDirect',
-                confidence: 1
-            },
-            activePanel: 'gmail',
-            panelStack: ['gmail'],
-            draft: {
-                to,
-                subject,
-                text: '',
-                attachments: []
-            },
-            lastUtterance: String(options.summary || '').trim() || `Email sent to ${to}`,
-            note: verified ? `Sent email to ${to}` : `Gmail accepted email for ${to}`
-        });
-        recordConversationAction(state, {
-            tool: 'gmail',
-            action_type: 'email_sent',
-            target_object: sentId || to,
-            previous_state: {
-                to,
-                subject,
-                text,
-                attachments
-            },
-            new_state: {
-                id: sentId,
-                verified
-            },
-            undo_strategy: 'compensating_followup',
-            undo_window: 'session',
-            user_visible_summary: verified ? `Sent email to ${to}` : `Accepted email for ${to}`
-        });
 
         clearPendingEmailReview();
         resetGmailComposeDraft();
@@ -1427,6 +1250,21 @@ export function createEmailFeature(env = {}) {
                 if (transcriptText) transcriptText.innerText = reply;
             });
         });
+
+        sidePanel.querySelectorAll('[data-gmail-mailbox]').forEach((button) => {
+            button.addEventListener('click', async () => {
+                const mailbox = normalizeGmailMailbox(button.getAttribute('data-gmail-mailbox') || 'inbox');
+                syncDraftFromInputs();
+                try {
+                    await openGmailInboxPanel({ mailbox, summary: `${getGmailMailboxLabel(mailbox)} open.` });
+                    if (transcriptText) transcriptText.innerText = `${getGmailMailboxLabel(mailbox)} open.`;
+                } catch (error) {
+                    console.warn('Open Gmail mailbox failed:', error?.message || error);
+                    if (transcriptText) transcriptText.innerText = error?.message || `Could not open ${mailbox}.`;
+                }
+            });
+        });
+
         sidePanel.querySelectorAll('[data-gmail-open]').forEach((button) => {
             button.addEventListener('click', async () => {
                 const messageId = button.getAttribute('data-gmail-open');
@@ -1444,11 +1282,51 @@ export function createEmailFeature(env = {}) {
                 }
             });
         });
-        requestAnimationFrame(() => {
-            const compose = sidePanel.querySelector('.blip-gmail-compose-simplified');
-            const bodyEl = sidePanel.querySelector('[data-gmail-body]');
-            compose?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            bodyEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+        sidePanel.querySelector('[data-gmail-refresh]')?.addEventListener('click', async () => {
+            syncDraftFromInputs();
+            try {
+                await openGmailInboxPanel({ summary: 'Inbox refreshed.' });
+                if (transcriptText) transcriptText.innerText = 'Inbox refreshed.';
+            } catch (error) {
+                console.warn('Refresh Gmail inbox failed:', error?.message || error);
+                if (transcriptText) transcriptText.innerText = error?.message || 'Could not refresh Gmail.';
+            }
+        });
+
+        sidePanel.querySelector('[data-gmail-compose-clear]')?.addEventListener('click', async () => {
+            clearPendingEmailReview();
+            resetGmailComposeDraft();
+            await openGmailInboxPanel({ summary: 'New email ready.' });
+            if (transcriptText) transcriptText.innerText = 'New email ready.';
+        });
+
+        sidePanel.querySelector('[data-gmail-send]')?.addEventListener('click', async () => {
+            const toInput = sidePanel.querySelector('[data-gmail-to]');
+            const subjectInput = sidePanel.querySelector('[data-gmail-subject]');
+            const bodyInput = sidePanel.querySelector('[data-gmail-body]');
+            const resolvedRecipient = resolveRecipientInput(toInput?.value || '');
+            const subjectValue = String(subjectInput?.value || '').trim();
+
+            resetGmailComposeDraft({
+                to: resolvedRecipient.recipient || '',
+                recipientQuery: resolvedRecipient.recipientQuery || '',
+                subject: subjectValue,
+                subjectSkipped: subjectValue ? false : !!state.gmailComposeDraft.subjectSkipped,
+                text: bodyInput?.value || '',
+                attachments: state.gmailComposeDraft.attachments
+            });
+
+            try {
+                const result = await sendCurrentGmailDraft(state.gmailComposeDraft);
+                if (transcriptText) transcriptText.innerText = result.text;
+                if (result?.ok) {
+                    playEmailSendConfirm?.({ delayMs: 140 });
+                }
+            } catch (error) {
+                console.warn('Send Gmail from panel failed:', error?.message || error);
+                if (transcriptText) transcriptText.innerText = error?.message || 'Could not send that email.';
+            }
         });
     }
 
@@ -1471,17 +1349,6 @@ export function createEmailFeature(env = {}) {
             state.gmailSelectedMessage = null;
             updateGmailAuthUi();
             await quickReply('Gmail disconnected.', 'happy');
-            return;
-        }
-
-        if (gmailCmd.action === 'openEmail') {
-            state.pendingEmailReview = {
-                stage: 'awaitingOpenChoice',
-                source: 'email'
-            };
-            await openGmailInboxPanel({ summary: 'Email is open. Say create for a new email, or review for the email list.' });
-            updateGmailAuthUi();
-            await quickReply('Email is open. Do you want to create a new email or review the email list?', 'happy');
             return;
         }
 
@@ -1526,10 +1393,7 @@ export function createEmailFeature(env = {}) {
         }
 
         if (gmailCmd.action === 'compose') {
-            const reply = await openDraftForReview(gmailCmd.draft || {}, {
-                summary: 'Email open — follow the steps: who to send to, subject, then message. Say send when it looks right.',
-                source: 'compose'
-            });
+            const reply = await openDraftForReview(gmailCmd.draft || {}, { summary: 'Compose ready.', source: 'compose' });
             await quickReply(reply, 'happy');
             return;
         }
@@ -1548,52 +1412,16 @@ export function createEmailFeature(env = {}) {
             const alias = getEmailContactLabel(gmailCmd.alias || '');
             const recipient = resolveRecipientForSave(gmailCmd);
             if (!alias || !recipient) {
-                await quickReply(
-                    'Tell me the address and who to save it as — for example save someone@example.com as my daughter — or put the email in To whom and say save this recipient as my daughter.',
-                    'happy'
-                );
+                await quickReply('Tell me the email address and who to save it as. For example: save someone@example.com as my daughter.', 'happy');
                 return;
             }
             saveEmailContact(alias, recipient);
             await quickReply(`Okay. I will remember ${alias} as ${recipient}.`, 'happy');
-            try {
-                if (state.currentSidePanelAction === 'gmail' && getGoogleGmailAuthState()?.connected) {
-                    await openGmailInboxPanel({ summary: 'Contact saved.' });
-                }
-            } catch (_) { /* panel optional */ }
-            return;
-        }
-
-        if (gmailCmd.action === 'clearContacts') {
-            state.emailContacts = {};
-            persistEmailContacts?.();
-            await quickReply('Saved email contacts cleared. Say save someone@example.com as a name when you want to add them again.', 'happy');
-            try {
-                if (state.currentSidePanelAction === 'gmail' && getGoogleGmailAuthState()?.connected) {
-                    await openGmailInboxPanel({ summary: 'Contacts cleared.' });
-                }
-            } catch (_) { /* panel optional */ }
             return;
         }
 
         if (gmailCmd.action === 'sendStatus') {
             await quickReply(buildLastSendStatusReply(), 'happy');
-            return;
-        }
-
-        if (gmailCmd.action === 'setSubject') {
-            const authState = getGoogleGmailAuthState();
-            if (!authState.connected) {
-                await quickReply('Connect Gmail in Settings first, then try again.', 'happy');
-                return;
-            }
-            const subject = String(gmailCmd.subject || '').trim();
-            if (!subject) {
-                await quickReply('What should the subject be?', 'happy');
-                return;
-            }
-            const reply = await applyDraftUpdate({ subject, subjectSkipped: false }, 'Subject updated.');
-            await quickReply(reply, 'happy');
             return;
         }
 
@@ -1612,7 +1440,6 @@ export function createEmailFeature(env = {}) {
         }
 
         if (gmailCmd.action === 'sendDirect') {
-            // Always open the Email panel so To / subject / body are visible; send only after explicit Send or “send”.
             const reply = await openDraftForReview({
                 to: gmailCmd.to || '',
                 recipientQuery: gmailCmd.recipientQuery || '',
@@ -1637,8 +1464,41 @@ export function createEmailFeature(env = {}) {
                 return;
             }
 
+            if (gmailCmd.quickSend && payload.to) {
+                const result = await sendCurrentGmailDraft(payload, { silent: true });
+                await quickReply(result.text, result.ok ? 'happy' : 'sad');
+                return;
+            }
+
             const reply = await openDraftForReview(payload, { summary: 'Email draft ready.', source: gmailCmd.shareType || 'auto' });
             await quickReply(reply, 'happy');
+            return;
+        }
+
+        if (gmailCmd.action === 'saveToNotes' || gmailCmd.action === 'addNote') {
+            const currentMsg = state.gmailSelectedMessage;
+            if (!currentMsg) {
+                await quickReply('Open an email first so I can save it to your notes.', 'sad');
+                return;
+            }
+            const noteData = Connector.emailToNote(currentMsg);
+            if (noteData) {
+                const noteId = `note-${Date.now()}`;
+                publishConversationObject(state, {
+                    id: noteId,
+                    kind: 'note',
+                    label: (noteData.content || '').slice(0, 30) + '...',
+                    value: noteData.content,
+                    tool: 'notes',
+                    payload: noteData
+                });
+                await quickReply('Email saved to your notes.', 'happy');
+            }
+            return;
+        }
+
+        if (gmailCmd.action === 'open' || gmailCmd.action === 'list' || gmailCmd.action === 'inbox') {
+            await openGmailInboxPanel({ summary: 'Opening your inbox.' });
             return;
         }
 
@@ -1735,8 +1595,5 @@ export function createEmailFeature(env = {}) {
 
         // For other parts (optional wiring)
         buildEmailPayloadFromContext,
-
-        // Panel lifecycle
-        closePanel: clearPendingEmailReview,
     };
 }

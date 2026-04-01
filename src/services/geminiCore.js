@@ -18,11 +18,14 @@ export function requireApiKey(inputKey) {
 
 export function buildGeminiUrl(model, inputKey) {
   const apiKey = resolveApiKey(inputKey);
+  const normalizedModel = String(model || '').trim();
+  const lower = normalizedModel.toLowerCase();
+  const safeModel = /^minimax(?:[-\s_]?)/.test(lower) ? DEFAULT_GEMINI_MODEL : normalizedModel;
   if (!apiKey) {
     // If no key is provided, use the local backend proxy
-    return `/api/gemini/models/${model}:generateContent`;
+    return `/api/gemini/models/${safeModel}:generateContent`;
   }
-  return `${GEMINI_API_BASE}/${model}:generateContent?key=${apiKey}`;
+  return `${GEMINI_API_BASE}/${safeModel}:generateContent?key=${apiKey}`;
 }
 
 export async function postGeminiJson(url, body, timeoutMs = 45000) {

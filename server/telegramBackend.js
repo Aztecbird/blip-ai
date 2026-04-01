@@ -5,9 +5,13 @@ import { URL } from 'node:url';
 
 const PORT = Number(process.env.TELEGRAM_BACKEND_PORT || 8789);
 const FRONTEND_ORIGIN = process.env.BLIP_FRONTEND_ORIGIN || 'http://localhost:5173';
-const BOT_TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
-const DEFAULT_CHAT_ID = String(process.env.TELEGRAM_CHAT_ID || '').trim();
-const CHAT_ALIASES = parseTelegramChatAliases(process.env.TELEGRAM_CHAT_ALIASES || '');
+let BOT_TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
+let DEFAULT_CHAT_ID = String(process.env.TELEGRAM_CHAT_ID || '').trim();
+let CHAT_ALIASES = (() => {
+    const aliases = parseTelegramChatAliases(process.env.TELEGRAM_CHAT_ALIASES || '');
+    expandBlipJoyTelegramAliases(aliases);
+    return aliases;
+})();
 
 function normalizeTelegramAlias(value = '') {
     return String(value || '')
@@ -32,10 +36,45 @@ function parseTelegramChatAliases(rawValue = '') {
     return aliases;
 }
 
+/** If you define alias `joy`, also accept spoken/display names like "Blip Joy". */
+function expandBlipJoyTelegramAliases(aliases) {
+    const joyId = aliases.joy;
+    if (!joyId) return;
+    for (const label of ['blip joy', 'blipjoy', 'blip-joy']) {
+        const key = normalizeTelegramAlias(label);
+        if (key && !aliases[key]) aliases[key] = joyId;
+    }
+}
+
 function resolveTelegramChatId(value = '') {
     const rawValue = String(value || '').trim();
-    if (!rawValue) return DEFAULT_CHAT_ID;
-    return CHAT_ALIASES[normalizeTelegramAlias(rawValue)] || rawValue;
+    const lower = rawValue.toLowerCase();
+    
+    // If empty or a self-reference, use default
+    if (!rawValue || /^(?:my|me|self|myself|default|none|null|undefined|my\s+telegram|me\s+on\s+telegram)$/.test(lower)) {
+        const defaultAlias = String(process.env.TELEGRAM_DEFAULT_ALIAS || '').trim();
+        if (defaultAlias) {
+            const viaAlias = CHAT_ALIASES[normalizeTelegramAlias(defaultAlias)];
+            if (viaAlias) return viaAlias;
+        }
+        return DEFAULT_CHAT_ID;
+    }
+    // Be tolerant with voice/polycentric phrasing noise:
+    // "my telegram please", "send to me on telegram", etc -> default chat.
+    if (
+        /\b(?:my|me|self|myself)\b(?:\s+(?:on|in|via|to))?\s+\btelegram\b/.test(lower)
+        || /^\btelegram\b(?:\s+(?:for|to|on))?\s+\b(?:my|me|self|myself)\b/.test(lower)
+    ) {
+        const defaultAlias = String(process.env.TELEGRAM_DEFAULT_ALIAS || '').trim();
+        if (defaultAlias) {
+            const viaAlias = CHAT_ALIASES[normalizeTelegramAlias(defaultAlias)];
+            if (viaAlias) return viaAlias;
+        }
+        return DEFAULT_CHAT_ID;
+    }
+    
+    const aliasKey = normalizeTelegramAlias(rawValue);
+    return CHAT_ALIASES[aliasKey] || rawValue;
 }
 
 function isConfigured() {
@@ -78,6 +117,11 @@ function sanitizeTelegramHtml(value = '') {
 }
 
 async function telegramRequest(method, body) {
+    if (!BOT_TOKEN) {
+        const error = new Error('Missing Telegram bot token.');
+        error.statusCode = 500;
+        throw error;
+    }
     const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
         method: 'POST',
         body
@@ -91,6 +135,17 @@ async function telegramRequest(method, body) {
         throw error;
     }
     return data.result || null;
+}
+
+function applyRuntimeTelegramConfig(payload = {}) {
+    const nextBotToken = String(payload?.botToken || '').trim();
+    const nextChatId = String(payload?.chatId || '').trim();
+    const nextAliases = parseTelegramChatAliases(String(payload?.chatAliases || ''));
+    expandBlipJoyTelegramAliases(nextAliases);
+
+    BOT_TOKEN = nextBotToken;
+    DEFAULT_CHAT_ID = nextChatId;
+    CHAT_ALIASES = nextAliases;
 }
 
 async function sendTelegramMessage({ chatId = '', text = '' } = {}) {
@@ -140,6 +195,39 @@ async function sendTelegramPhoto({ chatId = '', caption = '', photoUrl = '', pho
     return telegramRequest('sendPhoto', body);
 }
 
+async function sendTelegramVideo({ chatId = '', caption = '', videoUrl = '', videoBase64 = '', filename = 'blip-video.webm' } = {}) {
+    const resolvedChatId = resolveTelegramChatId(chatId);
+    if (!resolvedChatId) throw new Error('Missing Telegram chat id.');
+
+    const trimmedVideoUrl = String(videoUrl || '').trim();
+    const trimmedCaption = String(caption || '').trim();
+    const trimmedBase64 = String(videoBase64 || '').trim();
+
+    if (trimmedVideoUrl) {
+        const body = new URLSearchParams({
+            chat_id: resolvedChatId,
+            video: trimmedVideoUrl
+        });
+        if (trimmedCaption) body.set('caption', trimmedCaption);
+        return telegramRequest('sendVideo', body);
+    }
+
+    if (!trimmedBase64) {
+        throw new Error('Need either Telegram videoUrl or videoBase64.');
+    }
+
+    const mimeMatch = trimmedBase64.match(/^data:(video\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    const mimeType = mimeMatch?.[1] || 'video/webm';
+    const rawBase64 = mimeMatch?.[2] || trimmedBase64;
+    const bytes = Buffer.from(rawBase64, 'base64');
+    const body = new FormData();
+    body.set('chat_id', resolvedChatId);
+    if (trimmedCaption) body.set('caption', trimmedCaption);
+    body.set('video', new Blob([bytes], { type: mimeType }), String(filename || 'blip-video.webm'));
+
+    return telegramRequest('sendVideo', body);
+}
+
 const server = http.createServer(async (request, response) => {
     try {
         if (request.method === 'OPTIONS') {
@@ -161,7 +249,23 @@ const server = http.createServer(async (request, response) => {
                 hasBotToken: Boolean(BOT_TOKEN),
                 hasChatId: Boolean(DEFAULT_CHAT_ID),
                 chatIdPreview: DEFAULT_CHAT_ID ? `${DEFAULT_CHAT_ID.slice(0, 4)}...` : '',
-                aliasNames: Object.keys(CHAT_ALIASES)
+                aliasNames: Object.keys(CHAT_ALIASES),
+                backendPort: PORT
+            });
+            return;
+        }
+
+        if (url.pathname === '/api/telegram/configure' && request.method === 'POST') {
+            const body = await collectJsonBody(request);
+            applyRuntimeTelegramConfig(body);
+            sendJson(request, response, 200, {
+                ok: true,
+                backendConfigured: isConfigured(),
+                hasBotToken: Boolean(BOT_TOKEN),
+                hasChatId: Boolean(DEFAULT_CHAT_ID),
+                chatIdPreview: DEFAULT_CHAT_ID ? `${DEFAULT_CHAT_ID.slice(0, 4)}...` : '',
+                aliasNames: Object.keys(CHAT_ALIASES),
+                backendPort: PORT
             });
             return;
         }
@@ -195,6 +299,23 @@ const server = http.createServer(async (request, response) => {
                 caption: body?.caption,
                 photoUrl: body?.photoUrl,
                 photoBase64: body?.photoBase64,
+                filename: body?.filename
+            });
+            sendJson(request, response, 200, {
+                ok: true,
+                messageId: result?.message_id || 0,
+                chatId: String(result?.chat?.id || DEFAULT_CHAT_ID || '')
+            });
+            return;
+        }
+
+        if (url.pathname === '/api/telegram/send-video' && request.method === 'POST') {
+            const body = await collectJsonBody(request);
+            const result = await sendTelegramVideo({
+                chatId: body?.chatId,
+                caption: body?.caption,
+                videoUrl: body?.videoUrl,
+                videoBase64: body?.videoBase64,
                 filename: body?.filename
             });
             sendJson(request, response, 200, {

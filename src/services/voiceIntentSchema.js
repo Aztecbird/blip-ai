@@ -1,6 +1,12 @@
 import { buildGeminiUrl, DEFAULT_GEMINI_MODEL, extractCandidateParts, postGeminiJson } from './geminiCore.js';
 import { normalizeCommandText } from './textParsing.js';
 
+function isMiniMaxModel(model = '') {
+    const normalized = String(model || '').trim().toLowerCase();
+    // Accept variants like "MiniMax-M2.7" (current UI) and "MiniMax M2.7" (older/pasted).
+    return /^minimax(?:[-\s_]?)/.test(normalized);
+}
+
 export const VOICE_INTENT_SCHEMA = {
     type: 'object',
     additionalProperties: false,
@@ -83,6 +89,17 @@ function cleanText(value = '') {
     return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+function getVoiceParsingTemperature() {
+    try {
+        const raw = window?.localStorage?.getItem('blip_parsing_temperature');
+        const parsed = parseFloat(String(raw ?? ''));
+        if (!Number.isFinite(parsed)) return 0;
+        return Math.min(0.5, Math.max(0, parsed));
+    } catch (_) {
+        return 0;
+    }
+}
+
 function normalizeDraft(draft = {}) {
     return {
         to: cleanText(draft.to || ''),
@@ -144,7 +161,7 @@ function parseStructuredVoiceIntentResponse(data = {}) {
 
 export async function resolveStructuredVoiceIntent(command = '', context = {}, options = {}) {
     const apiKey = String(options.apiKey || '').trim();
-    const model = options.model || DEFAULT_GEMINI_MODEL;
+    const model = isMiniMaxModel(options.model) ? DEFAULT_GEMINI_MODEL : (options.model || DEFAULT_GEMINI_MODEL);
     const url = buildGeminiUrl(model, apiKey);
     const body = {
         system_instruction: {
@@ -165,7 +182,7 @@ export async function resolveStructuredVoiceIntent(command = '', context = {}, o
             parts: [{ text: buildVoiceIntentPrompt(command, context) }]
         }],
         generationConfig: {
-            temperature: 0,
+            temperature: getVoiceParsingTemperature(),
             max_output_tokens: 256,
             responseMimeType: 'application/json',
             responseSchema: VOICE_INTENT_SCHEMA,

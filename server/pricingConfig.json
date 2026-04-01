@@ -1,0 +1,58 @@
+{
+  "openai": {
+    "image_generation": {
+      "gpt-image-1": {
+        "unit": "per_image",
+        "currency": "USD",
+        "cost": 0.04
+      }
+    }
+  },
+  "google": {
+    "gemini_api": {
+      "gemini-2.5-flash": {
+        "unit": "per_1k_tokens",
+        "currency": "USD",
+        "inputCost": 0.0003,
+        "outputCost": 0.0025
+      },
+      "gemini-2.5-pro": {
+        "unit": "per_1k_tokens",
+        "currency": "USD",
+        "inputCost": 0.00125,
+        "outputCost": 0.01
+      },
+      "gemini-1.5-flash": {
+        "unit": "per_1k_tokens",
+        "currency": "USD",
+        "inputCost": 0.00035,
+        "outputCost": 0.00105
+      }
+    },
+    "gmail_api": {
+      "requests": {
+        "unit": "per_request",
+        "currency": "USD",
+        "cost": 0.0
+      }
+    }
+  },
+  "openweathermap": {
+    "current_weather": {
+      "requests": {
+        "unit": "per_request",
+        "currency": "USD",
+        "cost": 0.0
+      }
+    }
+  },
+  "wttr": {
+    "current_weather": {
+      "requests": {
+        "unit": "per_request",
+        "currency": "USD",
+        "cost": 0.0
+      }
+    }
+  }
+}

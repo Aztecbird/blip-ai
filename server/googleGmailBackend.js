@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { URL } from 'node:url';
+import { logApiExpense } from './utils/expenseLogger.js';
 
 const PORT = Number(process.env.GOOGLE_GMAIL_BACKEND_PORT || 8788);
 const FRONTEND_ORIGIN = process.env.BLIP_FRONTEND_ORIGIN || 'http://localhost:5173';
@@ -528,6 +529,16 @@ const server = http.createServer(async (request, response) => {
                 messages: details.filter(Boolean).map(summarizeMessage),
                 nextPageToken: String(listData.nextPageToken || '')
             });
+            void logApiExpense({
+                provider: 'google',
+                product: 'gmail_api',
+                operation: 'list_messages',
+                model: 'gmail-v1',
+                quantity: 1,
+                unit: 'per_request',
+                status: 'success',
+                metadata: { maxResults, queryPresent: Boolean(q) }
+            });
             return;
         }
 
@@ -596,6 +607,16 @@ const server = http.createServer(async (request, response) => {
                 id: sent.id,
                 threadId: sent.threadId,
                 labelIds: sent.labelIds || []
+            });
+            void logApiExpense({
+                provider: 'google',
+                product: 'gmail_api',
+                operation: 'send_message',
+                model: 'gmail-v1',
+                quantity: 1,
+                unit: 'per_request',
+                status: 'success',
+                metadata: { hasAttachments: attachments.length > 0 }
             });
             return;
         }

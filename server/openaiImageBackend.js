@@ -2,6 +2,7 @@
 
 import http from 'node:http';
 import { URL } from 'node:url';
+import { logApiExpense } from './utils/expenseLogger.js';
 
 const PORT = Number(process.env.OPENAI_IMAGE_BACKEND_PORT || 8790);
 const FRONTEND_ORIGIN = process.env.BLIP_FRONTEND_ORIGIN || 'http://localhost:5173';
@@ -88,6 +89,16 @@ const server = http.createServer(async (req, res) => {
       if (!prompt) return sendJson(req, res, 400, { error: 'Missing prompt.' });
       const size = String(body?.size || '1024x1024');
       const out = await generateImageOpenAI({ prompt, size });
+      void logApiExpense({
+        provider: 'openai',
+        product: 'image_generation',
+        operation: 'generate',
+        model: OPENAI_IMAGE_MODEL,
+        quantity: 1,
+        unit: 'per_image',
+        status: 'success',
+        metadata: { size },
+      });
       return sendJson(req, res, 200, { ok: true, base64: out.base64, mimeType: 'image/png', model: OPENAI_IMAGE_MODEL });
     }
 

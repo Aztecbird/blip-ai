@@ -385,6 +385,28 @@ test('getGmailVoiceCommand maps context-share phrases', () => {
             quickSend: true
         }
     );
+    assert.deepEqual(
+        getGmailVoiceCommand('send it to email'),
+        {
+            action: 'shareCurrent',
+            recipient: '',
+            recipientQuery: '',
+            shareType: 'auto',
+            subject: '',
+            quickSend: true
+        }
+    );
+    assert.deepEqual(
+        getGmailVoiceCommand('send this to gmail'),
+        {
+            action: 'shareCurrent',
+            recipient: '',
+            recipientQuery: '',
+            shareType: 'auto',
+            subject: '',
+            quickSend: true
+        }
+    );
 });
 
 test('extractGmailSaveContactRequest pulls out save-contact phrases', () => {

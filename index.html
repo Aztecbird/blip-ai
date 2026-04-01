@@ -54,6 +54,7 @@
 
         <main class="container">
             <div id="version-tag">V4.3.24</div>
+            <div id="dev-brain-banner" class="dev-brain-banner" aria-hidden="true"></div>
 
             <!-- Hidden Compatibility Elements for Legacy JS -->
             <div style="display:none;">
@@ -121,6 +122,10 @@
                         <div id="meter-level"></div>
                     </div>
                 </div>
+                <button id="companion-indicator" class="companion-indicator companion-indicator-off" type="button" aria-live="polite" aria-label="Companion mode off" title="Companion mode off">
+                    <span class="companion-indicator-heart" aria-hidden="true">♥</span>
+                    <span class="companion-indicator-label" aria-hidden="true">off</span>
+                </button>
 
                 <div id="weather-display" class="weather-display hidden" aria-live="polite" aria-label="Weather display"></div>
                 <div id="countdown-display" class="weather-display countdown-display hidden" aria-live="polite" aria-label="Countdown display"></div>
@@ -201,6 +206,10 @@
             <div id="under-the-hood" class="hidden-panel">
                 <div class="panel-header">
                     <h3>SYSTEM SETTINGS</h3>
+                    <div class="settings-lock-controls">
+                        <button id="settingsLockToggleBtn" type="button" class="secondary-btn">Lock</button>
+                        <span id="settingsLockStatus" class="settings-lock-status" aria-live="polite">Unlocked</span>
+                    </div>
                     <button id="closePanelBtn">✕</button>
                 </div>
                 <div class="panel-content">
@@ -209,6 +218,15 @@
                         <label for="geminiKeyInput">Gemini API Key <small>(for chat and voice)</small></label>
                         <input type="password" id="geminiKeyInput" placeholder="Enter your Gemini key">
                         <span class="setting-hint">Main Blip key — not the YouTube key.</span>
+                        <div class="setting-inline-row" style="margin-top:0.65rem;">
+                            <button type="button" id="copyGeminiKeyBtn" class="secondary-btn">📋 Copy Gemini Key</button>
+                        </div>
+                        <span class="setting-hint">Copies the saved key from Blip to your clipboard so you can reuse it elsewhere.</span>
+                    </div>
+                    <div class="setting-group">
+                        <label for="minimaxKeyInput">MiniMax API Key <small>(for MiniMax 2.7 chat)</small></label>
+                        <input type="password" id="minimaxKeyInput" placeholder="Enter your MiniMax key">
+                        <span class="setting-hint">Use this key when you switch Chat model to MiniMax M2.7 or M2.7-highspeed.</span>
                     </div>
                     <div class="setting-group">
                         <label for="youtubeKeyInput">YouTube API Key <small>(for video search in panel only)</small></label>
@@ -246,12 +264,43 @@
                     </div>
                     <p class="settings-section-label">Telegram</p>
                     <div class="setting-group">
+                        <label for="telegramBotTokenInput">Bot token</label>
+                        <input type="password" id="telegramBotTokenInput" placeholder="123456789:AA...">
+                    </div>
+                    <div class="setting-group">
+                        <label for="telegramChatIdInput">Default chat ID</label>
+                        <input type="text" id="telegramChatIdInput" placeholder="e.g. 8651008577 or -1001234567890">
+                    </div>
+                    <div class="setting-group">
+                        <label for="telegramChatAliasesInput">Chat aliases</label>
+                        <input type="text" id="telegramChatAliasesInput" placeholder="joy:-1001234567890,mom:8651008577">
+                        <span class="setting-hint">Format: alias:chatId,alias2:chatId2</span>
+                    </div>
+                    <div class="setting-group">
+                        <label for="telegramBackendPortInput">Backend port</label>
+                        <input type="number" id="telegramBackendPortInput" min="1" max="65535" step="1" placeholder="8789">
+                        <span class="setting-hint">Blip frontend target port. If you run backend on another port, set it here.</span>
+                    </div>
+                    <div class="setting-group">
+                        <button id="applyTelegramSettingsBtn" type="button" class="secondary-btn">Apply Telegram Settings</button>
+                        <button id="copyTelegramEnvBtn" type="button" class="secondary-btn">Copy .env.local Telegram Block</button>
+                    </div>
+                    <div class="setting-group">
                         <div class="calendar-auth-actions">
                             <button id="openTelegramBtn" type="button" class="secondary-btn">Open Telegram</button>
                             <button id="sendTelegramTestBtn" type="button" class="secondary-btn">Send Test</button>
                         </div>
                         <div id="telegramAuthStatus" class="calendar-auth-status" aria-live="polite">Telegram not ready.</div>
                         <span class="setting-hint">Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, then Blip can send quick text and photo messages.</span>
+                    </div>
+                    <p class="settings-section-label">API usage</p>
+                    <div class="setting-group">
+                        <div class="calendar-auth-actions">
+                            <button id="refreshApiUsageBtn" type="button" class="secondary-btn">Refresh Usage</button>
+                        </div>
+                        <div id="apiUsageStatus" class="calendar-auth-status" aria-live="polite">No API usage data yet.</div>
+                        <pre id="apiUsageSummary" class="api-usage-summary">Open Settings and press "Refresh Usage".</pre>
+                        <span class="setting-hint">Reads from the local Expense Tracker backend summary endpoint.</span>
                     </div>
                     <p class="settings-section-label">Models</p>
                     <div class="setting-group">
@@ -273,6 +322,17 @@
                         <span class="setting-hint">Gemini: ~100 free/day then paid. Kokoro &amp; browser: free.</span>
                         <span class="setting-hint" id="voiceEngineStatus" aria-live="polite"></span>
                     </div>
+                    <div class="setting-group">
+                        <label>Companion mode</label>
+                        <div class="setting-inline-row">
+                            <label class="toggle-pill" for="companionModeToggle">
+                                <input type="checkbox" id="companionModeToggle">
+                                <span>Emotion-aware companion</span>
+                            </label>
+                        </div>
+                        <div id="companionSettingsStatus" class="calendar-auth-status" aria-live="polite">Checking companion status...</div>
+                        <span class="setting-hint">Backend availability and your local preference are separate. When on, Blip uses Hume softly during live listening.</span>
+                    </div>
                     <div class="setting-group" id="kokoro-hint-group" style="display: none;">
                         <span class="setting-hint">Start Kokoro in the <strong>same terminal</strong> (it runs in background and frees the terminal):</span>
                         <pre class="kokoro-bash" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.3); border-radius:6px; font-size:0.7rem; overflow-x:auto;">./start-kokoro.sh</pre>
@@ -291,9 +351,21 @@
                         <select id="modelSelect">
                             <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
                             <option value="gemini-2.5-pro">Gemini 2.5 Pro (Brainy)</option>
+                            <option value="MiniMax-M2.7">MiniMax M2.7</option>
+                            <option value="MiniMax-M2.7-highspeed">MiniMax M2.7 High-Speed</option>
                             <option value="qwen2.5-coder:32b">Qwen 2.5 Coder (Ollama)</option>
                             <option value="llama3.2:latest">Llama 3.2 (Ollama)</option>
                         </select>
+                    </div>
+                    <div class="setting-group">
+                        <label for="conversationTemperatureInput">Conversation temperature <span id="conversationTemperatureValue">0.78</span></label>
+                        <input type="range" id="conversationTemperatureInput" min="0" max="1" step="0.01" value="0.78" title="Conversation creativity">
+                        <span class="setting-hint">Higher = lighter/more creative replies. Lower = more literal and consistent.</span>
+                    </div>
+                    <div class="setting-group">
+                        <label for="parsingTemperatureInput">Parsing temperature <span id="parsingTemperatureValue">0.00</span></label>
+                        <input type="range" id="parsingTemperatureInput" min="0" max="0.5" step="0.01" value="0" title="Intent parsing precision">
+                        <span class="setting-hint">Keep low for deterministic command parsing and routing.</span>
                     </div>
                     <div class="setting-group">
                         <label for="imageModelSelect">Image model</label>
@@ -383,6 +455,19 @@ http://127.0.0.1:8188</pre>
                         </div>
                         <span class="setting-hint">Dump current UI state below. Use when debugging panels, mode, or side panel.</span>
                         <pre id="ui-debug-dump" class="ui-debug-dump" aria-live="polite" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.4); border-radius:6px; font-size:0.7rem; max-height:240px; overflow:auto; white-space:pre-wrap; word-break:break-all;"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Conversation Inspector Modal -->
+            <div id="conversation-inspector-modal" class="conversation-inspector-modal" style="display:none;" aria-hidden="true">
+                <div class="conversation-inspector-card">
+                    <div class="panel-header">
+                        <h3>Conversation Inspector</h3>
+                        <button id="closeConversationInspectorBtn" type="button">✕</button>
+                    </div>
+                    <div class="panel-content">
+                        <pre id="conversation-inspector-dump" class="conversation-inspector-dump" aria-live="polite"></pre>
                     </div>
                 </div>
             </div>
