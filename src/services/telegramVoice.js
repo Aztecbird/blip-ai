@@ -29,6 +29,15 @@ export function getTelegramVoiceCommand(command = '') {
             draft: { chatId: String(toTail?.[1] || '').replace(/\s+on\s+telegram\s*$/i, '').trim() }
         };
     }
+
+    // Explicit "message in/on telegram" phrasing should stay text-first.
+    const explicitMessageInTelegram = lower.match(
+        new RegExp(`^${politePrefix}(?:send|write|compose)(?:\\s+(?:a|the))?\\s+(?:message|text)(?:\\s+(?:in|on|via|with))\\s+telegram(?:\\s+(?:to|for)\\s+(.+))?$`)
+    );
+    if (explicitMessageInTelegram) {
+        return { action: 'compose', draft: { chatId: String(explicitMessageInTelegram[1] || '').trim(), text: '' } };
+    }
+
     const sendOrDraftAction = (verb = 'send', draft = {}) => ({
         action: verb === 'send' ? 'sendDirect' : 'compose',
         draft
@@ -159,7 +168,7 @@ export function getTelegramVoiceCommand(command = '') {
 
     const shareGenericMatch = lower.match(
         new RegExp(
-            `^${politePrefix}(?:send|share|put)\\s+(?:me\\s+)?(?:(?:this|the|that|my)\\s+|(?:a|an)\\s+)?(note|video|link|youtube(?:\\s+link)?|date|calendar(?:\\s+event)?|event|it|that)\\b(?:\\s+(?:on|in|to|via|with)\\s+(?:my\\s+)?telegram)?(?:\\s+(?:to|for)\\s+(.+))?$`,
+            `^${politePrefix}(?:send|share|put)\\s+(?:me\\s+)?(?:(?:this|the|that|my)\\s+|(?:a|an)\\s+)?(note|video|link|youtube(?:\\s+link)?|weather|forecast|date|calendar(?:\\s+event)?|event|it|that)\\b(?:\\s+(?:on|in|to|via|with)\\s+(?:my\\s+)?telegram)?(?:\\s+(?:to|for)\\s+(.+))?$`,
             'i'
         )
     );
@@ -179,6 +188,8 @@ export function getTelegramVoiceCommand(command = '') {
                 youtube: 'youtube',
                 'youtube link': 'youtube',
                 link: 'link',
+                weather: 'weather',
+                forecast: 'weather',
                 date: 'date',
                 calendar: 'calendar',
                 'calendar event': 'calendar',

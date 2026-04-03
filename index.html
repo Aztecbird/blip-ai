@@ -53,7 +53,7 @@
         </svg>
 
         <main class="container">
-            <div id="version-tag">V4.3.24</div>
+            <div id="version-tag">V4.3.25</div>
             <div id="dev-brain-banner" class="dev-brain-banner" aria-hidden="true"></div>
 
             <!-- Hidden Compatibility Elements for Legacy JS -->
@@ -147,6 +147,7 @@
                     <button id="emailBtn" title="Email">📧</button>
                     <button id="telegramBtn" title="Telegram">📨</button>
                     <button type="button" id="micTestBtn" title="Mic Test">🎙️</button>
+                    <button type="button" id="snapshotZoomBtn" title="Snapshot Zoom Tool">🔍</button>
                     <button id="cameraBtn" title="Camera">📷</button>
                     <button id="calendarBtn" title="Calendar">📅</button>
                     <button id="mediaBtn" title="Media">🖼️</button>
@@ -456,6 +457,15 @@ http://127.0.0.1:8188</pre>
                         <span class="setting-hint">Dump current UI state below. Use when debugging panels, mode, or side panel.</span>
                         <pre id="ui-debug-dump" class="ui-debug-dump" aria-live="polite" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.4); border-radius:6px; font-size:0.7rem; max-height:240px; overflow:auto; white-space:pre-wrap; word-break:break-all;"></pre>
                     </div>
+                    <p class="settings-section-label">Command Inspector</p>
+                    <div class="setting-group">
+                        <input type="text" id="commandInspectorInput" placeholder="Type a voice command to preview routing...">
+                        <div class="setting-inline-row">
+                            <button type="button" id="runCommandInspectorBtn" class="secondary-btn">Preview Command</button>
+                        </div>
+                        <span class="setting-hint">No side effects. Shows how Blip parses and routes this command.</span>
+                        <pre id="commandInspectorOutput" class="api-usage-summary" aria-live="polite">No preview yet.</pre>
+                    </div>
                 </div>
             </div>
 
@@ -554,6 +564,7 @@ http://127.0.0.1:8188</pre>
             <div id="media-lightbox" class="media-lightbox" aria-hidden="true">
                 <button id="closeMediaLightboxBtn" class="panel-close-btn media-lightbox-close" aria-label="Close image">✕</button>
                 <div class="media-lightbox-actions">
+                    <button id="zoomMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action media-lightbox-zoom" aria-label="Zoom snapshot">🔍</button>
                     <button id="shareMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Share</button>
                     <button id="downloadMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Download</button>
                     <button id="wallpaperMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Wallpaper</button>

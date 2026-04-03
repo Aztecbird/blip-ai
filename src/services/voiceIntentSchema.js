@@ -1,5 +1,6 @@
 import { buildGeminiUrl, DEFAULT_GEMINI_MODEL, extractCandidateParts, postGeminiJson } from './geminiCore.js';
 import { normalizeCommandText } from './textParsing.js';
+import { getCoreCommandParsingTemperature } from './parsingTemperaturePolicy.js';
 
 function isMiniMaxModel(model = '') {
     const normalized = String(model || '').trim().toLowerCase();
@@ -89,17 +90,6 @@ function cleanText(value = '') {
     return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
-function getVoiceParsingTemperature() {
-    try {
-        const raw = window?.localStorage?.getItem('blip_parsing_temperature');
-        const parsed = parseFloat(String(raw ?? ''));
-        if (!Number.isFinite(parsed)) return 0;
-        return Math.min(0.5, Math.max(0, parsed));
-    } catch (_) {
-        return 0;
-    }
-}
-
 function normalizeDraft(draft = {}) {
     return {
         to: cleanText(draft.to || ''),
@@ -182,7 +172,7 @@ export async function resolveStructuredVoiceIntent(command = '', context = {}, o
             parts: [{ text: buildVoiceIntentPrompt(command, context) }]
         }],
         generationConfig: {
-            temperature: getVoiceParsingTemperature(),
+            temperature: getCoreCommandParsingTemperature(),
             max_output_tokens: 256,
             responseMimeType: 'application/json',
             responseSchema: VOICE_INTENT_SCHEMA,

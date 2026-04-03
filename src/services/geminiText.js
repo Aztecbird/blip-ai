@@ -1,12 +1,11 @@
 import { buildGeminiUrl, DEFAULT_GEMINI_MODEL, extractCandidateParts, postGeminiJson } from './geminiCore.js';
 import { logApiExpense } from './expenseLogger.js';
+import { getStructuredTaskTemperature } from './parsingTemperaturePolicy.js';
 
 // MiniMax official base URL (see docs: https://platform.minimax.io)
 const MINIMAX_API_BASE = 'https://api.minimax.io/v1';
 const MINIMAX_DEFAULT_MODEL = 'MiniMax-M2.7';
 const CONVERSATION_TEMPERATURE = 0.78;
-const STRUCTURED_TASK_TEMPERATURE = 0.3;
-
 function getConversationTemperature() {
   try {
     const raw = window?.localStorage?.getItem('blip_conversation_temperature');
@@ -15,17 +14,6 @@ function getConversationTemperature() {
     return Math.min(1, Math.max(0, parsed));
   } catch (_) {
     return CONVERSATION_TEMPERATURE;
-  }
-}
-
-function getStructuredTaskTemperature() {
-  try {
-    const raw = window?.localStorage?.getItem('blip_parsing_temperature');
-    const parsed = parseFloat(String(raw ?? ''));
-    if (!Number.isFinite(parsed)) return STRUCTURED_TASK_TEMPERATURE;
-    return Math.min(0.5, Math.max(0, parsed));
-  } catch (_) {
-    return STRUCTURED_TASK_TEMPERATURE;
   }
 }
 

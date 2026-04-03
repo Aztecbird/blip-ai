@@ -72,6 +72,7 @@ import {
 } from './services/youtubeLibrary.js'
 import { createEmailFeature } from './features/email/emailFeature.js'
 import { createTelegramFeature } from './features/telegram/telegramFeature.js'
+import { createBlipNextBridge, shouldTryBlipNextRoute } from './services/blipNextBridge.js'
 import { getToolLearningHint, recordToolOutcome, getLearningSummary } from './services/mistakeLearner.js'
 import {
     publishConversationObject,
@@ -80,6 +81,20 @@ import {
 } from './services/toolConversation.js';
 import { Connector } from './services/connector.js'
 import { tryHandleTaskVoiceCommand } from './services/taskVoiceBridge.js'
+import { buildVoiceRoutingSnapshot } from './services/assistantRouter.js'
+import {
+    buildYouTubeSnapshotQuestion,
+    isYouTubeSnapshotCaptureIntent,
+    isYouTubeSnapshotIntent,
+    parseYouTubeSnapshotZoomCommand
+} from './services/youtubeSnapshotIntent.js'
+import {
+    analyzeYouTubeSnapshot,
+    buildSnapshotViewImage,
+    captureCurrentYouTubeFrame,
+    createSnapshotViewState,
+    updateSnapshotViewState
+} from './services/youtubeSnapshotVision.js'
 
 // ── UI: DOM ELEMENTS ─────────────────────────────────────────────────────────
 const face = document.getElementById('blip-face');
@@ -101,6 +116,7 @@ const notesBtn = document.getElementById('notesBtn');
 const emailBtn = document.getElementById('emailBtn');
 const telegramBtn = document.getElementById('telegramBtn');
 const micTestBtn = document.getElementById('micTestBtn');
+const snapshotZoomBtn = document.getElementById('snapshotZoomBtn');
 const calendarBtn = document.getElementById('calendarBtn');
 const chatEntry = document.getElementById('chat-entry');
 const chatInput = document.getElementById('chatInput');
@@ -158,6 +174,7 @@ const closeMediaBtn = document.getElementById('closeMediaBtn');
 const mediaLightbox = document.getElementById('media-lightbox');
 const mediaLightboxImage = document.getElementById('media-lightbox-image');
 const mediaLightboxVideo = document.getElementById('media-lightbox-video');
+const zoomMediaLightboxBtn = document.getElementById('zoomMediaLightboxBtn');
 const shareMediaLightboxBtn = document.getElementById('shareMediaLightboxBtn');
 const downloadMediaLightboxBtn = document.getElementById('downloadMediaLightboxBtn');
 const wallpaperMediaLightboxBtn = document.getElementById('wallpaperMediaLightboxBtn');
@@ -204,6 +221,9 @@ const settingsLockToggleBtn = document.getElementById('settingsLockToggleBtn');
 const settingsLockStatus = document.getElementById('settingsLockStatus');
 const openConversationInspectorBtn = document.getElementById('openConversationInspectorBtn');
 const closeConversationInspectorBtn = document.getElementById('closeConversationInspectorBtn');
+const commandInspectorInput = document.getElementById('commandInspectorInput');
+const runCommandInspectorBtn = document.getElementById('runCommandInspectorBtn');
+const commandInspectorOutput = document.getElementById('commandInspectorOutput');
 const geminiKeyInput = document.getElementById('geminiKeyInput');
 const copyGeminiKeyBtn = document.getElementById('copyGeminiKeyBtn');
 const minimaxKeyInput = document.getElementById('minimaxKeyInput');
@@ -263,8 +283,8 @@ const countdownDisplay = document.getElementById('countdown-display');
 const isGitHub = window.location.hostname.includes('github.io');
 
 /** Single source of truth for app version — update here (and package.json) when releasing. */
-const BLIP_VERSION = '4.3.24';
-console.log('--- BLIP_VERSION 4.3.24 ACTIVE ---');
+const BLIP_VERSION = '4.3.25';
+console.log('--- BLIP_VERSION 4.3.25 ACTIVE ---');
 const SETTINGS_LOCKED_STORAGE_KEY = 'blip_settings_locked';
 const SETTINGS_LOCK_PIN_STORAGE_KEY = 'blip_settings_lock_pin';
 const WAKE_GREETING_ENABLED = true;
@@ -808,6 +828,8 @@ const state = {
     telegramDraft: { chatId: '', text: '' },
     lastTelegramSendResult: null,
     pendingTelegramReview: false,
+    blipNextConversationState: null,
+    useBlipNextRouter: true,
     emailContacts: (() => {
         try {
             const parsed = JSON.parse(localStorage.getItem(EMAIL_CONTACTS_STORAGE_KEY) || '{}');
@@ -948,6 +970,8 @@ const state = {
         lastYoutubeSearchResults: null, // [{videoId, title}, ...] for next/skip
         lastYoutubeQuery: null,
         lastYoutubeSearchIndex: 0,
+        lastYouTubeSnapshot: null,
+        lastYouTubeSnapshotView: { zoom: 1, panX: 0, panY: 0 },
         lastLocation: '',
         lastSearchTopic: '',
         lastIntentActions: [],
@@ -1207,6 +1231,13 @@ const telegramFeature = createTelegramFeature({
         getEmailVideoAttachmentPayload,
         buildContextSharePayload: (...args) => emailFeature.buildEmailPayloadFromContext(...args),
     }
+});
+
+const blipNextBridge = createBlipNextBridge({
+    emailFeature,
+    telegramFeature,
+    quickReply: (...args) => featureQuickReply(...args),
+    runTimer: (res) => actionHandlers.timer(res, state)
 });
 
 function triggerEmailSendConfirm(options = {}) {
@@ -3658,6 +3689,12 @@ async function init() {
                 await startMicrophoneTest();
             };
         }
+        if (snapshotZoomBtn) {
+            snapshotZoomBtn.onclick = async () => {
+                const result = await applySnapshotZoomStep();
+                if (transcriptText) transcriptText.innerText = result.text;
+            };
+        }
         if (sleepBtn) {
             sleepBtn.onclick = async () => {
                 if (state.softSleepMode || !state.isActive) {
@@ -3744,6 +3781,12 @@ async function init() {
                 if (transcriptText) transcriptText.innerText = result.message;
             };
         }
+        if (zoomMediaLightboxBtn) {
+            zoomMediaLightboxBtn.onclick = async () => {
+                const result = await applySnapshotZoomStep();
+                if (transcriptText) transcriptText.innerText = result.text;
+            };
+        }
         if (mediaLightbox) {
             mediaLightbox.onclick = (e) => {
                 if (e.target === mediaLightbox) closeMediaLightbox();
@@ -3804,6 +3847,22 @@ async function init() {
         };
         closePanelBtn.onclick = () => closeSettingsPanel();
         document.getElementById('ui-debug-refresh-btn')?.addEventListener('click', refreshUiDebugDump);
+        if (runCommandInspectorBtn) {
+            runCommandInspectorBtn.onclick = () => {
+                runCommandInspectorPreview(commandInspectorInput?.value || '').catch((error) => {
+                    if (commandInspectorOutput) commandInspectorOutput.textContent = `Inspector failed: ${error?.message || error}`;
+                });
+            };
+        }
+        if (commandInspectorInput) {
+            commandInspectorInput.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                runCommandInspectorPreview(commandInspectorInput.value || '').catch((error) => {
+                    if (commandInspectorOutput) commandInspectorOutput.textContent = `Inspector failed: ${error?.message || error}`;
+                });
+            });
+        }
         if (refreshApiUsageBtn) {
             refreshApiUsageBtn.onclick = () => {
                 refreshApiUsageSummary().catch(() => { });
@@ -5093,6 +5152,129 @@ function getUiDebugSnapshot() {
 function refreshUiDebugDump() {
     const el = document.getElementById('ui-debug-dump');
     if (el) el.textContent = getUiDebugSnapshot();
+}
+
+async function runCommandInspectorPreview(rawCommand = '') {
+    if (!commandInspectorOutput) return;
+    const command = String(rawCommand || '').trim();
+    if (!command) {
+        commandInspectorOutput.textContent = 'Type a command first.';
+        return;
+    }
+
+    const normalized = normalizeVoiceTokens(command);
+    const blipNextEligible = shouldTryBlipNextRoute(command, state);
+    let blipNextPreview = null;
+    if (blipNextEligible && blipNextBridge?.router?.routeTurn) {
+        try {
+            const route = await blipNextBridge.router.routeTurn(command, state.blipNextConversationState || undefined);
+            blipNextPreview = {
+                intent_type: route?.envelope?.intent_type || 'unknown',
+                conversation_frame: route?.envelope?.conversation_frame || 'unknown',
+                tool_targets: route?.envelope?.tool_targets || [],
+                requires_confirmation: Boolean(route?.envelope?.requires_confirmation),
+                clarification_question: route?.envelope?.clarification_question || '',
+                validation_errors: route?.envelope?.validation_errors || [],
+                confidence: Number(route?.envelope?.confidence || 0),
+            };
+        } catch (error) {
+            blipNextPreview = { error: error?.message || String(error) };
+        }
+    }
+
+    const legacyPreview = buildVoiceRoutingSnapshot(command, state);
+    const report = {
+        command,
+        normalized,
+        predictedRoute: blipNextEligible ? 'blip-next (with legacy fallback)' : 'legacy voice router',
+        blipNextEligible,
+        blipNextPreview,
+        legacyPreview: {
+            family: legacyPreview?.family || 'none',
+            action: legacyPreview?.action || 'none',
+            confidence: Number(legacyPreview?.confidence || 0),
+            needsClarification: Boolean(legacyPreview?.needsClarification),
+            clarificationPrompt: legacyPreview?.clarificationPrompt || '',
+            gmailAction: legacyPreview?.gmailCmd?.action || '',
+            telegramAction: legacyPreview?.telegramCmd?.action || '',
+        }
+    };
+    commandInspectorOutput.textContent = JSON.stringify(report, null, 2);
+}
+
+async function runSelfParsingDiagnostic() {
+    const fixtures = [
+        { command: 'send', expect: { blipNextEligible: true, legacyFamily: 'telegram' }, statePatch: { pendingTelegramReview: true, currentSidePanelAction: 'telegram', telegramDraft: { chatId: 'Teo', text: 'hello' } } },
+        { command: 'forget the draft open notes', expect: { blipNextEligible: true, legacyFamily: 'none' }, statePatch: { pendingTelegramReview: true, currentSidePanelAction: 'telegram', telegramDraft: { chatId: 'Teo', text: 'hello' } } },
+        { command: 'send photo one to my telegram', expect: { blipNextEligible: true, legacyFamily: 'telegram' } },
+        { command: 'close telegram', expect: { blipNextEligible: true } },
+        { command: 'open media', expect: { legacyActionOneOf: ['none', 'clarify'] } },
+        { command: 'open games', expect: { legacyActionOneOf: ['none', 'clarify'] } },
+        { command: 'what you told me of the weather put it in my telegram', expect: { legacyFamily: 'telegram' } },
+    ];
+
+    const results = [];
+    for (const fixture of fixtures) {
+        const simulatedState = {
+            ...state,
+            ...(fixture.statePatch || {}),
+            blipNextConversationState: state.blipNextConversationState || undefined,
+        };
+        const blipNextEligible = shouldTryBlipNextRoute(fixture.command, simulatedState);
+        const legacy = buildVoiceRoutingSnapshot(fixture.command, simulatedState);
+        let blipNext = null;
+        if (blipNextEligible && blipNextBridge?.router?.routeTurn) {
+            try {
+                const route = await blipNextBridge.router.routeTurn(fixture.command, simulatedState.blipNextConversationState || undefined);
+                blipNext = {
+                    intent_type: route?.envelope?.intent_type || '',
+                    conversation_frame: route?.envelope?.conversation_frame || '',
+                    tool_targets: route?.envelope?.tool_targets || [],
+                    validation_errors: route?.envelope?.validation_errors || [],
+                };
+            } catch (error) {
+                blipNext = { error: error?.message || String(error) };
+            }
+        }
+
+        const checks = [];
+        if (typeof fixture.expect?.blipNextEligible === 'boolean') {
+            checks.push(blipNextEligible === fixture.expect.blipNextEligible);
+        }
+        if (fixture.expect?.legacyFamily) {
+            checks.push(String(legacy?.family || '') === fixture.expect.legacyFamily);
+        }
+        if (Array.isArray(fixture.expect?.legacyActionOneOf)) {
+            checks.push(fixture.expect.legacyActionOneOf.includes(String(legacy?.action || '')));
+        }
+        const pass = checks.length ? checks.every(Boolean) : true;
+        results.push({
+            command: fixture.command,
+            pass,
+            predictedRoute: blipNextEligible ? 'blip-next (with fallback)' : 'legacy',
+            legacy: {
+                family: legacy?.family || 'none',
+                action: legacy?.action || 'none',
+                confidence: Number(legacy?.confidence || 0),
+                clarificationPrompt: legacy?.clarificationPrompt || '',
+            },
+            blipNext,
+        });
+    }
+
+    const passed = results.filter((item) => item.pass).length;
+    const failed = results.length - passed;
+    const summary = `Parsing diagnostic complete: ${passed}/${results.length} passed, ${failed} failed.`;
+    const report = {
+        version: BLIP_VERSION,
+        ranAt: new Date().toISOString(),
+        summary,
+        results,
+    };
+    if (commandInspectorOutput) {
+        commandInspectorOutput.textContent = JSON.stringify(report, null, 2);
+    }
+    return { passed, failed, total: results.length, report };
 }
 
 function formatApiUsageSummary(summary = {}) {
@@ -8771,12 +8953,16 @@ function closeMediaLightboxAndVerify(cmd = '') {
 
 function syncMediaLightboxActionButtons() {
     const imageVisible = isMediaLightboxActuallyVisible('image');
-    [shareMediaLightboxBtn, downloadMediaLightboxBtn, wallpaperMediaLightboxBtn].forEach((btn) => {
+    [zoomMediaLightboxBtn, shareMediaLightboxBtn, downloadMediaLightboxBtn, wallpaperMediaLightboxBtn].forEach((btn) => {
         if (!btn) return;
         btn.disabled = !imageVisible;
         btn.style.opacity = imageVisible ? '1' : '0.55';
         btn.style.cursor = imageVisible ? '' : 'not-allowed';
     });
+    if (zoomMediaLightboxBtn) {
+        const zoom = Number(state.lastContext?.lastYouTubeSnapshotView?.zoom || 1);
+        zoomMediaLightboxBtn.title = `Snapshot zoom ${Math.round(zoom * 100)}%`;
+    }
 }
 
 function getEditableMediaImageIndex() {
@@ -10166,6 +10352,23 @@ async function handleCommand(text) {
         stopAutoScroll();
     }
     const learningHint = getToolLearningHint(cmd);
+    const runSelfDiagnosticCmd = (
+        /^(?:run|start|launch|do)\s+(?:self\s+)?(?:parsing|parser|routing)\s+diag(?:nostic|notic|nostic|noistic|nosic)?(?:s)?$/.test(lowerCmd)
+        || /^(?:run|start|launch|do)\s+diag(?:nostic|notic|nostic|noistic|nosic)?(?:s)?$/.test(lowerCmd)
+        || (/\b(?:run|start|launch|do)\b/.test(lowerCmd) && /\b(?:parsing|parser|routing)\b/.test(lowerCmd) && /\bdiag(?:nostic|notic|nostic|noistic|nosic)?\b/.test(lowerCmd))
+        || (/\b(?:can|could|would|please)\b/.test(lowerCmd) && /\b(?:run|start|launch|do)\b/.test(lowerCmd) && /\b(?:parsing|passing|parser|routing)\b/.test(lowerCmd) && /\bdiag(?:nostic|notic|nostic|noistic|nosic)?\b/.test(lowerCmd))
+        || (/\b(?:run|start|launch|do)\b/.test(lowerCmd) && /\bpassing\b/.test(lowerCmd) && /\bdiag(?:nostic|notic|nostic|noistic|nosic)?\b/.test(lowerCmd))
+        || (/\b(?:run|start|launch|do)\b/.test(lowerCmd) && /\bperson\b/.test(lowerCmd) && /\bdiag(?:nostic|notic|nostic|noistic|nosic)?\b/.test(lowerCmd))
+    );
+    if (runSelfDiagnosticCmd) {
+        face.classList.remove('thinking');
+        const result = await runSelfParsingDiagnostic();
+        await quickReply(
+            `Done. Parsing diagnostic finished with ${result.passed} of ${result.total} passing and ${result.failed} failing.`,
+            result.failed ? 'serious' : 'happy'
+        );
+        return;
+    }
     const jokeRequest = /^(?:tell\s+me\s+)?(?:a\s+)?joke\s*$|^tell\s+a\s+joke\s*$|^joke\s*$|^make\s+me\s+laugh\s*$|^say\s+(?:a\s+)?joke\s*$|^give\s+me\s+(?:a\s+)?joke\s*$|^another\s+joke\s*$/.test(lowerCmd);
     if (jokeRequest) {
         face.classList.remove('thinking');
@@ -10330,6 +10533,22 @@ async function handleCommand(text) {
         const opened = toggleChatEntry(chatCmd === 'open');
         await quickReply(opened ? 'Chat open.' : 'Chat closed.', 'happy');
         return;
+    }
+
+    if (state.useBlipNextRouter && shouldTryBlipNextRoute(cmd, state)) {
+        face.classList.remove('thinking');
+        try {
+            const bridged = await blipNextBridge.handle(cmd, state);
+            if (bridged?.handled) {
+                const toolLabel = Array.isArray(bridged.route?.envelope?.tool_targets) && bridged.route.envelope.tool_targets.length
+                    ? bridged.route.envelope.tool_targets.join('+')
+                    : 'blip-next';
+                recordToolOutcome(cmd, toolLabel, 'success');
+                return;
+            }
+        } catch (error) {
+            console.warn('Blip next bridge failed, falling back to legacy routing:', error?.message || error);
+        }
     }
 
     const telegramCmd = getTelegramVoiceCommand(cmd);
@@ -10983,8 +11202,50 @@ async function handleCommand(text) {
             }
         }
 
+        const webImageQuery = getWebImageLookupVoiceQuery(cmd);
+        if (webImageQuery) {
+            face.classList.remove('thinking');
+            let msg = '';
+            try {
+                const lookup = await web.getImageLookup(webImageQuery);
+                const imageUrl = String(lookup?.imageUrl || '').trim();
+                if (!imageUrl) {
+                    msg = lookup?.text || `I couldn't find a picture for ${webImageQuery}.`;
+                } else {
+                    openMediaLightbox(imageUrl, null, 'image', MEDIA_BUCKET_SHOTS);
+                    try {
+                        const base64 = await urlToBase64Image(imageUrl);
+                        if (base64) {
+                            state.lastContext.lastYouTubeSnapshot = {
+                                data: base64,
+                                mimeType: 'image/jpeg'
+                            };
+                            state.lastContext.lastYouTubeSnapshotView = createSnapshotViewState();
+                        }
+                    } catch (_) {
+                        // Keep image open even if conversion fails; analysis step will report limitations.
+                    }
+                    state.lastContext.lastSearchTopic = webImageQuery;
+                    msg = lookup?.text || `I found an image for ${webImageQuery}.`;
+                }
+            } catch (error) {
+                msg = error?.message || `I couldn't find a picture for ${webImageQuery}.`;
+            }
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+            state.history.push({ user: cmd, blip: msg });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            setBlipEmotion('happy');
+            setPersona('happy');
+            talkBtn.innerText = '🔊 SPEAKING...';
+            await speakWithGuard(msg, 'happy');
+            return;
+        }
+
         // Voice shortcuts: camera controls (open/close/snap) should not depend on model interpretation.
-        const cameraCmd = getCameraVoiceCommand(cmd);
+        const wantsYouTubeSnapshot = isYouTubeSnapshotIntent(cmd)
+            && (isYouTubePanelActuallyVisible() || !!state.lastContext?.lastYoutubeUrl);
+        const cameraCmd = wantsYouTubeSnapshot ? null : getCameraVoiceCommand(cmd);
         if (cameraCmd) {
             face.classList.remove('thinking');
             let msg = '';
@@ -11308,6 +11569,25 @@ async function handleCommand(text) {
             const autoPlaylist = resolveAutoPlaylistForYouTube(directYouTubeQuery, currentEntry);
             saveCurrentYouTubeToPlaylist(autoPlaylist);
             await quickReply('Opening video.', 'happy');
+            return;
+        }
+
+        const genericVideoRequest = isGenericYouTubeVideoRequest(cmd);
+        if (genericVideoRequest) {
+            face.classList.remove('thinking');
+            const fallbackQuery = 'trending videos';
+            if (wantsUnmuteVideo(cmd)) state.pendingYouTubeAction = 'unmute';
+            await actionHandlers.youtube({ text: '', tool_params: { query: fallbackQuery } }, state);
+            const ytUrl = state.lastContext.lastYoutubeUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(fallbackQuery)}`;
+            const embedUrl = state.lastContext.lastYoutubeEmbedUrl || null;
+            const videoId = state.lastContext.lastYoutubeVideoId || null;
+            const searchResults = state.lastContext.lastYoutubeSearchResults || null;
+            renderActionInSidePanel({
+                action: 'youtube',
+                tool_params: { query: fallbackQuery, url: ytUrl, embedUrl, videoId, searchResults },
+                text: 'Opening video.'
+            });
+            await quickReply('Opening a video now. Tell me a topic if you want something specific.', 'happy');
             return;
         }
 
@@ -12753,6 +13033,37 @@ async function handleCommand(text) {
             setPersona(result.ok ? 'happy' : 'serious');
             talkBtn.innerText = '🔊 SPEAKING...';
             await speakWithGuard(msg, result.ok ? 'happy' : 'serious');
+            return;
+        }
+
+        if (isYouTubeSnapshotIntent(cmd)) {
+            face.classList.remove('thinking');
+            const msg = await runYouTubeSnapshotVision(cmd);
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+            state.history.push({ user: cmd, blip: msg });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            setBlipEmotion('happy');
+            setPersona('happy');
+            talkBtn.innerText = '🔊 SPEAKING...';
+            await speakWithGuard(msg, 'happy');
+            return;
+        }
+
+        const snapshotZoomResult = await runYouTubeSnapshotZoomCommand(cmd);
+        if (snapshotZoomResult) {
+            face.classList.remove('thinking');
+            const msg = snapshotZoomResult === '__ANALYZE_ZOOM__'
+                ? await runYouTubeSnapshotVision('analyze this zoomed area')
+                : snapshotZoomResult;
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
+            state.history.push({ user: cmd, blip: msg });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            setBlipEmotion('happy');
+            setPersona('happy');
+            talkBtn.innerText = '🔊 SPEAKING...';
+            await speakWithGuard(msg, 'happy');
             return;
         }
 
@@ -16476,6 +16787,16 @@ function getDirectYouTubeVoiceQuery(cmd) {
     return null;
 }
 
+function isGenericYouTubeVideoRequest(cmd) {
+    if (!cmd || typeof cmd !== 'string') return false;
+    const lower = sanitizeVoiceQuery(normalizeVoiceTokens(cmd));
+    if (!lower) return false;
+    if (!/\b(video|youtube|yt)\b/.test(lower)) return false;
+    if (/\babout|of|for|on\b/.test(lower)) return false;
+    if (/\b(mute|unmute|pause|resume|stop|rewind|forward|skip|next|restart|close|hide|dismiss|volume|fullscreen|full\s*screen|bigger|smaller)\b/.test(lower)) return false;
+    return /\b(play|open|show|find|search|watch|want|need|asking|ask)\b/.test(lower);
+}
+
 /** Parse quick local numeric chart requests, e.g. "chart apples 10 pears 30". */
 function getInlineChartVoiceData(cmd) {
     if (!cmd || typeof cmd !== 'string') return null;
@@ -16576,11 +16897,13 @@ function getDirectImageLookupRequest(cmd) {
     if (/\b(?:last|latest|current|my\s+last|my\s+latest|this)\s+(?:picture|photo|image|portrait|snapshot|shot)\b/.test(lower)) {
         return null;
     }
+    const descriptor = '(?:[a-z0-9-]+\\s+){0,4}';
     const patterns = [
-        /^(?:can\s+you\s+)?(?:show|find|get|open)\s+(?:me\s+)?(?:a|an)?\s*(?:picture|photo|image|portrait)\s+(?:of|for)\s+(.+)$/,
+        new RegExp(`^(?:can\\s+you\\s+)?(?:show|find|get|open|search|look)\\s+(?:me\\s+)?(?:for\\s+)?(?:a|an)?\\s*${descriptor}(?:picture|photo|image|portrait)\\s+(?:of|for)\\s+(.+)$`),
         /^(?:can\s+you\s+)?(?:show|find|get|open)\s+(?:me\s+)?(.+?)'?s\s+(?:picture|photo|image|portrait)$/,
         /^(?:can\s+you\s+)?(?:show|find|get|open)\s+(?:me\s+)?(.+?)\s+(?:picture|photo|image|portrait)$/ ,
         /^(?:i\s+want\s+to\s+see|let\s+me\s+see)\s+(?:a|an)?\s*(?:picture|photo|image)\s+(?:of|for)\s+(.+)$/,
+        /^(?:search|look)\s+(?:for\s+)?(?:a|an)?\s*(?:picture|photo|image)\s+(?:of|for)\s+(.+)$/,
         /^(?:who\s+is|what\s+does)\s+(.+?)\s+look\s+like$/
     ];
     for (const pattern of patterns) {
@@ -16742,6 +17065,65 @@ function getCameraVoiceCommand(cmd) {
     if (stopRecordIntentRe.test(lower)) return 'videoStop';
     if (/\b(save|store|keep)\s+(this\s+)?(photo|picture|pic|image|shot|snapshot)\b/.test(lower)) return 'save';
     return null;
+}
+
+function getWebImageLookupVoiceQuery(cmd) {
+    if (!cmd || typeof cmd !== 'string') return '';
+    const lower = normalizeVoiceTokens(cmd);
+    const descriptor = '(?:[a-z0-9-]+\\s+){0,3}';
+    const match = lower.match(new RegExp(`^(?:look|search|find|show|open)\\s+(?:for\\s+)?(?:an?\\s+)?${descriptor}(?:image|picture|photo)\\s+(?:of|for)\\s+(.+)$`))
+        || lower.match(new RegExp(`^(?:can\\s+you\\s+)?(?:please\\s+)?(?:find|search|look)\\s+(?:me\\s+)?(?:another\\s+)?(?:an?\\s+)?${descriptor}(?:image|picture|photo)\\s+(?:of|for)\\s+(.+)$`))
+        || lower.match(/^(?:look|search|find)\s+(.+?)\s+(?:image|picture|photo)$/)
+        || lower.match(new RegExp(`^(?:show|open)\\s+me\\s+(?:an?\\s+)?${descriptor}(?:image|picture|photo)\\s+(?:of|for)\\s+(.+)$`))
+        || lower.match(new RegExp(`^(?:look|search|find)\\s+(?:me\\s+)?(?:in|on)\\s+(?:the\\s+)?(?:internet|web|online)\\s+(?:an?\\s+)?${descriptor}(?:image|picture|photo)\\s+(?:of|for)\\s+(.+)$`));
+    return String(match?.[1] || '').trim();
+}
+
+async function urlToBase64Image(url = '') {
+    const src = String(url || '').trim();
+    if (!src) return '';
+    const res = await fetch(src, { cache: 'no-store' });
+    if (!res.ok) throw new Error('Could not load the image source.');
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Could not read image data.'));
+        reader.onload = () => {
+            const dataUrl = String(reader.result || '');
+            const b64 = dataUrl.replace(/^data:[\w/+.-]+;base64,/, '').trim();
+            resolve(b64);
+        };
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function ensureSnapshotFromActiveLightboxImage() {
+    if (state.lastContext.lastYouTubeSnapshot?.data) return true;
+    const src = getActiveMediaLightboxImageUrl();
+    if (!src) return false;
+    try {
+        const base64 = await urlToBase64Image(src);
+        if (!base64) return false;
+        state.lastContext.lastYouTubeSnapshot = { data: base64, mimeType: 'image/jpeg' };
+        state.lastContext.lastYouTubeSnapshotView = createSnapshotViewState();
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function applySnapshotZoomStep() {
+    const ready = await ensureSnapshotFromActiveLightboxImage();
+    if (!ready) return { ok: false, text: 'Open an image first so I can zoom it.' };
+    const prev = createSnapshotViewState(state.lastContext.lastYouTubeSnapshotView);
+    const atMax = prev.zoom >= 4.95;
+    const next = updateSnapshotViewState(prev, atMax ? 'zoomReset' : 'zoomIn');
+    state.lastContext.lastYouTubeSnapshotView = next;
+    syncMediaLightboxActionButtons();
+    return {
+        ok: true,
+        text: atMax ? 'Snapshot zoom reset.' : `Snapshot zoom ${Math.round(next.zoom * 100)}%.`
+    };
 }
 
 function getSettingsVoiceCommand(cmd) {
@@ -17289,6 +17671,86 @@ function getYouTubeVoiceCommand(cmd) {
     if (/\brewind\b/.test(lower) || /\bgo\s+back\b/.test(lower) || /\breplay\b/.test(lower)) return 'rewind';
     if (/\bforward\b/.test(lower) || /\bskip\s+ahead\b/.test(lower) || /\bfast\s*forward\b/.test(lower) || /\bgo\s+forward\b/.test(lower)) return 'forward';
     return null;
+}
+
+async function runYouTubeSnapshotVision(cmd = '') {
+    let snapshotImage = state.lastContext.lastYouTubeSnapshot || null;
+    if (!snapshotImage) {
+        const lightboxImageSrc = getActiveMediaLightboxImageUrl();
+        if (lightboxImageSrc) {
+            try {
+                const base64 = await urlToBase64Image(lightboxImageSrc);
+                if (base64) {
+                    snapshotImage = { data: base64, mimeType: 'image/jpeg' };
+                    state.lastContext.lastYouTubeSnapshot = snapshotImage;
+                    state.lastContext.lastYouTubeSnapshotView = createSnapshotViewState();
+                }
+            } catch (_) {
+                // Ignore and continue with normal capture path.
+            }
+        }
+    }
+    const hasFreshSnapshotRequest = isYouTubeSnapshotCaptureIntent(cmd);
+    if (hasFreshSnapshotRequest || !snapshotImage) {
+        const capture = captureCurrentYouTubeFrame();
+        if (!capture.ok) {
+            if (capture.code === 'no_video') {
+                if (state.lastContext?.lastYoutubeUrl) {
+                    return 'I found your YouTube video context, but I cannot capture a frame right now. Keep the YouTube panel open and paused, then try again.';
+                }
+                return 'I can’t inspect the video right now because no YouTube video is active.';
+            }
+            if (capture.code === 'cross_origin_blocked') {
+                return capture.message || 'I can’t inspect this frame because the embedded video blocks capture.';
+            }
+            return capture.message || 'I could not capture the current frame.';
+        }
+        snapshotImage = capture.image;
+        state.lastContext.lastYouTubeSnapshot = snapshotImage;
+        state.lastContext.lastYouTubeSnapshotView = createSnapshotViewState();
+    }
+
+    const activeView = createSnapshotViewState(state.lastContext.lastYouTubeSnapshotView);
+    const imageForVision = await buildSnapshotViewImage(snapshotImage, activeView);
+    if (isMiniMaxModel(state.selectedModel)) {
+        return 'Frame captured, but the current text model does not support image analysis. Switch to a Gemini model to inspect the frame.';
+    }
+
+    try {
+        const answer = await analyzeYouTubeSnapshot({
+            image: imageForVision || snapshotImage,
+            question: buildYouTubeSnapshotQuestion(cmd),
+            apiKey: getActiveTextApiKey(state.selectedModel),
+            model: state.selectedModel
+        });
+        return answer;
+    } catch (error) {
+        const message = String(error?.message || '').trim();
+        if (!message) return 'I could not analyze that frame right now.';
+        return message;
+    }
+}
+
+async function runYouTubeSnapshotZoomCommand(cmd = '') {
+    const parsed = parseYouTubeSnapshotZoomCommand(cmd);
+    if (!parsed) return null;
+    if (!state.lastContext.lastYouTubeSnapshot?.data) {
+        const ready = await ensureSnapshotFromActiveLightboxImage();
+        if (!ready) return 'Take a snapshot first, then I can zoom it.';
+    }
+    if (parsed.action === 'analyzeZoom') return '__ANALYZE_ZOOM__';
+
+    const prev = createSnapshotViewState(state.lastContext.lastYouTubeSnapshotView);
+    const next = updateSnapshotViewState(prev, parsed.action);
+    state.lastContext.lastYouTubeSnapshotView = next;
+    if (parsed.action === 'zoomIn') return `Snapshot zoom ${Math.round(next.zoom * 100)} percent.`;
+    if (parsed.action === 'zoomOut') return `Snapshot zoom ${Math.round(next.zoom * 100)} percent.`;
+    if (parsed.action === 'zoomReset') return 'Snapshot zoom reset.';
+    if (parsed.action === 'panLeft') return 'Moved snapshot left.';
+    if (parsed.action === 'panRight') return 'Moved snapshot right.';
+    if (parsed.action === 'panUp') return 'Moved snapshot up.';
+    if (parsed.action === 'panDown') return 'Moved snapshot down.';
+    return 'Snapshot updated.';
 }
 
 function getYouTubeLibraryBrowseVoiceCommand(cmd) {
@@ -18497,6 +18959,19 @@ function formatLatestNoteForEmail(note = null) {
     };
 }
 
+function formatPendingNoteForEmail(draft = null) {
+    if (!draft || typeof draft !== 'object') return null;
+    const title = String(draft?.title || 'Blip note').trim() || 'Blip note';
+    const body = buildSavedNoteContent(draft);
+    const text = String(body || '').trim();
+    if (!text) return null;
+    return {
+        kind: 'note',
+        subject: title,
+        text
+    };
+}
+
 function formatYouTubeShareForEmail() {
     const url = String(state.lastContext?.lastYoutubeUrl || '').trim();
     if (!url) return null;
@@ -18505,6 +18980,24 @@ function formatYouTubeShareForEmail() {
         kind: 'youtube',
         subject: title,
         text: `${title}\n\n${url}`
+    };
+}
+
+function formatWeatherShareForEmail() {
+    const weather = state.lastContext?.lastWeather || null;
+    if (!weather || typeof weather !== 'object') return null;
+    const location = String(state.lastContext?.lastWeatherLocation || weather.city || '').trim() || 'Current location';
+    const description = String(weather.description || '').trim();
+    const temp = weather.temp != null ? `${weather.temp}°C` : '';
+    const humidity = weather.humidity != null ? `${weather.humidity}% humidity` : '';
+    const wind = weather.windSpeed != null ? `${weather.windSpeed} wind` : '';
+    const parts = [description, temp, humidity, wind].filter(Boolean);
+    const detailLine = parts.join(' · ').trim();
+    if (!detailLine) return null;
+    return {
+        kind: 'weather',
+        subject: `Weather: ${location}`,
+        text: `${location}\n${detailLine}`
     };
 }
 
@@ -18560,6 +19053,7 @@ async function buildEmailPayloadFromContext(request = {}) {
     const shareType = String(request.shareType || 'auto').trim().toLowerCase();
     const requestedSubject = String(request.subject || '').trim();
     const latestNote = getNoteItems()[0] || null;
+    const pendingNoteDraft = state.pendingNotesDraft || null;
 
     const usePayload = async (payloadFactory) => {
         const payload = typeof payloadFactory === 'function' ? await payloadFactory() : payloadFactory;
@@ -18572,8 +19066,9 @@ async function buildEmailPayloadFromContext(request = {}) {
         };
     };
 
-    if (shareType === 'note') return usePayload(formatLatestNoteForEmail(latestNote));
+    if (shareType === 'note') return usePayload(formatLatestNoteForEmail(latestNote) || formatPendingNoteForEmail(pendingNoteDraft));
     if (shareType === 'youtube' || shareType === 'video' || shareType === 'link') return usePayload(formatYouTubeShareForEmail());
+    if (shareType === 'weather' || shareType === 'forecast' || shareType === 'temperature' || shareType === 'temp') return usePayload(formatWeatherShareForEmail());
     if (shareType === 'photo' || shareType === 'foto' || shareType === 'picture' || shareType === 'image') return usePayload(() => getEmailPhotoAttachmentPayload());
     if (shareType === 'date' || shareType === 'calendar' || shareType === 'event') return usePayload(getPreferredCalendarSharePayload());
 
@@ -18586,7 +19081,7 @@ async function buildEmailPayloadFromContext(request = {}) {
         if (payload) return payload;
     }
     if (state.currentSidePanelAction === 'notes' || state.pendingNotesDraft || latestNote) {
-        const payload = await usePayload(formatLatestNoteForEmail(latestNote));
+        const payload = await usePayload(formatLatestNoteForEmail(latestNote) || formatPendingNoteForEmail(pendingNoteDraft));
         if (payload) return payload;
     }
     if (state.currentSidePanelAction === 'youtube' || state.lastContext?.lastYoutubeUrl) {

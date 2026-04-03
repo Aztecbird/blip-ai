@@ -33,6 +33,16 @@ function cleanRecipientReference(fragment = '') {
         .trim();
 }
 
+function isRecipientFillerOnly(value = '') {
+    const cleaned = String(value || '').trim().toLowerCase();
+    if (!cleaned) return true;
+    const fillers = new Set([
+        'please', 'pls', 'thanks', 'thank you', 'now',
+        'note', 'message', 'email', 'mail', 'gmail', 'inbox'
+    ]);
+    return fillers.has(cleaned);
+}
+
 export function extractSpokenEmailAddress(fragment = '') {
     const cleaned = cleanRecipientReference(fragment)
         .replace(/^(?:no\s+)?(?:the\s+)?recipient(?:\s+is|\s+to)?\s+/g, '')
@@ -156,6 +166,9 @@ export function extractGmailShareRecipientRequest(command = '') {
     if (/^(?:email|mail|gmail|inbox)$/.test(recipientQuery)) {
         recipientQuery = '';
         recipient = '';
+    }
+    if (!recipient && isRecipientFillerOnly(recipientQuery)) {
+        recipientQuery = '';
     }
 
     return {

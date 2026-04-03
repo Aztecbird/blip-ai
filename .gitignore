@@ -80,3 +80,9 @@ kokoro.log
 
 # Local app data
 .blip-data/
+
+# Local scratch / recordings / tool caches (do not commit)
+.whisper-cache/
+interaction_audio.txt
+interaction_audio.wav
+FILE 2026-04-01 12:52:18.mp4

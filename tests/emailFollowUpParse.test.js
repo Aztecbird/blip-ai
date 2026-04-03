@@ -113,6 +113,12 @@ test('parseEmailDraftFollowUp subject shorthand still works', () => {
     assert.equal(u?.subject, 'dinner');
 });
 
+test('parseEmailDraftFollowUp treats subject and message meta phrase as message update', () => {
+    const update = parseEmailDraftFollowUp('no, the subject and message is what I told you before');
+    assert.equal(update?.action, 'updateMessage');
+    assert.equal(update?.text, 'what i told you before');
+});
+
 test('canConfirmGmailSend only allows send in review mode', () => {
     assert.equal(
         canConfirmGmailSend({

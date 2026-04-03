@@ -344,15 +344,35 @@ export function createTelegramFeature(env = {}) {
     async function sendLatestTelegramVideo(options = {}) {
         const payload = await getEmailVideoAttachmentPayload();
         const attachment = Array.isArray(payload?.attachments) ? payload.attachments[0] : null;
-        if (!attachment?.contentBase64) {
-            throw new Error('Open a video first or record one in Media.');
-        }
         const authState = getTelegramAuthState();
         const target = validateTelegramSendTarget(state.telegramDraft?.chatId, authState);
         if (!target.ok) {
             state.lastTelegramSendResult = { ok: false, kind: 'video', message: target.text };
             state.pendingTelegramReview = true;
             return { ok: false, text: target.text };
+        }
+        if (!attachment?.contentBase64) {
+            const youtubeUrl = String(state.lastContext?.lastYoutubeUrl || '').trim();
+            if (!youtubeUrl) {
+                throw new Error('Open a video first or record one in Media.');
+            }
+            const caption = String(state.telegramDraft?.text || '').trim();
+            const text = caption ? `${caption}\n${youtubeUrl}` : youtubeUrl;
+            const backendResult = await sendTelegramMessage({
+                chatId: target.chatId,
+                text
+            });
+            const resolvedChatId = normalizeTelegramChatId(backendResult?.chatId || target.chatId);
+            state.lastTelegramSendResult = {
+                ok: true,
+                kind: 'video',
+                chatId: resolvedChatId
+            };
+            clearTelegramDraft({ keepChatId: true });
+            if (!options.silent) {
+                await openTelegramPanel({ summary: 'Telegram video link sent.' });
+            }
+            return { ok: true, text: 'Telegram video link sent.' };
         }
         const backendResult = await sendTelegramVideo({
             chatId: target.chatId,
@@ -657,14 +677,24 @@ export function createTelegramFeature(env = {}) {
 
             // Notes should stay text-first. Do not auto-send carried media context
             // unless the user explicitly asked for a photo/video share command.
-            const allowAttachmentForShareType = shareType !== 'note';
+            const allowAttachmentForShareType = !['note', 'message', 'text', 'weather', 'forecast'].includes(shareType);
             const attachmentList = Array.isArray(payload.attachments) && allowAttachmentForShareType
                 ? payload.attachments
                 : [];
 
             if (attachmentList.length > 0) {
+                if (shareType === 'auto') {
+                    resetTelegramDraft(draft);
+                    state.pendingTelegramReview = true;
+                    await openTelegramPanel({ summary: 'Telegram share ready.' });
+                    await quickReply(
+                        'I found both text and media context. Say send message, send photo, or send video.',
+                        'happy'
+                    );
+                    return;
+                }
                 resetTelegramDraft(draft);
-                if (telegramCmd.quickSend) {
+                if (telegramCmd.quickSend && shareType !== 'auto') {
                     const result = await sendTelegramAttachmentPayload({ ...payload, attachments: attachmentList }, draft, { silent: true });
                     await quickReply(result.text, result.ok ? 'happy' : 'sad');
                     return;

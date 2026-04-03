@@ -9208,6 +9208,14 @@ body.blip-telegram-panel-open #transcript-area {
     -webkit-backdrop-filter: blur(14px);
 }
 
+.media-lightbox-zoom {
+    min-width: 44px;
+    width: 44px;
+    padding: 0.45rem 0;
+    font-size: 1rem;
+    line-height: 1;
+}
+
 @media (max-width: 900px) {
     /* Leave Gmail/Telegram bottom docks on fixed sizing — generic rule was crushing mailbox height */
     #blip-side-panel:not(.blip-calendar-orb):not(.blip-calendar-mirror-panel):not(.blip-gmail-dock):not(.blip-telegram-dock) {

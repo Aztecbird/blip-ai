@@ -239,6 +239,11 @@ export function parseEmailDraftFollowUp(command = '') {
         return { action: 'promptSubjectChoice' };
     }
 
+    const subjectAndMessageMatch = lower.match(/^(?:no\s+)?(?:the\s+)?subject\s+and\s+(?:the\s+)?message\s+(?:is|are)\s+(.+)$/);
+    if (subjectAndMessageMatch) {
+        return { action: 'updateMessage', text: String(subjectAndMessageMatch[1] || '').trim() };
+    }
+
     const addMatch = lower.match(/^add\s+(.+)$/);
     if (addMatch?.[1]) {
         return { action: 'appendMessage', text: String(addMatch[1] || '').trim() };

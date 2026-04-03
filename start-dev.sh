@@ -35,11 +35,10 @@ if [ -z "$BLIP_ENABLE_TELEGRAM_BACKEND" ]; then
 fi
 
 if [ -z "$BLIP_ENABLE_HUME_BACKEND" ]; then
-  if [[ "${HUME_COMPANION_ENABLED:-false}" =~ ^(1|true|yes|on)$ ]] && [ -n "${HUME_API_KEY:-}" ] && [ -n "${HUME_SECRET_KEY:-}" ]; then
-    BLIP_ENABLE_HUME_BACKEND="1"
-  else
-    BLIP_ENABLE_HUME_BACKEND="0"
-  fi
+  # The UI always calls /api/hume/health; without this process Vite logs proxy ECONNREFUSED on 8796.
+  # The server is small — it returns available:false until HUME_COMPANION_ENABLED and keys are set.
+  # Set BLIP_ENABLE_HUME_BACKEND=0 in .env.local to skip.
+  BLIP_ENABLE_HUME_BACKEND="1"
 fi
 
 GREEN='\033[0;32m'

@@ -247,6 +247,16 @@ test('extractGmailShareRecipientRequest pulls out context-share requests', () =>
         }
     );
     assert.deepEqual(
+        extractGmailShareRecipientRequest('send that note please'),
+        {
+            recipient: '',
+            recipientQuery: '',
+            shareType: 'note',
+            subject: '',
+            quickSend: true
+        }
+    );
+    assert.deepEqual(
         extractGmailShareRecipientRequest('send this note to aztecbird@mac.com subject shopping'),
         {
             recipient: 'aztecbird@mac.com',
@@ -376,6 +386,17 @@ test('getGmailVoiceCommand maps context-share phrases', () => {
     );
     assert.deepEqual(
         getGmailVoiceCommand('send this note'),
+        {
+            action: 'shareCurrent',
+            recipient: '',
+            recipientQuery: '',
+            shareType: 'note',
+            subject: '',
+            quickSend: true
+        }
+    );
+    assert.deepEqual(
+        getGmailVoiceCommand('send that note please'),
         {
             action: 'shareCurrent',
             recipient: '',

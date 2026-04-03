@@ -1,4 +1,5 @@
 import { extractRecipientReference, extractSpokenEmailAddress } from '../../services/gmailVoice.js';
+import { isRecipientNoiseOnly } from '../../services/voiceDialog/emailFollowUpParse.js';
 
 export function createEmailFeature(env = {}) {
     const {
@@ -155,7 +156,19 @@ export function createEmailFeature(env = {}) {
         if (!raw) return { recipient: '', recipientQuery: '' };
         const recipient = extractSpokenEmailAddress(raw);
         const recipientQuery = recipient ? '' : extractRecipientReference(raw);
+        if (!recipient && recipientQuery && isRecipientNoiseOnly(recipientQuery)) {
+            return { recipient: '', recipientQuery: '' };
+        }
         return { recipient, recipientQuery };
+    }
+
+    function extractSubjectMessageMetaUpdate(command = '') {
+        const lower = normalizeEmailFollowUpText(command);
+        const match = lower.match(/^(?:no\s+)?(?:the\s+)?subject\s+and\s+(?:the\s+)?message\s+(?:is|are)\s+(.+)$/);
+        if (!match) return null;
+        const text = String(match[1] || '').trim();
+        if (!text) return null;
+        return { action: 'updateMessage', text };
     }
 
     function buildUnknownRecipientReply(recipientQuery = '') {
@@ -393,6 +406,9 @@ export function createEmailFeature(env = {}) {
             return { action: 'promptSubjectChoice' };
         }
 
+        const subjectMessageMetaUpdate = extractSubjectMessageMetaUpdate(lower);
+        if (subjectMessageMetaUpdate) return subjectMessageMetaUpdate;
+
         // Field specific overrides (can be bare commands or followed by content)
         const recipientMatch = lower.match(/^(?:(?:can\s+you\s+)?(?:change|correct|update|set|fix|edit)\s+(?:the\s+)?(?:recipient|email|to)(?:\s+to)?)(?:\s+(.+))?$/)
             || lower.match(/^(?:recipient|email|to)(?:\s+is|\s+to)?\s+(.+)$/)
@@ -601,7 +617,7 @@ export function createEmailFeature(env = {}) {
                 await quickReply(reply, 'happy');
                 return true;
             }
-            if (inlineRecipient.recipient || inlineRecipient.recipientQuery) {
+            if (followUp.action === 'raw' && (inlineRecipient.recipient || inlineRecipient.recipientQuery)) {
                 const reply = await applyDraftUpdate({
                     to: inlineRecipient.recipient,
                     recipientQuery: inlineRecipient.recipientQuery
@@ -733,7 +749,7 @@ export function createEmailFeature(env = {}) {
         }
 
         const inlineRecipient = resolveRecipientInput(command);
-        if (inlineRecipient.recipient || inlineRecipient.recipientQuery) {
+        if (followUp.action === 'raw' && (inlineRecipient.recipient || inlineRecipient.recipientQuery)) {
             const reply = await applyDraftUpdate({
                 to: inlineRecipient.recipient,
                 recipientQuery: inlineRecipient.recipientQuery

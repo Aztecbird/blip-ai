@@ -23,6 +23,14 @@ test('getTelegramVoiceCommand parses direct Telegram message drafts', () => {
         getTelegramVoiceCommand('telegram send message'),
         { action: 'compose', draft: { chatId: '', text: '' } }
     );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send message in telegram'),
+        { action: 'compose', draft: { chatId: '', text: '' } }
+    );
+    assert.deepEqual(
+        getTelegramVoiceCommand('send message in telegram to joy'),
+        { action: 'compose', draft: { chatId: 'joy', text: '' } }
+    );
 });
 
 test('getTelegramVoiceCommand closes telegram from common close phrasing', () => {
