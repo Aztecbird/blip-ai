@@ -1,7 +1,10 @@
 import { createBlipNextRouter, createConversationState } from '../blip-next/index.js';
+import { getToolLearningHint } from '../blip-engine/logic/MistakeLearner.js';
+import { executeTool } from './arcade/arcadeService.js';
+import { getToolPolicy } from './arcade/policyStore.js';
 
 const FOLLOW_UP_RE = /^(?:yes|yeah|yep|no|nope|ok|okay|send|send it|go ahead|the second one|the first one|tomorrow instead|not that|change that|email instead|telegram instead|cancel it)\b/i;
-const CONFIRM_REPLY_RE = /^(?:send|send it|yes|yeah|yep|ok|okay|go ahead|do it|no|nope|cancel|cancel it)\b/i;
+const CONFIRM_REPLY_RE = /^(?:send|send it|yes|yeah|yep|ok|okay|go ahead|do it|no|nope|cancel|cancel it|that'?s\s+correct|that\s+is\s+correct)\b/i;
 const DISCARD_DRAFT_RE = /\b(?:forget|discard|drop|cancel|clear|delete|remove)\b.*\b(?:draft|message|email)\b|\b(?:cancel|forget)\s+it\b/i;
 const EXPLICIT_NEW_COMMAND_RE = /\b(?:telegram|email|gmail|notes?|timer|youtube|weather|photo|video|camera)\b/i;
 const NAVIGATION_PANEL_RE = /^(?:open|show|view|close|hide|dismiss|exit)\s+(?:my\s+)?(?:telegram|email|gmail|inbox|photos?|media|gallery|games?|notes?|calendar|map|chart|hub|student\s+desk|cart|youtube)\b/i;
@@ -10,6 +13,38 @@ const MESSAGING_HINT_RE = /\b(?:send|share|telegram|email|gmail|message|draft|re
 
 function normalizeText(value = '') {
     return String(value || '').trim().toLowerCase();
+}
+
+function hasActiveConversationFlow(appState = {}) {
+    return Boolean(
+        appState.activeConversationFlow ||
+        appState.pendingEmailReview ||
+        appState.pendingTelegramReview ||
+        appState.blipNextConversationState?.working_memory?.active_workflow ||
+        appState.blipNextConversationState?.working_memory?.pending_confirmation
+    );
+}
+
+function clampConfidence(value = 0) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return 0;
+    return Math.max(0, Math.min(1, number));
+}
+
+function applyLearningHintToRoute(route = {}, hint = null) {
+    if (!route || !hint || hint.confidence === undefined) return route;
+    const envelope = route.envelope || {};
+    const currentConfidence = Number(envelope.confidence || 0);
+    const confidenceNudge = Math.min(0.15, Math.max(-0.15, Number(hint.confidence || 0) * 0.15));
+    route.learningHint = hint;
+    route.envelope = {
+        ...envelope,
+        confidence: clampConfidence(currentConfidence + confidenceNudge)
+    };
+    if (hint.tool && route.state?.working_memory && !route.state.working_memory.active_tool) {
+        route.state.working_memory.active_tool = String(hint.tool || '').trim().toLowerCase();
+    }
+    return route;
 }
 
 function hasEmailDraft(appState = {}) {
@@ -49,12 +84,25 @@ function selectNoteText(appState = {}, referenceLabel = '') {
 export function shouldTryBlipNextRoute(command = '', appState = {}) {
     const lower = normalizeText(command);
     if (!lower) return false;
+    const hasActiveFlow = hasActiveConversationFlow(appState);
 
-    if (FOLLOW_UP_RE.test(lower)) return true;
-    if (appState.pendingEmailReview || appState.pendingTelegramReview) return true;
+    // "Play … in my local / Blip calendar" is the in-app agenda panel, not media playback or Arcade.
+    if (
+        /\b(calendar|schedule|agenda|events?)\b/.test(lower)
+        && /\bplay\b/.test(lower)
+        && !/\b(youtube|yt)\b/.test(lower)
+        && !/\bvideo\s+(?:about|of|for|on)\b/.test(lower)
+    ) {
+        return false;
+    }
+
+    if (/^\s*remind\b/i.test(lower) && /\b(?:email|gmail|mail)\b/i.test(lower)) return false;
+
+    if (FOLLOW_UP_RE.test(lower)) return hasActiveFlow;
+    if (hasActiveFlow) return true;
     if (appState.blipNextConversationState?.working_memory?.active_workflow && lower.split(/\s+/).length <= 6) return true;
 
-    return /\b(?:gmail|email|mail|telegram|message|timer|youtube|note|notes)\b/.test(lower);
+    return /\b(?:gmail|email|mail|telegram|message|timer|youtube|note|notes|calendar|arcade|google\s*calendar)\b/.test(lower);
 }
 
 function buildConversationSeed(appState = {}) {
@@ -152,7 +200,23 @@ export function createBlipNextBridge(env = {}) {
 
     async function handOffToPendingFlow(command = '', appState = {}, route = {}) {
         const activeTool = route?.state?.working_memory?.active_tool || appState.currentSidePanelAction || '';
+        const pending = route?.state?.working_memory?.pending_confirmation || {};
 
+        if (activeTool === 'arcade' || pending.tool === 'arcade') {
+            const toolName = pending.tool_name;
+            const inputs = pending.inputs;
+            const result = await executeTool(appState.userId || 'default-user', toolName, inputs);
+            
+            if (result.success) {
+                if (env.quickReply) await env.quickReply('Done — Arcade finished that for you.', 'happy');
+                route.state.working_memory.pending_confirmation = null; // Clear it!
+                return true;
+            } else {
+                if (env.quickReply) await env.quickReply(`Arcade tool failed: ${result.error}`, 'sad');
+                return true;
+            }
+        }
+        
         if ((activeTool === 'telegram' || appState.pendingTelegramReview || hasTelegramDraft(appState)) && env.telegramFeature?.handlePendingVoiceFollowUp) {
             const handled = await env.telegramFeature.handlePendingVoiceFollowUp(command);
             if (handled) return true;
@@ -167,16 +231,21 @@ export function createBlipNextBridge(env = {}) {
     }
 
     async function handle(command = '', appState = {}) {
-        const route = await router.routeTurn(command, buildConversationSeed(appState));
-        const envelope = route.envelope || {};
-        appState.blipNextConversationState = route.state;
-
-        const hasPendingInteraction = Boolean(
+        const incomingHasPendingInteraction = Boolean(
             appState.pendingEmailReview ||
             appState.pendingTelegramReview ||
             appState.blipNextConversationState?.working_memory?.pending_confirmation ||
             appState.blipNextConversationState?.working_memory?.active_workflow
         );
+
+        const route = applyLearningHintToRoute(
+            await router.routeTurn(command, buildConversationSeed(appState)),
+            getToolLearningHint(command)
+        );
+        const envelope = route.envelope || {};
+        appState.blipNextConversationState = route.state;
+
+        const hasPendingInteraction = incomingHasPendingInteraction;
         const commandText = normalizeText(command);
         if (hasPendingInteraction && looksLikeGeneralConversation(commandText)) {
             clearPendingDraftState(appState);
@@ -200,7 +269,7 @@ export function createBlipNextBridge(env = {}) {
             return { handled: true, route };
         }
 
-        if (hasPendingReview && CONFIRM_REPLY_RE.test(commandText)) {
+        if (hasPendingInteraction && CONFIRM_REPLY_RE.test(commandText)) {
             const delegated = await handOffToPendingFlow(command, appState, route);
             if (delegated) return { handled: true, route };
         }
@@ -299,6 +368,54 @@ export function createBlipNextBridge(env = {}) {
                 }
             });
             return { handled: true, route };
+        }
+        
+        if (envelope.tool_targets?.includes('arcade')) {
+            const entities = envelope.extracted_entities || {};
+            const toolName = envelope.meta?.tool_name || entities.tool_name || 'GoogleCalendar.ListEvents';
+            const inputs = entities.input_data || entities;
+
+            if (!toolName) {
+                if (env.quickReply) await env.quickReply('I need to know which Arcade tool to use.', 'sad');
+                return { handled: true, route };
+            }
+
+            const policy = getToolPolicy(toolName);
+            const userConfirmed = CONFIRM_REPLY_RE.test(normalizeText(command));
+            
+            // Check if this is a high-risk tool that requires confirmation
+            if (policy.confirm && !userConfirmed) {
+                // If we haven't confirmed yet, we need to ask.
+                // We'll also store the pending action in our conversation state.
+                route.state.working_memory.active_tool = 'arcade';
+                route.state.working_memory.pending_confirmation = {
+                    tool: 'arcade',
+                    tool_name: toolName,
+                    inputs: inputs,
+                    action_label: policy.actionLabel,
+                    risk_level: policy.risk
+                };
+
+                if (env.quickReply) await env.quickReply(`I'm about to ${policy.actionLabel} this using ${toolName}. Should I go ahead?`, 'happy');
+                return { handled: true, route };
+            }
+
+            // If we are here, it's either low-risk or the user just confirmed.
+            const result = await executeTool(appState.userId || 'default-user', toolName, inputs);
+
+            if (result.success) {
+                if (env.quickReply) await env.quickReply(`Action complete: ${toolName}`, 'happy');
+                return { handled: true, route, toolResult: result.data };
+            } else if (result.requires_auth) {
+                if (env.quickReply) await env.quickReply(`I need you to authorize Arcade first. Please use this link: ${result.auth_url}`, 'happy');
+                return { handled: true, route };
+            } else if (result.missing_inputs) {
+                if (env.quickReply) await env.quickReply(`I'm missing some info for ${toolName}: ${result.error}`, 'happy');
+                return { handled: true, route };
+            } else {
+                if (env.quickReply) await env.quickReply(`Arcade tool failed: ${result.error}`, 'sad');
+                return { handled: true, route };
+            }
         }
 
         return { handled: false, route };

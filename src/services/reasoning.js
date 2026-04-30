@@ -71,6 +71,8 @@ function getToolSignals(message = '') {
   if (/\b(graph|chart|compare|data)\b/.test(lower)) signals.add('chart');
   if (/\b(search|look up|find out|research)\b/.test(lower)) signals.add('search');
   if (/\b(timer|countdown|alarm)\b/.test(lower)) signals.add('timer');
+  if (/\b(arcade|ask arcade|use arcade|tool|toolkit)\b/.test(lower)) signals.add('arcade');
+  if (/\b(google calendar|google tasks|google drive|google mail|gmail arcade)\b/.test(lower)) signals.add('arcade');
   return Array.from(signals);
 }
 

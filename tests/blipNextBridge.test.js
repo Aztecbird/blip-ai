@@ -6,6 +6,9 @@ import { createBlipNextBridge, shouldTryBlipNextRoute } from '../src/services/bl
 test('shouldTryBlipNextRoute catches messaging intents and short follow-ups', () => {
     assert.equal(shouldTryBlipNextRoute('email Natasha hello', {}), true);
     assert.equal(shouldTryBlipNextRoute('send it', { pendingEmailReview: true }), true);
+    assert.equal(shouldTryBlipNextRoute('yes', {}), false);
+    assert.equal(shouldTryBlipNextRoute('yes', { activeConversationFlow: true }), true);
+    assert.equal(shouldTryBlipNextRoute('remind me to email tomorrow', {}), false);
     assert.equal(shouldTryBlipNextRoute('what is the capital of France', {}), false);
 });
 

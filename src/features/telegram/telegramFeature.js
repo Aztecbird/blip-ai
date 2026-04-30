@@ -1,3 +1,48 @@
+export function canConfirmTelegramSend(state = {}) {
+    return !!(state.pendingTelegramReview && state.currentSidePanelAction === 'telegram' && state.isTelegramPanelVisible);
+}
+
+export function isTelegramMetaNoMessageUtterance(utterance = '') {
+    const lower = String(utterance || '').toLowerCase().replace(/[^\w\s]/g, ' ');
+    return /\bi\s*haven\s*t\s*told\s*you\s*the\s*message\b/i.test(lower);
+}
+
+export function parseTelegramFollowUp(command = '') {
+    const lower = String(command || '')
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!lower) return null;
+
+    if (/^(?:yes|go\s+)?send(?:ing)?(?:\s+it)?(?:\s+now)?(?:\s+in\s+telegram)?|perfect\s+scent|go\s+ahead|okay\s+send|ok\s+send|please\s+send|now\s+send|you\s+can\s+send|send\s+the\s+message|send\s+message/.test(lower)) {
+        return { action: 'sendText' };
+    }
+    if (
+        /^(?:send|share)\s+(?:(?:the|this|that|latest|last|current|open)\s+)?(?:photo|picture|image)(?:\s+now)?$/.test(lower)
+        || /^(?:send|share)\s+latest\s+(?:photo|picture|image)(?:\s+now)?$/.test(lower)
+    ) {
+        return { action: 'sendPhoto' };
+    }
+    if (
+        /^(?:send|share)\s+(?:(?:the|this|that|latest|last|current|open)\s+)?(?:video|clip|recording)(?:\s+now)?$/.test(lower)
+        || /^(?:send|share)\s+latest\s+(?:video|clip|recording)(?:\s+now)?$/.test(lower)
+    ) {
+        return { action: 'sendVideo' };
+    }
+    if (/^(?:clear|reset|start over)$/.test(lower)) {
+        return { action: 'clear' };
+    }
+    if (/\b(?:improve|make\s+it\s+clearer|sounds\s+more\s+friendly|polish|review\s+and\s+improve)\b/.test(lower)) {
+        return { action: 'improveDraft' };
+    }
+    if (/\b(?:review|check|look\s+at)\s+(?:the\s+)?(?:message|draft)\b/.test(lower)) {
+        return { action: 'review' };
+    }
+
+    return { action: 'updateText', text: String(command || '').trim() };
+}
+
 export function createTelegramFeature(env = {}) {
     const {
         state,
@@ -522,33 +567,6 @@ export function createTelegramFeature(env = {}) {
         });
     }
 
-    function parseTelegramFollowUp(command = '') {
-        const lower = String(command || '')
-            .toLowerCase()
-            .replace(/[^\w\s]/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-        if (!lower) return null;
-        if (/^(?:yes|send|send it|send now|go ahead|okay send|ok send|please send)$/.test(lower)) {
-            return { action: 'sendText' };
-        }
-        if (
-            /^(?:send|share)\s+(?:(?:the|this|that|latest|last|current|open)\s+)?(?:photo|picture|image)(?:\s+now)?$/.test(lower)
-            || /^(?:send|share)\s+latest\s+(?:photo|picture|image)(?:\s+now)?$/.test(lower)
-        ) {
-            return { action: 'sendPhoto' };
-        }
-        if (
-            /^(?:send|share)\s+(?:(?:the|this|that|latest|last|current|open)\s+)?(?:video|clip|recording)(?:\s+now)?$/.test(lower)
-            || /^(?:send|share)\s+latest\s+(?:video|clip|recording)(?:\s+now)?$/.test(lower)
-        ) {
-            return { action: 'sendVideo' };
-        }
-        if (/^(?:clear|reset|start over)$/.test(lower)) {
-            return { action: 'clear' };
-        }
-        return { action: 'updateText', text: String(command || '').trim() };
-    }
 
     async function handlePendingVoiceFollowUp(command = '') {
         if (!state.pendingTelegramReview && state.currentSidePanelAction !== 'telegram') return false;

@@ -3,6 +3,7 @@ import { createEntityExtractor } from '../parsers/entityExtractor.js';
 import { createGmailParser } from '../parsers/tools/gmailParser.js';
 import { createTelegramParser } from '../parsers/tools/telegramParser.js';
 import { createTimerParser } from '../parsers/tools/timerParser.js';
+import { createArcadeParser } from '../parsers/tools/arcadeParser.js';
 import { createWorkflowComposer } from '../planning/workflowComposer.js';
 import { createReferenceResolver } from '../resolution/referenceResolver.js';
 import { createRepairHandler } from '../repair/repairHandler.js';
@@ -22,6 +23,7 @@ function detectToolCandidates(utterance = '', entities = {}, state = {}) {
   if (/\byoutube\b/.test(lower)) tools.add('youtube');
   if (/\bnote\b/.test(lower)) tools.add('notes');
   if (/\bcamera\b/.test(lower)) tools.add('camera');
+  if (/\b(calendar|google\s*calendar|arcade)\b/.test(lower)) tools.add('arcade');
 
   if ((/\bfind\b/.test(lower) && /\bemail\b/.test(lower)) || (/\bnote\b/.test(lower) && /\bemail\b/.test(lower))) {
     tools.add('notes');
@@ -89,6 +91,7 @@ export function createBlipNextRouter(options = {}) {
   const gmailParser = options.gmailParser || createGmailParser();
   const telegramParser = options.telegramParser || createTelegramParser();
   const timerParser = options.timerParser || createTimerParser();
+  const arcadeParser = options.arcadeParser || createArcadeParser();
   const workflowComposer = options.workflowComposer || createWorkflowComposer();
   const referenceResolver = options.referenceResolver || createReferenceResolver();
   const repairHandler = options.repairHandler || createRepairHandler();
@@ -148,6 +151,7 @@ export function createBlipNextRouter(options = {}) {
       gmailParser.parse({ utterance, entities, frame: intent.frame }),
       telegramParser.parse({ utterance, entities, frame: intent.frame }),
       timerParser.parse({ utterance, entities, frame: intent.frame }),
+      arcadeParser.parse({ utterance, entities, frame: intent.frame }),
     ].filter(Boolean);
 
     const multiToolRequest = toolCandidates.length > 1;
@@ -178,12 +182,16 @@ export function createBlipNextRouter(options = {}) {
       toolTargets: toolCandidates,
     });
 
+    const mergedEntities = parserResults[0]?.extracted_entities
+      ? { ...entities, ...parserResults[0].extracted_entities }
+      : entities;
+
     const envelope = buildEnvelope({
       intent_type: intentType,
       conversation_frame: intent.frame,
       tool_targets: toolCandidates,
       confidence: multiToolRequest ? 0.88 : Math.max(intent.confidence, parserResults[0]?.confidence || 0),
-      extracted_entities: entities,
+      extracted_entities: mergedEntities,
       shared_objects_in: state.working_memory?.last_search_results || [],
       shared_objects_out: parserResults.flatMap((item) => item.shared_objects_out || []),
       requires_confirmation: requiresConfirmation,

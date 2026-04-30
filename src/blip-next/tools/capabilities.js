@@ -69,6 +69,16 @@ export const TOOL_CAPABILITIES = Object.freeze({
     ui_surface: 'mixed',
     repairable_fields: ['mode', 'alert_rule'],
   },
+  arcade: {
+    name: 'arcade',
+    consumes: ['tool_name', 'toolkit_name', 'input_data', 'user_intent'],
+    produces: ['tool_result', 'auth_link', 'missing_input_request'],
+    actions: ['execute', 'list', 'authorize'],
+    risk_level: 'mixed',
+    requires_confirmation: true,
+    ui_surface: 'mixed',
+    repairable_fields: ['tool_name', 'inputs'],
+  },
 });
 
 export function getToolCapability(toolName) {

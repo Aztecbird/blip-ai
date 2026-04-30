@@ -1,91 +1,93 @@
-import { createToolOrchestrator } from '../../blip-core/orchestration/toolOrchestrator.js';
-import { BLIP_TOOLS } from '../../blip-core/types.js';
-import { web } from '../../services/web.js';
+/**
+ * @file Orchestrator.js
+ * @category Core
+ * @description Central Tool Hub. Maps structured plans into actual 
+ * cross-tool executions (Gmail, YouTube, Telegram, etc.)
+ */
 
-function normalizeQuery(action = {}, context = {}) {
-  return String(
-    action?.entities?.topic
-    || action?.entities?.query
-    || action?.entities?.text
-    || context?.interpretedIntent?.raw
-    || ''
-  ).trim();
-}
+export class BlipToolOrchestrator {
+  constructor() {
+    this.registry = new Map();
+    this.registry.set('chat', async (action) => ({ status: 'ok', response: 'Chat response' }));
+    this.registry.set('system', async (action) => ({ status: 'ok', response: 'System response' }));
+    this.registry.set('youtube', async (action) => ({ status: 'ok', response: 'YouTube response' }));
+  }
 
-function createDefaultHandlers(options = {}) {
-  const custom = options.handlers || {};
-
-  return {
-    [BLIP_TOOLS.YOUTUBE]: async (action, context) => {
-      const query = normalizeQuery(action, context);
-      const youtubeApiKey = String(options.youtubeApiKey || context?.youtubeApiKey || '').trim();
-      const result = await web.searchYouTube(query, youtubeApiKey);
-
-      return {
-        ok: !result?.error,
-        response: result?.text || 'I found a YouTube result.',
-        data: {
-          query,
-          url: result?.watchUrl || result?.url || '',
-          embedUrl: result?.embedUrl || '',
-          searchResults: Array.isArray(result?.searchResults) ? result.searchResults : [],
-        },
-      };
-    },
-
-    [BLIP_TOOLS.CHAT]: async () => ({
-      ok: true,
-      response: 'I am here with you.',
-    }),
-
-    [BLIP_TOOLS.SYSTEM]: async (action) => {
-      if (action.intent === 'close_all') {
-        return { ok: true, response: 'Okay, closing everything now.' };
-      }
-      if (action.intent === 'close_active') {
-        return { ok: true, response: 'Okay, closing this.' };
-      }
-      return { ok: true, response: 'Done.' };
-    },
-
-    ...custom,
-  };
-}
-
-export function createOrchestrator(options = {}) {
-  const handlers = createDefaultHandlers(options);
-  const base = createToolOrchestrator({ handlers });
-
-  function registerHandler(tool, handler) {
-    const id = String(tool || '').trim().toLowerCase();
-    if (!id || typeof handler !== 'function') return false;
-    handlers[id] = handler;
+  /**
+   * Register a capability (ex: Gmail, Telegram)
+   */
+  register(name, callback) {
+    this.registry.set(name, callback);
     return true;
   }
 
-  function registerMany(nextHandlers = {}) {
-    Object.entries(nextHandlers || {}).forEach(([tool, handler]) => {
-      registerHandler(tool, handler);
-    });
-    return getRegisteredTools();
+  registerHandler(name, callback) {
+    return this.register(name, callback);
   }
 
-  function getRegisteredTools() {
-    return Object.keys(handlers).sort();
+  getRegisteredTools() {
+    return Array.from(this.registry.keys());
   }
 
-  return {
-    ...base,
-    registerHandler,
-    registerMany,
-    getRegisteredTools,
-  };
+  /**
+   * Main execution point for any tool.
+   * Uses a normalized schema to keep tools predictable.
+   */
+  async execute(plan) {
+    const intent = typeof plan.intent === 'string' ? { type: plan.intent, entities: plan.entities || {} } : (plan.intent || {});
+    const tool = plan.tool || this.mapTypeToTool(intent.type || '');
+    const executionReady = plan.executionReady !== false;
+
+    const action = {
+      type: intent.type,
+      tool: tool,
+      intent: intent,
+      confidence: intent.confidence || 0.9,
+      entities: intent.entities || {},
+      state_effect: this.calculateStateEffect(intent.type || ''),
+      confirmation_needed: !executionReady,
+      execution_plan: plan
+    };
+
+    if (executionReady && this.registry.has(tool)) {
+      try {
+        const result = await this.registry.get(tool)(action);
+        // Compatibility: merge result into the return object
+        return { success: true, action, result, ...result };
+      } catch (err) {
+        console.error(`Tool Execution Error [${tool}]:`, err);
+        return { success: false, action, error: err.message };
+      }
+    }
+
+    return { 
+      success: false, 
+      action, 
+      reason: executionReady ? `Tool ${tool} not registered.` : `Awaiting feedback path: ${plan.path}` 
+    };
+  }
+
+  mapTypeToTool(type) {
+    if (type.startsWith('communication')) return 'communication';
+    if (type.startsWith('calendar')) return 'calendar';
+    if (type.startsWith('notes')) return 'notes';
+    if (type.startsWith('timer')) return 'timer';
+    if (type.startsWith('youtube')) return 'youtube';
+    return 'chat';
+  }
+
+  calculateStateEffect(type) {
+    const effects = {
+      'communication.send': 'focused',
+      'calendar.view': 'calm',
+      'notes.create': 'focused',
+      'timer.create': 'focused',
+      'youtube.search': 'playful',
+      'ui.dismiss': 'idle'
+    };
+    return effects[type] || 'idle';
+  }
 }
 
-export { createToolOrchestrator };
-
-export function createOrchestratorConfig(options = {}) {
-  return {
-    handlers: createDefaultHandlers(options),
-  };
-}
+export const toolOrchestrator = new BlipToolOrchestrator();
+export const createOrchestrator = () => new BlipToolOrchestrator();

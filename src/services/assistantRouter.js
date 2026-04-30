@@ -174,7 +174,14 @@ export function buildVoiceRoutingSnapshot(command = '', state = {}) {
     let needsClarification = false;
     let clarificationPrompt = '';
 
-    if (careCamIntent?.kind === 'carecam' && careCamIntent.action !== 'none') {
+    const bareSend = resolveBareSendRoute(command, normalized, state, routingContext, messagingDrafts);
+    if (bareSend) {
+        family = bareSend.family;
+        action = bareSend.action;
+        confidence = bareSend.confidence;
+        needsClarification = Boolean(bareSend.needsClarification);
+        clarificationPrompt = bareSend.clarificationPrompt || '';
+    } else if (careCamIntent?.kind === 'carecam' && careCamIntent.action !== 'none') {
         family = 'carecam';
         action = careCamIntent.action;
         confidence = Number(careCamIntent.confidence || 0.9);
@@ -194,21 +201,28 @@ export function buildVoiceRoutingSnapshot(command = '', state = {}) {
         family = 'telegram';
         action = telegramCmd.action || 'none';
         confidence = 0.84;
-    } else {
-        const bareSend = resolveBareSendRoute(command, normalized, state, routingContext, messagingDrafts);
-        if (bareSend) {
-            family = bareSend.family;
-            action = bareSend.action;
-            confidence = bareSend.confidence;
-            needsClarification = Boolean(bareSend.needsClarification);
-            clarificationPrompt = bareSend.clarificationPrompt || '';
-        } else if (isGenericMessagingPrompt(normalized)) {
-            family = 'message';
-            action = 'clarify';
-            confidence = 0.35;
-            needsClarification = true;
-            clarificationPrompt = buildClarificationPrompt(normalized, routingContext, state);
-        }
+    } else if (/\b(?:timer|timers|alarm|alarms|countdown)\b/.test(normalized)) {
+        family = 'timer';
+        action = 'fast_timer';
+        confidence = 0.85;
+    } else if (/\b(?:youtube|video|videos)\b/.test(normalized) && !/\b(?:save|record|delete|remove|clear)\b/.test(normalized)) {
+        family = 'youtube';
+        action = 'fast_youtube';
+        confidence = 0.85;
+    } else if (/\b(?:note|notes|notepad|list)\b/.test(normalized) || /^(?:take|save|write|create)\s+(?:a\s+)?(?:note|list)/.test(normalized)) {
+        family = 'notes';
+        action = 'fast_notes';
+        confidence = 0.85;
+    } else if (/\b(?:calendar|schedule|events?|meetings?|appointments?)\b/.test(normalized)) {
+        family = 'calendar';
+        action = 'fast_calendar';
+        confidence = 0.85;
+    } else if (isGenericMessagingPrompt(normalized)) {
+        family = 'message';
+        action = 'clarify';
+        confidence = 0.35;
+        needsClarification = true;
+        clarificationPrompt = buildClarificationPrompt(normalized, routingContext, state);
     }
 
     return {

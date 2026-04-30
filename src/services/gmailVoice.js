@@ -138,11 +138,22 @@ export function extractGmailShareRecipientRequest(command = '') {
     if (explicitTypeMatch) {
         shareType = String(explicitTypeMatch[1] || '').trim() || 'auto';
         rest = rest.slice(explicitTypeMatch[0].length).trim();
+        if (shareType === 'youtube') rest = rest.replace(/^(?:video|link)\b/, '').trim();
+        if (shareType === 'video') rest = rest.replace(/^link\b/, '').trim();
     } else {
         const pronounMatch = rest.match(/^(this|it|that)\b/);
         if (!pronounMatch) return null;
         rest = rest.slice(pronounMatch[0].length).trim();
-        rest = rest.replace(/^(?:note|email|message|video|youtube|link|photo|foto|picture|image|date|calendar|event)\b/, '').trim();
+        const pronounTypeMatch = rest.match(/^(note|email|message|video|youtube|link|photo|foto|picture|image|date|calendar|event)\b/);
+        if (pronounTypeMatch) {
+            const pronounType = String(pronounTypeMatch[1] || '').trim();
+            if (!/^(?:email|message)$/.test(pronounType)) {
+                shareType = pronounType || 'auto';
+            }
+            rest = rest.slice(pronounTypeMatch[0].length).trim();
+            if (shareType === 'youtube') rest = rest.replace(/^(?:video|link)\b/, '').trim();
+            if (shareType === 'video') rest = rest.replace(/^link\b/, '').trim();
+        }
     }
 
     const subjectMatch = rest.match(/\bsubject\s+(.+)$/);
@@ -152,6 +163,9 @@ export function extractGmailShareRecipientRequest(command = '') {
     }
 
     rest = rest.replace(/^from\s+.+?(?=\s+to\s+|$)/, '').trim();
+    if (/^(?:in|by|via|over|through)\s+(?:email|mail|gmail)$/.test(rest) || /^(?:to\s+)?(?:email|mail|gmail)$/.test(rest)) {
+        rest = '';
+    }
 
     let recipient = '';
     let recipientQuery = '';
@@ -166,6 +180,9 @@ export function extractGmailShareRecipientRequest(command = '') {
     if (/^(?:email|mail|gmail|inbox)$/.test(recipientQuery)) {
         recipientQuery = '';
         recipient = '';
+    }
+    if (shareType === 'calendar' && /^(?:my\s+)?calendar$/.test(recipientQuery)) {
+        return null;
     }
     if (!recipient && isRecipientFillerOnly(recipientQuery)) {
         recipientQuery = '';
@@ -351,7 +368,7 @@ export function getGmailVoiceCommand(command = '') {
     }
 
     const shareRequest = extractGmailShareRecipientRequest(lower);
-    if (shareRequest && (shareRequest.recipient || shareRequest.recipientQuery || shareRequest.shareType || shareRequest.subject)) {
+    if (shareRequest && (shareRequest.recipient || shareRequest.recipientQuery || shareRequest.subject || (shareRequest.shareType && shareRequest.shareType !== 'auto'))) {
         return { action: 'shareCurrent', ...shareRequest };
     }
 

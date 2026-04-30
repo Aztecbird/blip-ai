@@ -1,4 +1,5 @@
 import './style.css'
+import './blip-polyphony/ui/tower.css';
 import { askOllama, checkOllamaStatus, warmUpModel, cancelCurrentRequest } from './services/ollama'
 import { askGemini, generateWithPrompt } from './services/geminiText'
 import { generateSpeech } from './services/geminiTts'
@@ -37,25 +38,31 @@ import {
     sendGoogleGmailMessage
 } from './services/googleGmail.js'
 import { getGmailVoiceCommand } from './services/gmailVoice.js'
+import { getStudentDeskVoiceCommand } from './services/studentDeskVoice.js'
+import { getCameraDesignTransferCommand } from './services/cameraDesignVoice.js'
+import { tryHandleTaskVoiceCommand } from './services/taskVoiceBridge.js'
+import { analyzeHomeworkPhoto } from './services/homeworkVision.js'
 import {
-    getTelegramBackendConfig,
+    advanceFreeformNotesDraft,
+    isNotesDraftFinishIntent as isNotesDraftFinishIntentFromVoice,
+    parseFreeformNoteBody as parseFreeformNoteBodyFromVoice
+} from './services/notesDraftVoice.js'
+import {
     getTelegramAuthState,
     initTelegram,
     onTelegramAuthStateChange,
-    saveTelegramBackendConfig,
     sendTelegramMessage,
     sendTelegramPhoto,
-    sendTelegramVideo,
     sendTelegramTest
 } from './services/telegram.js'
 import { getTelegramVoiceCommand } from './services/telegramVoice.js'
 /* Blip face emotions: setBlipEmotion(emotion) applies .emotion-{name} to #blip-face; used in setPersona and after synthesis. */
 import { setBlipEmotion } from './services/emotions.js'
 import * as notesStore from './services/notesStore.js'
-import { executeTimerFire } from './services/timerFireEffect.js'
+import { createCalendarController } from './services/calendarController.js'
+import { parseCalendarVoiceDateReference } from './services/calendarVoiceDates.js'
+import { createTimerController } from './services/timerController.js'
 import { buildTimerPanelBodyHtml } from './services/panelTimerBody.js'
-import { createCompanionModeController } from './services/companionModeController.js'
-import { getDefaultCompanionSnapshot } from './services/companionStateAdapter.js'
 import {
     classifyYouTubeContentType,
     DEFAULT_VIDEO_PLAYLIST,
@@ -72,29 +79,15 @@ import {
 } from './services/youtubeLibrary.js'
 import { createEmailFeature } from './features/email/emailFeature.js'
 import { createTelegramFeature } from './features/telegram/telegramFeature.js'
-import { createBlipNextBridge, shouldTryBlipNextRoute } from './services/blipNextBridge.js'
-import { getToolLearningHint, recordToolOutcome, getLearningSummary } from './services/mistakeLearner.js'
-import {
-    publishConversationObject,
-    recordConversationAction,
-    getConversationSnapshot
-} from './services/toolConversation.js';
-import { Connector } from './services/connector.js'
-import { tryHandleTaskVoiceCommand } from './services/taskVoiceBridge.js'
-import { buildVoiceRoutingSnapshot } from './services/assistantRouter.js'
-import {
-    buildYouTubeSnapshotQuestion,
-    isYouTubeSnapshotCaptureIntent,
-    isYouTubeSnapshotIntent,
-    parseYouTubeSnapshotZoomCommand
-} from './services/youtubeSnapshotIntent.js'
-import {
-    analyzeYouTubeSnapshot,
-    buildSnapshotViewImage,
-    captureCurrentYouTubeFrame,
-    createSnapshotViewState,
-    updateSnapshotViewState
-} from './services/youtubeSnapshotVision.js'
+import { blipEngine, BLIP_STATES, INTENT_TYPES } from './blip-engine/index.js'
+import Orchestrator from './blip-polyphony/core/orchestrator.js';
+import DeterministicAgent from './blip-polyphony/agents/presence/deterministic_agent.js';
+import PerceptionAgent from './blip-polyphony/agents/presence/perception_agent.js';
+import PlanningAgent from './blip-polyphony/agents/judgment/planning_agent.js';
+import ToolAgent from './blip-polyphony/agents/action/tool_agent.js';
+import ExpressionAgent from './blip-polyphony/agents/presence/expression_agent.js';
+import MemoryAgent from './blip-polyphony/agents/memory/memory_agent.js';
+import BridgeAgent from './blip-polyphony/agents/action/bridge_agent.js';
 
 // ── UI: DOM ELEMENTS ─────────────────────────────────────────────────────────
 const face = document.getElementById('blip-face');
@@ -110,13 +103,10 @@ const transcriptText = document.getElementById('transcript');
 const meterLevel = document.getElementById('meter-level');
 const meterBox = document.querySelector('.mic-meter');
 const meterLabel = document.getElementById('meter-label');
-const companionIndicator = document.getElementById('companion-indicator');
 const chatBtn = document.getElementById('chatBtn');
 const notesBtn = document.getElementById('notesBtn');
 const emailBtn = document.getElementById('emailBtn');
 const telegramBtn = document.getElementById('telegramBtn');
-const micTestBtn = document.getElementById('micTestBtn');
-const snapshotZoomBtn = document.getElementById('snapshotZoomBtn');
 const calendarBtn = document.getElementById('calendarBtn');
 const chatEntry = document.getElementById('chat-entry');
 const chatInput = document.getElementById('chatInput');
@@ -174,7 +164,6 @@ const closeMediaBtn = document.getElementById('closeMediaBtn');
 const mediaLightbox = document.getElementById('media-lightbox');
 const mediaLightboxImage = document.getElementById('media-lightbox-image');
 const mediaLightboxVideo = document.getElementById('media-lightbox-video');
-const zoomMediaLightboxBtn = document.getElementById('zoomMediaLightboxBtn');
 const shareMediaLightboxBtn = document.getElementById('shareMediaLightboxBtn');
 const downloadMediaLightboxBtn = document.getElementById('downloadMediaLightboxBtn');
 const wallpaperMediaLightboxBtn = document.getElementById('wallpaperMediaLightboxBtn');
@@ -217,16 +206,7 @@ const saveChartBtn = document.getElementById('saveChartBtn');
 const gearBtn = document.getElementById('gearBtn');
 const underTheHood = document.getElementById('under-the-hood');
 const closePanelBtn = document.getElementById('closePanelBtn');
-const settingsLockToggleBtn = document.getElementById('settingsLockToggleBtn');
-const settingsLockStatus = document.getElementById('settingsLockStatus');
-const openConversationInspectorBtn = document.getElementById('openConversationInspectorBtn');
-const closeConversationInspectorBtn = document.getElementById('closeConversationInspectorBtn');
-const commandInspectorInput = document.getElementById('commandInspectorInput');
-const runCommandInspectorBtn = document.getElementById('runCommandInspectorBtn');
-const commandInspectorOutput = document.getElementById('commandInspectorOutput');
 const geminiKeyInput = document.getElementById('geminiKeyInput');
-const copyGeminiKeyBtn = document.getElementById('copyGeminiKeyBtn');
-const minimaxKeyInput = document.getElementById('minimaxKeyInput');
 const youtubeKeyInput = document.getElementById('youtubeKeyInput');
 const weatherKeyInput = document.getElementById('weatherKeyInput');
 const googleCalendarClientIdInput = document.getElementById('googleCalendarClientIdInput');
@@ -240,29 +220,14 @@ const gmailAuthStatus = document.getElementById('gmailAuthStatus');
 const openTelegramBtn = document.getElementById('openTelegramBtn');
 const sendTelegramTestBtn = document.getElementById('sendTelegramTestBtn');
 const telegramAuthStatus = document.getElementById('telegramAuthStatus');
-const telegramBotTokenInput = document.getElementById('telegramBotTokenInput');
-const telegramChatIdInput = document.getElementById('telegramChatIdInput');
-const telegramChatAliasesInput = document.getElementById('telegramChatAliasesInput');
-const telegramBackendPortInput = document.getElementById('telegramBackendPortInput');
-const applyTelegramSettingsBtn = document.getElementById('applyTelegramSettingsBtn');
-const copyTelegramEnvBtn = document.getElementById('copyTelegramEnvBtn');
-const refreshApiUsageBtn = document.getElementById('refreshApiUsageBtn');
-const apiUsageStatus = document.getElementById('apiUsageStatus');
-const apiUsageSummary = document.getElementById('apiUsageSummary');
 const voiceEngineSelect = document.getElementById('voiceEngineSelect');
 const voiceEngineStatus = document.getElementById('voiceEngineStatus');
 const browserVoiceSelect = document.getElementById('browserVoiceSelect');
 const browserVoiceGroup = document.getElementById('browser-voice-group');
 const kokoroHintGroup = document.getElementById('kokoro-hint-group');
-const companionModeToggle = document.getElementById('companionModeToggle');
-const companionSettingsStatus = document.getElementById('companionSettingsStatus');
 const speechVolumeInput = document.getElementById('speechVolumeInput');
 const speechVolumeValue = document.getElementById('speechVolumeValue');
 const modelSelect = document.getElementById('modelSelect');
-const conversationTemperatureInput = document.getElementById('conversationTemperatureInput');
-const conversationTemperatureValue = document.getElementById('conversationTemperatureValue');
-const parsingTemperatureInput = document.getElementById('parsingTemperatureInput');
-const parsingTemperatureValue = document.getElementById('parsingTemperatureValue');
 const usageTierSelect = document.getElementById('usageTierSelect');
 const imageModelSelect = document.getElementById('imageModelSelect');
 const imageEngineSelect = document.getElementById('imageEngineSelect');
@@ -283,83 +248,12 @@ const countdownDisplay = document.getElementById('countdown-display');
 const isGitHub = window.location.hostname.includes('github.io');
 
 /** Single source of truth for app version — update here (and package.json) when releasing. */
-const BLIP_VERSION = '4.3.25';
-console.log('--- BLIP_VERSION 4.3.25 ACTIVE ---');
-const SETTINGS_LOCKED_STORAGE_KEY = 'blip_settings_locked';
-const SETTINGS_LOCK_PIN_STORAGE_KEY = 'blip_settings_lock_pin';
+const BLIP_VERSION = '4.3.22';
 const WAKE_GREETING_ENABLED = true;
-const EXPENSE_TRACKER_BACKEND_PORT = Number(window.localStorage?.getItem('blip_expense_tracker_backend_port') || 8797);
-const EXPENSE_TRACKER_BASE = (() => {
-    const configured = String(window.localStorage?.getItem('blip_expense_tracker_backend_url') || '').trim();
-    if (configured) return configured.replace(/\/$/, '');
-    return `http://127.0.0.1:${EXPENSE_TRACKER_BACKEND_PORT}/api/expense-tracker`;
-})();
 
-/** 🛡️ Safety Hub for Mobile: prevents crashes on storage-limit or incognito. */
-function safeStorageSet(key, value) {
-    if (typeof localStorage === 'undefined') return false;
-    try {
-        localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
-        return true;
-    } catch (err) {
-        console.warn(`[Blip Armor] Storage limit hit for ${key}:`, err.message);
-        return false;
-    }
-}
 
 /** Diamond-style values: guide reasoning (Conclusion + Explanation). Use 1–3 when building prompts. */
 const BLIP_VALUES = ['Critical Thinking', 'Compassion', 'Joyful Learning', 'Emotional Intelligence', 'Ethics & Responsibility'];
-
-// Dev banner: show which provider/model is active while Blip is thinking.
-const devBrainBanner = document.getElementById('dev-brain-banner');
-
-function getChatBrainLabel(model = '') {
-    const m = String(model || '').trim();
-    const lower = m.toLowerCase();
-    if (/^minimax/i.test(lower)) {
-        return /high\s*speed|highspeed/i.test(lower) ? 'MiniMax M2.7 HS' : 'MiniMax M2.7';
-    }
-    if (lower.startsWith('gemini-')) {
-        return m;
-    }
-    if (lower.includes('gemini')) {
-        return 'Gemini';
-    }
-    if (lower.includes('ollama') || lower.startsWith('qwen') || lower.startsWith('llama')) {
-        return 'Ollama';
-    }
-    return m || 'Unknown';
-}
-
-function getVoiceBrainLabel(engine = '') {
-    if (engine === 'kokoro') return 'Voice: Kokoro';
-    if (engine === 'gemini') return 'Voice: Gemini';
-    if (engine === 'web') return 'Voice: Browser';
-    return 'Voice: -';
-}
-
-function updateDevBrainBanner({ thinking = false, reasoningMode = '', reason = '' } = {}) {
-    if (!devBrainBanner) return;
-    if (isGitHub) {
-        devBrainBanner.style.display = 'none';
-        devBrainBanner.textContent = '';
-        return;
-    }
-
-    if (!thinking) {
-        const chatBrain = getChatBrainLabel(state.selectedModel);
-        const voiceBrain = getVoiceBrainLabel(state.voiceEngine);
-        devBrainBanner.textContent = `${chatBrain} | ${voiceBrain}`;
-        return;
-    }
-
-    const chatBrain = getChatBrainLabel(state.selectedModel);
-    const voiceBrain = getVoiceBrainLabel(state.voiceEngine);
-    const brainMode = reasoningMode ? `${reasoningMode}` : '';
-    const reasonPart = reason ? ` • ${String(reason).slice(0, 80)}` : '';
-    devBrainBanner.textContent = `${chatBrain} | ${voiceBrain}${brainMode ? ` | ${brainMode}` : ''}${reasonPart}`;
-    devBrainBanner.style.display = '';
-}
 
 const CAPABILITY_SCENERY_OBJECTS = [
     { id: 'capability-chat', emoji: '💬', label: 'chat', size: '1.15rem', orbitOffset: 0, duration: 20, direction: 'normal', delay: '-3s' },
@@ -401,29 +295,38 @@ const EXTRA_SCENERY_OBJECTS = CAPABILITY_SCENERY_OBJECTS;
 const FULL_BROWSER_LAYOUT_CSS = `
 body {
   align-items: stretch !important;
-  min-height: 100dvh !important;
-  overflow: hidden !important;
+  min-height: 100svh !important;
+  height: auto !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
   padding: 0 !important;
 }
 #app {
-  min-height: 100dvh !important;
+  min-height: 100svh !important;
+  height: auto !important;
   padding: 0 !important;
+  align-items: stretch !important;
 }
 .container {
-  width: 100vw !important;
+  width: calc(100vw - 12px) !important;
   max-width: none !important;
-  min-height: 100dvh !important;
-  height: 100dvh !important;
+  min-height: 100svh !important;
+  height: auto !important;
+  max-height: none !important;
   display: grid !important;
   grid-template-rows: auto 1fr auto !important;
   border-radius: 0 !important;
-  padding: clamp(0.8rem, 2vw, 2rem) !important;
+  padding: clamp(0.6rem, 1.25vw, 1.35rem) !important;
   justify-content: initial !important;
   gap: clamp(0.5rem, 1.2vh, 1rem) !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  overscroll-behavior: auto !important;
+  -webkit-overflow-scrolling: touch !important;
   box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.7), inset 0 0 40px rgba(255, 255, 255, 0.02) !important;
 }
 #face-area {
-  width: min(96vw, 1280px) !important;
+  width: min(98vw, 1440px) !important;
   flex: 1 !important;
   justify-content: center !important;
   gap: clamp(0.45rem, 1.2vh, 0.95rem) !important;
@@ -431,14 +334,17 @@ body {
   margin: 0 auto !important;
 }
 #transcript-area {
-  width: min(80vw, 860px) !important;
+  width: min(92vw, 1040px) !important;
   margin: 0 auto !important;
 }
 #interaction-area {
-  width: min(92vw, 980px) !important;
-  gap: 0.8rem !important;
+  width: min(98vw, 1320px) !important;
+  gap: 0.65rem !important;
   margin: 0 auto 0.15rem !important;
-  padding: 0.75rem 0.9rem 0.95rem !important;
+  padding: 0.65rem 0.8rem 0.8rem !important;
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 30 !important;
   border-radius: 18px !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
   background: rgba(2, 6, 23, 0.58) !important;
@@ -451,9 +357,18 @@ body {
 }
 .mini-actions {
   opacity: 0.88 !important;
+  width: 100% !important;
+  max-width: 1120px !important;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  gap: clamp(0.45rem, 1.2vw, 1rem) !important;
+  row-gap: 0.45rem !important;
+}
+.mini-actions button {
+  flex: 0 0 42px !important;
 }
 .face-frame {
-  width: min(90vw, 1040px) !important;
+  width: min(96vw, 1280px) !important;
   height: min(56vh, 600px) !important;
   border-radius: 2.2rem !important;
 }
@@ -467,7 +382,10 @@ body {
 @media (max-width: 900px) {
   .container {
     grid-template-rows: auto 1fr auto !important;
-    padding: 0.6rem 0.5rem 0.7rem !important;
+    width: 100vw !important;
+    min-height: 100svh !important;
+    max-height: none !important;
+    padding: 0.5rem 0.35rem 0.55rem !important;
   }
   #face-area {
     width: 100% !important;
@@ -488,13 +406,18 @@ body {
     height: clamp(190px, 40vw, 280px) !important;
   }
   #interaction-area {
-    width: 98vw !important;
-    gap: 0.7rem !important;
+    width: 99vw !important;
+    gap: 0.5rem !important;
     border-radius: 14px !important;
-    padding: 0.55rem 0.5rem 0.7rem !important;
+    padding: 0.5rem 0.35rem 0.6rem !important;
   }
   .mini-actions {
-    gap: 1rem !important;
+    gap: 0.45rem !important;
+  }
+  .mini-actions button {
+    flex-basis: 38px !important;
+    width: 38px !important;
+    height: 38px !important;
   }
 }
 `;
@@ -524,9 +447,6 @@ const USER_PROFILE_STORAGE_KEY = 'blip_user_profile_v1';
 const VIDEO_PLAYLISTS_STORAGE_KEY = 'blip_video_playlists_v1';
 const EMAIL_CONTACTS_STORAGE_KEY = 'blip_email_contacts_v1';
 const MEDIA_MAX = 80;
-const HUB_MAINTENANCE_THROTTLE_DAYS = 7;
-const HUB_MAX_AGE_DAYS = 30;
-const HUB_LAST_CHECK_STORAGE_KEY = 'blip_hub_last_maintenance_check';
 const MEDIA_BUCKET_SHOTS = 'shots';
 const MEDIA_BUCKET_CREATED = 'created';
 const MEDIA_ACTIONS_BACKEND_URL = '/api/media-actions';
@@ -715,23 +635,9 @@ function clampIdleAmbientVolume(value) {
     return Math.min(1, Math.max(0.1, parsed));
 }
 
-function clampConversationTemperature(value) {
-    const parsed = parseFloat(value);
-    if (!Number.isFinite(parsed)) return 0.78;
-    return Math.min(1, Math.max(0, parsed));
-}
-
-function clampParsingTemperature(value) {
-    const parsed = parseFloat(value);
-    if (!Number.isFinite(parsed)) return 0;
-    return Math.min(0.5, Math.max(0, parsed));
-}
-
 const state = {
     isActive: false,
     isThinking: false,
-    micTestRunning: false,
-    micTestTimeout: null,
     sensitivity: 20,
     selectedVoice: null,
     currentEmotion: 'serious',
@@ -749,18 +655,13 @@ const state = {
     pendingImage: null, // Base64 string
     cameraStream: null,
     geminiKey: localStorage.getItem('blip_gemini_key') || '',
-    minimaxKey: localStorage.getItem('blip_minimax_key') || '',
     youtubeApiKey: localStorage.getItem('blip_youtube_key') || '', // optional: for in-panel video playback (YouTube Data API v3)
     weatherApiKey: localStorage.getItem('blip_weather_key') || '',
     googleCalendarClientId: localStorage.getItem('blip_google_calendar_client_id') || '',
     usageTier: initialUsageTier,
     displayLuma: DISPLAY_LUMA_OPTIONS.includes(localStorage.getItem('blip_display_luma')) ? localStorage.getItem('blip_display_luma') : 'medium',
     idleWeatherLocation: normalizeIdleWeatherLocation(localStorage.getItem('blip_idle_weather_location')),
-    humeConfigId: '',
-    companionModeEnabled: localStorage.getItem('blip_companion_mode_enabled') !== '0',
     selectedModel: localStorage.getItem('blip_selected_model') || initialTierPreset.selectedModel,
-    conversationTemperature: clampConversationTemperature(localStorage.getItem('blip_conversation_temperature') || 0.78),
-    parsingTemperature: clampParsingTemperature(localStorage.getItem('blip_parsing_temperature') || 0),
     voiceEngine: storedVoiceEngine || initialTierPreset.voiceEngine,
     voiceEngineOverridden: storedVoiceEngineOverridden === '1' || (!!storedVoiceEngine && storedVoiceEngine !== initialTierPreset.voiceEngine),
     voiceEngineOverrideSource: storedVoiceEngineOverrideSource || ((storedVoiceEngineOverridden === '1' || (!!storedVoiceEngine && storedVoiceEngine !== initialTierPreset.voiceEngine)) ? 'manual' : 'tier'),
@@ -776,8 +677,6 @@ const state = {
     idleAmbientEnabled: localStorage.getItem('blip_idle_ambient_enabled') === '1',
     idleAmbientFxEnabled: localStorage.getItem('blip_idle_ambient_fx_enabled') !== '0',
     idleAmbientVolume: clampIdleAmbientVolume(localStorage.getItem('blip_idle_ambient_volume') || 0.35),
-    settingsLocked: localStorage.getItem(SETTINGS_LOCKED_STORAGE_KEY) === '1',
-    settingsLockPin: String(localStorage.getItem(SETTINGS_LOCK_PIN_STORAGE_KEY) || '').trim(),
     passiveWakeEnabled: localStorage.getItem('blip_passive_wake_enabled') !== '0',
     passiveWakePrimed: localStorage.getItem('blip_passive_wake_primed') === '1',
     passiveWakeListening: false,
@@ -828,8 +727,6 @@ const state = {
     telegramDraft: { chatId: '', text: '' },
     lastTelegramSendResult: null,
     pendingTelegramReview: false,
-    blipNextConversationState: null,
-    useBlipNextRouter: true,
     emailContacts: (() => {
         try {
             const parsed = JSON.parse(localStorage.getItem(EMAIL_CONTACTS_STORAGE_KEY) || '{}');
@@ -845,15 +742,7 @@ const state = {
     activeCalendarViewRequest: null,
     calendarDisplayMode: normalizeCalendarDisplayMode(localStorage.getItem('blip_calendar_display_mode') || 'month'),
     calendarAnchorDate: normalizeCalendarAnchorDate(localStorage.getItem('blip_calendar_anchor_date') || '').toISOString(),
-    pendingHubMaintenanceNotice: null, // { reason, count }
-    hubItems: (() => {
-        try {
-            const raw = JSON.parse(localStorage.getItem('blip_hub') || 'null');
-            return Array.isArray(raw) ? raw : [];
-        } catch (_) {
-            return [];
-        }
-    })(),
+    hubItems: JSON.parse(localStorage.getItem('blip_hub')) || [],
     cartItems: JSON.parse(localStorage.getItem('blip_cart') || '[]'),
     // Per-session overrides for media display (not persisted).
     // Prevents edits like "darken photo" from sticking forever unless explicitly baked into a data URL.
@@ -934,7 +823,6 @@ const state = {
     softSleepMode: false,
     currentWeatherScene: 'clear',
     currentWeatherSceneIntensity: 'active',
-    companion: getDefaultCompanionSnapshot(),
     weatherSceneShowcaseTimer: null,
     weatherSceneShowcaseIndex: -1,
     idleWeatherRefreshTimer: null,
@@ -970,8 +858,6 @@ const state = {
         lastYoutubeSearchResults: null, // [{videoId, title}, ...] for next/skip
         lastYoutubeQuery: null,
         lastYoutubeSearchIndex: 0,
-        lastYouTubeSnapshot: null,
-        lastYouTubeSnapshotView: { zoom: 1, panX: 0, panY: 0 },
         lastLocation: '',
         lastSearchTopic: '',
         lastIntentActions: [],
@@ -985,173 +871,6 @@ const state = {
         lastWeatherLocation: ''
     }
 };
-
-function renderCompanionIndicator() {
-    if (!companionIndicator) return;
-    const snapshot = state.companion || getDefaultCompanionSnapshot();
-    let status = String(snapshot.status || 'off');
-    if (!snapshot.available) status = 'unavailable';
-    else if (!state.companionModeEnabled) status = 'off';
-    else if (status === 'off') status = (!state.isActive || state.softSleepMode) ? 'ready' : 'off';
-    companionIndicator.className = `companion-indicator companion-indicator-${status}`;
-    const labelEl = companionIndicator.querySelector('.companion-indicator-label');
-    const heartEl = companionIndicator.querySelector('.companion-indicator-heart');
-    const isOn = snapshot.available && state.companionModeEnabled;
-    if (labelEl) labelEl.textContent = isOn ? 'on' : 'off';
-    if (heartEl) heartEl.textContent = '♥';
-    const title = !snapshot.available
-        ? 'Companion unavailable'
-        : !state.companionModeEnabled
-            ? 'Companion mode off'
-            : status === 'active'
-                ? `Companion on: ${String(snapshot.mode || 'neutral').replace(/_/g, ' ')}`
-                : status === 'listening'
-                    ? 'Companion on: listening'
-                    : status === 'fallback'
-                        ? 'Companion on: fallback mode'
-                        : 'Companion on';
-    companionIndicator.setAttribute('aria-label', title);
-    companionIndicator.setAttribute('title', title);
-}
-
-function renderCompanionSettingsStatus() {
-    if (!companionSettingsStatus) return;
-    const snapshot = state.companion || getDefaultCompanionSnapshot();
-    if (!snapshot.available) {
-        companionSettingsStatus.textContent = snapshot.hasCredentials
-            ? 'Hume backend is installed but companion mode is disabled in .env.local.'
-            : 'Hume backend is unavailable. Add Hume credentials in .env.local.';
-        return;
-    }
-    if (!state.companionModeEnabled) {
-        companionSettingsStatus.textContent = 'Companion mode is available and currently off in Blip.';
-        return;
-    }
-    if (snapshot.status === 'active') {
-        companionSettingsStatus.textContent = `Companion mode active: ${String(snapshot.mode || 'neutral').replace(/_/g, ' ')}.`;
-        return;
-    }
-    if (snapshot.status === 'listening') {
-        companionSettingsStatus.textContent = 'Companion mode is listening during voice input.';
-        return;
-    }
-    if (snapshot.status === 'fallback') {
-        companionSettingsStatus.textContent = 'Companion mode fell back to normal voice handling.';
-        return;
-    }
-    companionSettingsStatus.textContent = state.isActive && !state.softSleepMode
-        ? 'Companion mode is ready and will join Blip while listening.'
-        : 'Companion mode is ready for the next wake/listening session.';
-}
-
-function getCompanionBehavior() {
-    return state.companion?.behavior || getDefaultCompanionSnapshot().behavior;
-}
-
-function getCompanionSpeechRate(baseRate = 1) {
-    const behavior = getCompanionBehavior();
-    if (behavior.replyPacing === 'faster') return Math.min(1.18, baseRate + 0.08);
-    if (behavior.replyPacing === 'slower') return Math.max(0.82, baseRate - 0.1);
-    return baseRate;
-}
-
-function getCompanionPromptBlock() {
-    const snapshot = state.companion || getDefaultCompanionSnapshot();
-    if (!snapshot.available || !state.companionModeEnabled || snapshot.status === 'off' || snapshot.mode === 'neutral' || snapshot.confidence < 0.22) {
-        return '';
-    }
-
-    const behavior = getCompanionBehavior();
-    const promptLines = [
-        'Companion sensing hint: treat the user\'s vocal delivery as uncertain context only.',
-        'Do not say what the user feels or claim certainty.'
-    ];
-
-    if (behavior.replyPacing === 'faster') {
-        promptLines.push('Prefer brisk replies with the key point first.');
-    } else if (behavior.replyPacing === 'slower') {
-        promptLines.push('Prefer slower, gentler wording with a calm cadence.');
-    }
-
-    if (behavior.replyLength === 'short') {
-        promptLines.push('Keep the reply concise unless the user asks for more.');
-    }
-
-    if (behavior.replySoftness >= 0.6) {
-        promptLines.push('Use soft, reassuring phrasing.');
-    }
-
-    if (behavior.shouldConfirmActions) {
-        promptLines.push('For non-trivial actions or changes, gently confirm before pushing ahead.');
-    }
-
-    return `${promptLines.join(' ')}\n`;
-}
-
-function adaptReplyToCompanionMode(text = '') {
-    const message = sanitizeBlipReplyText(String(text || '').trim());
-    if (!message) return message;
-
-    const behavior = getCompanionBehavior();
-    if (behavior.replyLength !== 'short') return message;
-
-    const sentences = message.split(/(?<=[.!?])\s+/).filter(Boolean);
-    const firstSentence = sentences[0] || message;
-    const words = firstSentence.split(/\s+/).filter(Boolean);
-    if (words.length <= 18) return firstSentence;
-    return `${words.slice(0, 18).join(' ')}.`;
-}
-
-function syncCompanionSnapshot(snapshot = {}) {
-    state.companion = {
-        ...(state.companion || getDefaultCompanionSnapshot()),
-        ...(snapshot && typeof snapshot === 'object' ? snapshot : {})
-    };
-    renderCompanionIndicator();
-    renderCompanionSettingsStatus();
-}
-
-async function refreshCompanionAvailability() {
-    try {
-        const response = await fetch('/api/hume/health');
-        if (!response.ok) throw new Error(`Hume health failed (${response.status}).`);
-        const payload = await response.json();
-        state.humeConfigId = String(payload?.configId || '').trim();
-        syncCompanionSnapshot({
-            ...(state.companion || {}),
-            available: Boolean(payload?.available ?? payload?.enabled),
-            enabled: Boolean(payload?.available ?? payload?.enabled),
-            hasCredentials: Boolean(payload?.hasCredentials),
-            integrationEnabled: Boolean(payload?.integrationEnabled),
-            status: 'off'
-        });
-    } catch (_) {
-        syncCompanionSnapshot({
-            ...(state.companion || {}),
-            available: false,
-            enabled: false,
-            hasCredentials: false,
-            status: 'off'
-        });
-    }
-}
-
-const companionModeController = createCompanionModeController({
-    isEnabled: () => Boolean(state.companion?.available && state.companionModeEnabled),
-    getConfigId: () => state.humeConfigId,
-    onSnapshot: (snapshot) => {
-        syncCompanionSnapshot(snapshot);
-        if (
-            state.isListening
-            && !state.isThinking
-            && !speech.isSpeaking
-            && snapshot?.status === 'active'
-            && snapshot?.behavior?.faceEmotion
-        ) {
-            setBlipEmotion(snapshot.behavior.faceEmotion);
-        }
-    }
-});
 
 // ── Features: Email (Gmail) ──────────────────────────────────────────────────
 const emailFeature = createEmailFeature({
@@ -1182,7 +901,6 @@ const emailFeature = createEmailFeature({
         quickReply: (...args) => featureQuickReply(...args),
         getNoteItems,
         getEmailPhotoAttachmentPayload,
-        getEmailVideoAttachmentPayload,
         isMediaLightboxActuallyVisible,
         normalizeMediaLane,
         getSelectedCalendarDate,
@@ -1202,23 +920,14 @@ const telegramFeature = createTelegramFeature({
     elements: {
         openTelegramBtn,
         sendTelegramTestBtn,
-        telegramAuthStatus,
-        telegramBotTokenInput,
-        telegramChatIdInput,
-        telegramChatAliasesInput,
-        telegramBackendPortInput,
-        applyTelegramSettingsBtn,
-        copyTelegramEnvBtn
+        telegramAuthStatus
     },
     services: {
-        getTelegramBackendConfig,
         getTelegramAuthState,
         initTelegram,
         onTelegramAuthStateChange,
-        saveTelegramBackendConfig,
         sendTelegramMessage,
         sendTelegramPhoto,
-        sendTelegramVideo,
         sendTelegramTest
     },
     helpers: {
@@ -1228,17 +937,74 @@ const telegramFeature = createTelegramFeature({
         closeSidePanel,
         quickReply: (...args) => featureQuickReply(...args),
         getEmailPhotoAttachmentPayload,
-        getEmailVideoAttachmentPayload,
-        buildContextSharePayload: (...args) => emailFeature.buildEmailPayloadFromContext(...args),
+        buildContextSharePayload: buildEmailPayloadFromContext,
     }
 });
 
-const blipNextBridge = createBlipNextBridge({
-    emailFeature,
-    telegramFeature,
-    quickReply: (...args) => featureQuickReply(...args),
-    runTimer: (res) => actionHandlers.timer(res, state)
-});
+// ── POLYPHONY ORCHESTRATION (THE MIND) ──────────────────────────────────────
+const appHandlers = {
+    'gmail': async (action, params) => {
+        console.log(`[PolyphonyBridge] Executing Gmail: ${action}`, params);
+        return await emailFeature.handleVoiceCommand({ action, draft: params });
+    },
+    'telegram': async (action, params) => {
+        console.log(`[PolyphonyBridge] Executing Telegram: ${action}`, params);
+        return await telegramFeature.handleVoiceCommand({ action, draft: params });
+    },
+    'timer': async (action, params = {}) => {
+        console.log(`[PolyphonyBridge] Executing Timer: ${action}`, params);
+        const rawText = String(params.rawText || params.text || '').trim();
+        const normalized = normalizeVoiceTokens(rawText);
+        if (/\b(?:cancel|delete|remove|stop)\s+(?:the\s+)?(?:next\s+)?(?:timer|alarm|countdown)\b/.test(normalized)) {
+            const removed = cancelNextScheduledTimer();
+            return { ok: Boolean(removed), text: removed ? `Cancelled ${removed.text || 'that timer'}.` : 'No timer to cancel.' };
+        }
+        if (/\b(?:clear|cancel|delete|remove|stop)\s+(?:all|every)\s+(?:timers?|alarms?|countdowns?)\b/.test(normalized)) {
+            const count = clearAllScheduledTimers();
+            return { ok: true, text: count ? `Cleared ${count} timer${count === 1 ? '' : 's'}.` : 'No timers to clear.' };
+        }
+        const timerCmd = Number.isFinite(Number(params.ms))
+            ? params
+            : getDirectTimerVoiceCommand(rawText);
+        const result = timerController.handleTimerAction(timerCmd || {});
+        if (!result.ok) throw new Error(result.text || 'Could not handle timer.');
+        return { ok: result.ok, text: result.text };
+    },
+    'calendar': async (action, params = {}) => {
+        console.log(`[PolyphonyBridge] Executing Calendar: ${action}`, params);
+        const rawText = String(params.rawText || params.text || '').trim();
+        const result = await calendarController.handleVoiceCommand(rawText, {
+            event_details: params.event_details,
+            text: params.text || ''
+        });
+        if (result?.ok === false) throw new Error(result.text || 'Could not handle calendar.');
+        return result;
+    }
+};
+
+const polyphony = new Orchestrator();
+polyphony.registerAgent('deterministic', new DeterministicAgent());
+polyphony.registerAgent('perception', new PerceptionAgent());
+polyphony.registerAgent('planning', new PlanningAgent());
+polyphony.registerAgent('tool', new ToolAgent({ appHandlers }));
+polyphony.registerAgent('expression', new ExpressionAgent());
+polyphony.registerAgent('memory', new MemoryAgent());
+polyphony.registerAgent('bridge', new BridgeAgent());
+
+let v2_brain_enabled = localStorage.getItem('blip_polyphony_enabled') !== '1'; // Off by default
+v2_brain_enabled = false; // Hard default: off
+const polyphonyToggle = document.getElementById('polyphonyToggle');
+if (polyphonyToggle) {
+    // Restore persisted state; default to unchecked (off)
+    const savedPolyphony = localStorage.getItem('blip_polyphony_enabled');
+    polyphonyToggle.checked = savedPolyphony === '1';
+    v2_brain_enabled = polyphonyToggle.checked;
+    polyphonyToggle.addEventListener('change', (e) => {
+        v2_brain_enabled = e.target.checked;
+        localStorage.setItem('blip_polyphony_enabled', v2_brain_enabled ? '1' : '0');
+        console.log('[HybridBrain] Polyphony enabled:', v2_brain_enabled);
+    });
+}
 
 function triggerEmailSendConfirm(options = {}) {
     const baseDelay = Number.isFinite(Number(options?.delayMs)) ? Number(options.delayMs) : 0;
@@ -1263,7 +1029,7 @@ async function featureQuickReply(message, emotion = 'happy', extraHtml = '', res
     if (heard && cleanMessage) {
         state.history.push({ user: heard, blip: cleanMessage });
         if (state.history.length > HISTORY_MAX) state.history.shift();
-        safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
     }
     setBlipEmotion(emotion);
     setPersona(getReplyPersonaKey(emotion));
@@ -1280,15 +1046,15 @@ async function featureQuickReply(message, emotion = 'happy', extraHtml = '', res
 }
 
 function persistUsageTierState() {
-    safeStorageSet('blip_usage_tier', state.usageTier);
-    safeStorageSet('blip_selected_model', state.selectedModel);
-    safeStorageSet('blip_voice_engine', state.voiceEngine);
-    safeStorageSet('blip_voice_engine_overridden', state.voiceEngineOverridden ? '1' : '0');
-    safeStorageSet('blip_voice_engine_override_source', state.voiceEngineOverrideSource || 'tier');
-    safeStorageSet('blip_image_model', state.imageModel);
-    safeStorageSet('blip_image_engine', state.imageEngine);
-    safeStorageSet('blip_comfyui_base_url', state.comfyuiBaseUrl || '');
-    safeStorageSet('blip_comfyui_checkpoint', state.comfyuiCheckpoint || '');
+    try { localStorage.setItem('blip_usage_tier', state.usageTier); } catch (e) { }
+    try { localStorage.setItem('blip_selected_model', state.selectedModel); } catch (e) { }
+    try { localStorage.setItem('blip_voice_engine', state.voiceEngine); } catch (e) { }
+    try { localStorage.setItem('blip_voice_engine_overridden', state.voiceEngineOverridden ? '1' : '0'); } catch (e) { }
+    try { localStorage.setItem('blip_voice_engine_override_source', state.voiceEngineOverrideSource || 'tier'); } catch (e) { }
+    try { localStorage.setItem('blip_image_model', state.imageModel); } catch (e) { }
+    try { localStorage.setItem('blip_image_engine', state.imageEngine); } catch (e) { }
+    try { localStorage.setItem('blip_comfyui_base_url', state.comfyuiBaseUrl || ''); } catch (e) { }
+    try { localStorage.setItem('blip_comfyui_checkpoint', state.comfyuiCheckpoint || ''); } catch (e) { }
 }
 
 function getVoiceEngineLabel(engine = '') {
@@ -1364,30 +1130,30 @@ function normalizeCalendarAnchorDate(value) {
 }
 
 function persistDisplayLuma() {
-    safeStorageSet('blip_display_luma', state.displayLuma);
+    try { localStorage.setItem('blip_display_luma', state.displayLuma); } catch (e) { }
 }
 
 function persistIdleWeatherLocation() {
     state.idleWeatherLocation = normalizeIdleWeatherLocation(state.idleWeatherLocation);
-    safeStorageSet('blip_idle_weather_location', state.idleWeatherLocation || '');
+    try { localStorage.setItem('blip_idle_weather_location', state.idleWeatherLocation || ''); } catch (e) { }
 }
 
 function persistIdleAudioPreferences() {
-    safeStorageSet('blip_idle_ambient_enabled', state.idleAmbientEnabled ? '1' : '0');
-    safeStorageSet('blip_idle_ambient_fx_enabled', state.idleAmbientFxEnabled ? '1' : '0');
-    safeStorageSet('blip_idle_ambient_volume', String(state.idleAmbientVolume));
+    try { localStorage.setItem('blip_idle_ambient_enabled', state.idleAmbientEnabled ? '1' : '0'); } catch (e) { }
+    try { localStorage.setItem('blip_idle_ambient_fx_enabled', state.idleAmbientFxEnabled ? '1' : '0'); } catch (e) { }
+    try { localStorage.setItem('blip_idle_ambient_volume', String(state.idleAmbientVolume)); } catch (e) { }
 }
 
 function persistUserProfile() {
-    safeStorageSet(USER_PROFILE_STORAGE_KEY, normalizeUserProfile(state.userProfile));
+    try { localStorage.setItem(USER_PROFILE_STORAGE_KEY, JSON.stringify(normalizeUserProfile(state.userProfile))); } catch (e) { }
 }
 
 function persistEmailContacts() {
-    safeStorageSet(EMAIL_CONTACTS_STORAGE_KEY, state.emailContacts || {});
+    try { localStorage.setItem(EMAIL_CONTACTS_STORAGE_KEY, JSON.stringify(state.emailContacts || {})); } catch (e) { }
 }
 
 function persistVideoPlaylists() {
-    safeStorageSet(VIDEO_PLAYLISTS_STORAGE_KEY, normalizeVideoPlaylists(state.videoPlaylists));
+    try { localStorage.setItem(VIDEO_PLAYLISTS_STORAGE_KEY, JSON.stringify(normalizeVideoPlaylists(state.videoPlaylists))); } catch (e) { }
 }
 
 function normalizeYouTubeLibraryView(view = 'Music') {
@@ -1397,7 +1163,7 @@ function normalizeYouTubeLibraryView(view = 'Music') {
 function setYouTubeLibraryView(view = 'Music') {
     state.youtubeLibraryView = normalizeYouTubeLibraryView(view);
     state.youtubeLibraryBrowseIndex = 0;
-    safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
+    try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
     return state.youtubeLibraryView;
 }
 
@@ -2032,16 +1798,6 @@ function getActiveMediaLightboxImageItem() {
     return null;
 }
 
-function getActiveMediaLightboxVideoItem() {
-    if (!mediaLightbox?.classList.contains('active')) return null;
-    if (mediaLightboxVideo?.style.display === 'none') return null;
-    if (Number.isFinite(state.activeMediaIndex) && state.activeMediaIndex >= 0) {
-        const item = state.mediaItems?.[state.activeMediaIndex] || null;
-        if (item?.kind === 'video') return item;
-    }
-    return null;
-}
-
 function getActiveMediaLightboxFilename() {
     const item = getActiveMediaLightboxImageItem();
     const title = normalizeMediaItemTitle(item || {});
@@ -2059,15 +1815,6 @@ async function getActiveMediaLightboxImageBlob() {
     if (!imageUrl) throw new Error('Open a photo first.');
     const response = await fetch(imageUrl);
     if (!response.ok) throw new Error('Could not read that photo.');
-    return response.blob();
-}
-
-async function getActiveMediaLightboxVideoBlob() {
-    const item = getActiveMediaLightboxVideoItem();
-    const videoUrl = String(item?.url || mediaLightboxVideo?.getAttribute('src') || mediaLightboxVideo?.src || '').trim();
-    if (!videoUrl) throw new Error('Open a video first.');
-    const response = await fetch(videoUrl);
-    if (!response.ok) throw new Error('Could not read that video.');
     return response.blob();
 }
 
@@ -2119,35 +1866,6 @@ async function getEmailPhotoAttachmentPayload() {
         attachments: [{
             filename: getActiveMediaLightboxImageItem() ? getActiveMediaLightboxFilename() : `${String(normalizeMediaItemTitle(item || {}) || 'blip-photo').toLowerCase().replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'blip-photo'}.png`,
             mimeType: blob.type || 'image/png',
-            contentBase64: await blobToBase64(blob)
-        }]
-    };
-}
-
-async function getEmailVideoAttachmentPayload() {
-    let item = getActiveMediaLightboxVideoItem();
-    let blob = null;
-    if (item) {
-        blob = await getActiveMediaLightboxVideoBlob();
-    } else {
-        const latestVideoIdx = findLatestVideoMediaIndex();
-        const latestItem = latestVideoIdx >= 0 ? state.mediaItems?.[latestVideoIdx] : null;
-        item = latestItem?.kind === 'video' ? latestItem : null;
-        if (!item?.url) throw new Error('Open a video first or record one in Media.');
-        const response = await fetch(item.url);
-        if (!response.ok) throw new Error('Could not read that video.');
-        blob = await response.blob();
-    }
-    const title = normalizeMediaItemTitle(item || {}) || 'blip-video';
-    const safeBase = String(title).toLowerCase().replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'blip-video';
-    const ext = (blob.type || item?.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
-    return {
-        kind: 'video',
-        subject: title,
-        text: `Video from Blip: ${title}`,
-        attachments: [{
-            filename: `${safeBase}.${ext}`,
-            mimeType: blob.type || item?.mimeType || `video/${ext}`,
             contentBase64: await blobToBase64(blob)
         }]
     };
@@ -2266,7 +1984,7 @@ function renameYouTubePlaylist(oldName = '', newName = '') {
 }
 
 function persistPassiveWakePreference() {
-    safeStorageSet('blip_passive_wake_enabled', state.passiveWakeEnabled ? '1' : '0');
+    try { localStorage.setItem('blip_passive_wake_enabled', state.passiveWakeEnabled ? '1' : '0'); } catch (e) { }
 }
 
 const SLEEP_BUTTON_LABEL = 'Wake Blip';
@@ -2291,7 +2009,7 @@ async function syncPassiveWakePermission() {
 function markPassiveWakePrimed() {
     if (state.passiveWakePrimed) return;
     state.passiveWakePrimed = true;
-    safeStorageSet('blip_passive_wake_primed', '1');
+    try { localStorage.setItem('blip_passive_wake_primed', '1'); } catch (e) { }
 }
 
 function getWakeWordSimilarity(rawToken = '') {
@@ -2415,7 +2133,6 @@ function stopPassiveWakeLoop() {
     }
     if (state.passiveWakeListening) {
         state.passiveWakeListening = false;
-        companionModeController.stop();
         speech.stopListening();
     }
     syncWakeReadinessUI();
@@ -2490,7 +2207,6 @@ function startPassiveWakeLoop() {
             const wakeInfo = parseWakePhrase(result.text || '', { confidence: result.confidence });
             if (!wakeInfo.matched) return;
             state.passiveWakeListening = false;
-            companionModeController.stop();
             speech.stopListening();
             syncWakeReadinessUI();
             wakeBlipHandsFree(result.text || '').catch((error) => {
@@ -2731,20 +2447,20 @@ function syncIdleAmbience({ immediate = false } = {}) {
 }
 
 function persistCalendarCache() {
-    safeStorageSet(CALENDAR_CACHE_STORAGE_KEY, state.calendarCache || []);
+    try { localStorage.setItem(CALENDAR_CACHE_STORAGE_KEY, JSON.stringify(state.calendarCache || [])); } catch (e) { }
 }
 
 function persistPendingCalendarEvents() {
-    safeStorageSet(CALENDAR_PENDING_STORAGE_KEY, state.pendingCalendarEvents || []);
+    try { localStorage.setItem(CALENDAR_PENDING_STORAGE_KEY, JSON.stringify(state.pendingCalendarEvents || [])); } catch (e) { }
 }
 
 function persistPendingCalendarDeletes() {
-    safeStorageSet(CALENDAR_PENDING_DELETE_STORAGE_KEY, state.pendingCalendarDeletes || []);
+    try { localStorage.setItem(CALENDAR_PENDING_DELETE_STORAGE_KEY, JSON.stringify(state.pendingCalendarDeletes || [])); } catch (e) { }
 }
 
 function persistCalendarDisplayPreferences() {
-    safeStorageSet('blip_calendar_display_mode', normalizeCalendarDisplayMode(state.calendarDisplayMode));
-    safeStorageSet('blip_calendar_anchor_date', normalizeCalendarAnchorDate(state.calendarAnchorDate).toISOString());
+    try { localStorage.setItem('blip_calendar_display_mode', normalizeCalendarDisplayMode(state.calendarDisplayMode)); } catch (e) { }
+    try { localStorage.setItem('blip_calendar_anchor_date', normalizeCalendarAnchorDate(state.calendarAnchorDate).toISOString()); } catch (e) { }
 }
 
 function normalizeCachedCalendarEvent(event = {}) {
@@ -3033,7 +2749,7 @@ function syncUsageTierControls() {
 function applyUsageTier(tier, options = {}) {
     const normalizedTier = normalizeUsageTier(tier);
     const preset = getUsageTierPreset(normalizedTier);
-    const preserveManual = options.preserveManual === true || isMiniMaxModel(state.selectedModel);
+    const preserveManual = options.preserveManual === true;
 
     state.usageTier = normalizedTier;
     if (!preserveManual) {
@@ -3048,100 +2764,6 @@ function applyUsageTier(tier, options = {}) {
     syncUsageTierControls();
     syncVoiceEngineUi();
     persistUsageTierState();
-}
-
-function isMiniMaxModel(model) {
-    const normalized = String(model || '').trim().toLowerCase();
-    // Accept variants like "MiniMax-M2.7" (current UI) and older/pasted values
-    // like "MiniMax M2.7" (space) or "MiniMax_M2.7" (underscore).
-    return /^minimax(?:[-\s_]?)/.test(normalized);
-}
-
-function getActiveTextApiKey(model = state.selectedModel) {
-    return isMiniMaxModel(model) ? state.minimaxKey : state.geminiKey;
-}
-
-function getActiveTextProviderLabel(model = state.selectedModel) {
-    return isMiniMaxModel(model) ? 'MiniMax' : 'Gemini';
-}
-
-async function copyTextToClipboard(text) {
-    const value = String(text || '').trim();
-    if (!value) {
-        throw new Error('Nothing to copy.');
-    }
-
-    if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-        return;
-    }
-
-    const fallback = document.createElement('textarea');
-    fallback.value = value;
-    fallback.setAttribute('readonly', 'true');
-    fallback.style.position = 'fixed';
-    fallback.style.opacity = '0';
-    fallback.style.left = '-9999px';
-    document.body.appendChild(fallback);
-    fallback.select();
-    const ok = document.execCommand('copy');
-    fallback.remove();
-    if (!ok) {
-        throw new Error('Clipboard copy failed.');
-    }
-}
-
-function buildTelegramEnvBlockFromInputs() {
-    const botToken = String(telegramBotTokenInput?.value || '').trim();
-    const chatId = String(telegramChatIdInput?.value || '').trim();
-    const chatAliases = String(telegramChatAliasesInput?.value || '').trim();
-    const backendPort = String(telegramBackendPortInput?.value || '8789').trim() || '8789';
-    return [
-        '# Telegram backend',
-        `TELEGRAM_BOT_TOKEN=${botToken}`,
-        `TELEGRAM_CHAT_ID=${chatId}`,
-        `TELEGRAM_CHAT_ALIASES=${chatAliases}`,
-        `TELEGRAM_BACKEND_PORT=${backendPort}`
-    ].join('\n');
-}
-
-function bindTelegramSettingsQuickActions() {
-    if (applyTelegramSettingsBtn && !applyTelegramSettingsBtn.dataset.boundFallback) {
-        applyTelegramSettingsBtn.dataset.boundFallback = '1';
-        applyTelegramSettingsBtn.addEventListener('click', async () => {
-            try {
-                const result = await saveTelegramBackendConfig({
-                    botToken: telegramBotTokenInput?.value || '',
-                    chatId: telegramChatIdInput?.value || '',
-                    chatAliases: telegramChatAliasesInput?.value || '',
-                    backendPort: telegramBackendPortInput?.value || '8789'
-                });
-                telegramFeature.updateTelegramAuthUi(result?.authState || getTelegramAuthState());
-                const ready = Boolean(result?.authState?.backendConfigured);
-                if (transcriptText) {
-                    transcriptText.innerText = ready
-                        ? 'Telegram settings applied and backend is ready.'
-                        : 'Telegram settings saved, but backend is still not configured.';
-                }
-            } catch (error) {
-                console.warn('Fallback apply Telegram settings failed:', error?.message || error);
-                if (transcriptText) transcriptText.innerText = error?.message || 'Could not apply Telegram settings.';
-            }
-        });
-    }
-
-    if (copyTelegramEnvBtn && !copyTelegramEnvBtn.dataset.boundFallback) {
-        copyTelegramEnvBtn.dataset.boundFallback = '1';
-        copyTelegramEnvBtn.addEventListener('click', async () => {
-            try {
-                await copyTextToClipboard(buildTelegramEnvBlockFromInputs());
-                if (transcriptText) transcriptText.innerText = 'Telegram .env.local block copied.';
-            } catch (error) {
-                console.warn('Fallback copy Telegram env block failed:', error?.message || error);
-                if (transcriptText) transcriptText.innerText = error?.message || 'Could not copy Telegram env block.';
-            }
-        });
-    }
 }
 // V4.3.4 - The Deep UI & Animation Restoration
 
@@ -3185,8 +2807,6 @@ function injectAppStyle(id, cssText) {
 async function init() {
     try {
         console.log(`🚀 Blip V${BLIP_VERSION} initializing...`);
-        renderCompanionIndicator();
-        await refreshCompanionAvailability();
 
         // Fill the browser real estate by default.
         injectAppStyle('blip-full-browser-layout', FULL_BROWSER_LAYOUT_CSS);
@@ -3210,14 +2830,6 @@ async function init() {
                 }
             }
         } catch (e) { state.history = []; }
-
-        try {
-            if (Array.isArray(state.hubItems) && state.hubItems.length) {
-                persistHubItems(state.hubItems);
-            }
-            // Trigger periodic Hub check
-            state.pendingHubMaintenanceNotice = checkHubMaintenance();
-        } catch (_) { /* ignore */ }
 
         // Load voices and prefer a nicer-sounding browser voice when using Browser Default
         const voices = await speech.init();
@@ -3277,20 +2889,6 @@ async function init() {
                 updateVoiceToggles();
             });
         }
-        if (companionModeToggle) {
-            companionModeToggle.checked = !!state.companionModeEnabled;
-            companionModeToggle.onchange = () => {
-                state.companionModeEnabled = !!companionModeToggle.checked;
-                safeStorageSet('blip_companion_mode_enabled', state.companionModeEnabled ? '1' : '0');
-                if (!state.companionModeEnabled) {
-                    companionModeController.stop();
-                } else if (state.isListening && !speech.isSpeaking && !state.isThinking) {
-                    companionModeController.start().catch(() => { });
-                }
-                renderCompanionIndicator();
-                renderCompanionSettingsStatus();
-            };
-        }
 
         // Kokoro voice selector
         if (kokoroVoiceSelect) {
@@ -3302,7 +2900,6 @@ async function init() {
         // Initialize UI
         geminiKeyInput.value = state.geminiKey;
         if (youtubeKeyInput) youtubeKeyInput.value = state.youtubeApiKey;
-        if (minimaxKeyInput) minimaxKeyInput.value = state.minimaxKey;
         if (weatherKeyInput) weatherKeyInput.value = state.weatherApiKey;
         if (googleCalendarClientIdInput) googleCalendarClientIdInput.value = state.googleCalendarClientId;
         await initGoogleCalendar();
@@ -3313,8 +2910,83 @@ async function init() {
         updateCalendarAuthUi();
         await emailFeature.initBackend();
         await telegramFeature.initBackend();
-        bindTelegramSettingsQuickActions();
         syncUsageTierControls();
+
+        // --- BLIP ENGINE TOOL REGISTRATION ---
+        blipEngine.orchestrator.register('calendar', async (action) => {
+            const { date } = action.entities;
+            const viewType = date === 'tomorrow' ? 'tomorrow' : 'today';
+            // Trigger existing calendar logic
+            await showCalendarOverview({ label: viewType });
+            setBlipEmotion('focused');
+            return { status: 'viewing', date: viewType };
+        });
+
+        blipEngine.orchestrator.register('communication', async (action) => {
+            const { recipient, content } = action.entities;
+            const originalText = action.intent.meta?.originalText || '';
+            const lower = originalText.toLowerCase();
+
+            // 1. Priority: If Telegram keyword or specific Telegram intent detected
+            if (lower.includes('telegram')) {
+                const telegramCmd = getTelegramVoiceCommand(originalText);
+                if (telegramCmd) {
+                    await telegramFeature.handleVoiceCommand(telegramCmd);
+                    return { status: 'sent', tool: 'telegram' };
+                }
+            }
+
+            // 2. Fallback: If Gmail keyword or intent detected
+            if (lower.includes('email') || lower.includes('gmail') || lower.includes('write')) {
+                const gmailCmd = getGmailVoiceCommand(originalText);
+                if (gmailCmd) {
+                    await emailFeature.handleVoiceCommand(gmailCmd);
+                    return { status: 'sent', tool: 'gmail' };
+                }
+            }
+
+            // 3. Heuristic: If recipient matches a Telegram alias, prefer Telegram
+            const authState = getTelegramAuthState();
+            const aliasNames = Array.isArray(authState.aliasNames) ? authState.aliasNames : [];
+            const isTelegramTarget = recipient && aliasNames.some(a => a.toLowerCase() === recipient.toLowerCase());
+
+            if (isTelegramTarget) {
+                await telegramFeature.handleVoiceCommand({
+                    action: 'sendDirect',
+                    draft: { chatId: recipient, text: content || '' }
+                });
+                return { status: 'sent', tool: 'telegram' };
+            }
+
+            // 4. Default: Try to open the Telegram panel if it seems relevant but unclear
+            if (recipient) {
+                console.log(`Blip Engine: Delegating message to ${recipient}`);
+                // If it's a message without clear tool, we currently favor Telegram for simplicity in this bridge
+                await telegramFeature.handleVoiceCommand({
+                    action: 'compose',
+                    draft: { chatId: recipient, text: content || '' }
+                });
+            }
+
+            return { status: 'delegated' };
+        });
+
+        blipEngine.orchestrator.register('timer', async (action) => {
+            const { duration, unit } = action.entities;
+            // Bridge to existing timer logic
+            let ms = (Number(duration) || 0) * 1000;
+            if (unit?.startsWith('minute')) ms *= 60;
+            if (unit?.startsWith('hour')) ms *= 3600;
+
+            if (ms > 0) {
+                const label = action.intent.meta?.originalText?.split('for')?.[1]?.trim() || 'Timer';
+                setBlipTimer(label, ms);
+                return { status: 'set', duration_ms: ms };
+            }
+            return { status: 'failed', reason: 'Invalid duration' };
+        });
+        // --- END REGISTRATION ---
+
         if (usageTierSelect) {
             usageTierSelect.onchange = () => {
                 applyUsageTier(usageTierSelect.value);
@@ -3325,34 +2997,6 @@ async function init() {
                 state.selectedModel = modelSelect.value;
                 persistUsageTierState();
             };
-        }
-        if (conversationTemperatureInput && conversationTemperatureValue) {
-            const initValue = clampConversationTemperature(state.conversationTemperature);
-            state.conversationTemperature = initValue;
-            conversationTemperatureInput.value = initValue.toFixed(2);
-            conversationTemperatureValue.textContent = initValue.toFixed(2);
-            const saveConversationTemperature = () => {
-                const nextValue = clampConversationTemperature(conversationTemperatureInput.value);
-                state.conversationTemperature = nextValue;
-                safeStorageSet('blip_conversation_temperature', String(nextValue));
-                conversationTemperatureValue.textContent = nextValue.toFixed(2);
-            };
-            conversationTemperatureInput.oninput = saveConversationTemperature;
-            conversationTemperatureInput.onchange = saveConversationTemperature;
-        }
-        if (parsingTemperatureInput && parsingTemperatureValue) {
-            const initValue = clampParsingTemperature(state.parsingTemperature);
-            state.parsingTemperature = initValue;
-            parsingTemperatureInput.value = initValue.toFixed(2);
-            parsingTemperatureValue.textContent = initValue.toFixed(2);
-            const saveParsingTemperature = () => {
-                const nextValue = clampParsingTemperature(parsingTemperatureInput.value);
-                state.parsingTemperature = nextValue;
-                safeStorageSet('blip_parsing_temperature', String(nextValue));
-                parsingTemperatureValue.textContent = nextValue.toFixed(2);
-            };
-            parsingTemperatureInput.oninput = saveParsingTemperature;
-            parsingTemperatureInput.onchange = saveParsingTemperature;
         }
         if (imageModelSelect) {
             imageModelSelect.onchange = () => {
@@ -3437,31 +3081,25 @@ async function init() {
 
         const saveKey = (e) => {
             state.geminiKey = e.target.value.trim();
-            safeStorageSet('blip_gemini_key', state.geminiKey);
+            localStorage.setItem('blip_gemini_key', state.geminiKey);
             console.log('🔐 Access Key updated');
-        };
-        const saveMiniMaxKey = (e) => {
-            if (!minimaxKeyInput) return;
-            state.minimaxKey = e.target.value.trim();
-            safeStorageSet('blip_minimax_key', state.minimaxKey);
-            console.log('🔐 MiniMax API key updated');
         };
         const saveYoutubeKey = (e) => {
             if (!youtubeKeyInput) return;
             state.youtubeApiKey = e.target.value.trim();
-            safeStorageSet('blip_youtube_key', state.youtubeApiKey);
+            localStorage.setItem('blip_youtube_key', state.youtubeApiKey);
             console.log('🔐 YouTube API key updated');
         };
         const saveWeatherKey = (e) => {
             if (!weatherKeyInput) return;
             state.weatherApiKey = e.target.value.trim();
-            safeStorageSet('blip_weather_key', state.weatherApiKey);
+            localStorage.setItem('blip_weather_key', state.weatherApiKey);
             console.log('🔐 Weather API key updated');
         };
         const saveGoogleCalendarClientId = (e) => {
             if (!googleCalendarClientIdInput) return;
             state.googleCalendarClientId = e.target.value.trim();
-            safeStorageSet('blip_google_calendar_client_id', state.googleCalendarClientId);
+            localStorage.setItem('blip_google_calendar_client_id', state.googleCalendarClientId);
             setGoogleCalendarClientId(state.googleCalendarClientId);
             updateCalendarAuthUi();
             console.log('📅 Google Calendar Client ID updated');
@@ -3471,11 +3109,6 @@ async function init() {
         geminiKeyInput.oninput = saveKey;
         geminiKeyInput.onchange = saveKey;
         geminiKeyInput.onblur = saveKey;
-        if (minimaxKeyInput) {
-            minimaxKeyInput.oninput = saveMiniMaxKey;
-            minimaxKeyInput.onchange = saveMiniMaxKey;
-            minimaxKeyInput.onblur = saveMiniMaxKey;
-        }
         if (youtubeKeyInput) {
             youtubeKeyInput.oninput = saveYoutubeKey;
             youtubeKeyInput.onchange = saveYoutubeKey;
@@ -3490,23 +3123,6 @@ async function init() {
             googleCalendarClientIdInput.oninput = saveGoogleCalendarClientId;
             googleCalendarClientIdInput.onchange = saveGoogleCalendarClientId;
             googleCalendarClientIdInput.onblur = saveGoogleCalendarClientId;
-        }
-        if (copyGeminiKeyBtn) {
-            copyGeminiKeyBtn.onclick = async () => {
-                const keyToCopy = String(state.geminiKey || geminiKeyInput?.value || '').trim();
-                if (!keyToCopy) {
-                    if (transcriptText) transcriptText.innerText = 'Add your Gemini API key first.';
-                    return;
-                }
-
-                try {
-                    await copyTextToClipboard(keyToCopy);
-                    if (transcriptText) transcriptText.innerText = 'Gemini API key copied to clipboard.';
-                } catch (error) {
-                    console.warn('Gemini key copy failed:', error?.message || error);
-                    if (transcriptText) transcriptText.innerText = error?.message || 'Could not copy the Gemini key.';
-                }
-            };
         }
         if (connectCalendarBtn) {
             connectCalendarBtn.onclick = async () => {
@@ -3551,7 +3167,6 @@ async function init() {
         }
         emailFeature.bindSettingsControls();
         telegramFeature.bindSettingsControls();
-        bindSettingsLockControls();
 
         // Blip volume (20% steps)
         if (speechVolumeInput && speechVolumeValue) {
@@ -3563,7 +3178,7 @@ async function init() {
             const saveVolume = () => {
                 const val = parseInt(speechVolumeInput.value, 10);
                 state.speechVolume = val / 100;
-                safeStorageSet('blip_speech_volume', state.speechVolume);
+                localStorage.setItem('blip_speech_volume', state.speechVolume);
                 speechVolumeValue.textContent = val + '%';
             };
             speechVolumeInput.oninput = saveVolume;
@@ -3650,10 +3265,6 @@ async function init() {
         // Close panels on Esc
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-            if (document.getElementById('conversation-inspector-modal')?.style?.display === 'flex') {
-                closeConversationInspector();
-                return;
-            }
                 if (mediaLightbox && mediaLightbox.classList.contains('active')) {
                     closeMediaLightbox();
                     return;
@@ -3672,29 +3283,10 @@ async function init() {
         refreshIdleWeatherScene({ force: true });
         applyBlipPersonalization();
         applyFaceScale();
+        initBlipFaceDepthMotion();
         syncSleepButtonUI();
 
-        if (!talkBtn) {
-            console.error(
-                '[Blip] Missing #talkBtn — index.html is wrong or stale. Redeploy the fixed index.html (see face-area + interaction-area).'
-            );
-        }
-        if (talkBtn) talkBtn.onclick = toggleApp;
-        if (micTestBtn) {
-            micTestBtn.onclick = async () => {
-                if (state.micTestRunning) {
-                    stopMicrophoneTest('manual');
-                    return;
-                }
-                await startMicrophoneTest();
-            };
-        }
-        if (snapshotZoomBtn) {
-            snapshotZoomBtn.onclick = async () => {
-                const result = await applySnapshotZoomStep();
-                if (transcriptText) transcriptText.innerText = result.text;
-            };
-        }
+        talkBtn.onclick = toggleApp;
         if (sleepBtn) {
             sleepBtn.onclick = async () => {
                 if (state.softSleepMode || !state.isActive) {
@@ -3781,12 +3373,6 @@ async function init() {
                 if (transcriptText) transcriptText.innerText = result.message;
             };
         }
-        if (zoomMediaLightboxBtn) {
-            zoomMediaLightboxBtn.onclick = async () => {
-                const result = await applySnapshotZoomStep();
-                if (transcriptText) transcriptText.innerText = result.text;
-            };
-        }
         if (mediaLightbox) {
             mediaLightbox.onclick = (e) => {
                 if (e.target === mediaLightbox) closeMediaLightbox();
@@ -3847,36 +3433,6 @@ async function init() {
         };
         closePanelBtn.onclick = () => closeSettingsPanel();
         document.getElementById('ui-debug-refresh-btn')?.addEventListener('click', refreshUiDebugDump);
-        if (runCommandInspectorBtn) {
-            runCommandInspectorBtn.onclick = () => {
-                runCommandInspectorPreview(commandInspectorInput?.value || '').catch((error) => {
-                    if (commandInspectorOutput) commandInspectorOutput.textContent = `Inspector failed: ${error?.message || error}`;
-                });
-            };
-        }
-        if (commandInspectorInput) {
-            commandInspectorInput.addEventListener('keydown', (event) => {
-                if (event.key !== 'Enter') return;
-                event.preventDefault();
-                runCommandInspectorPreview(commandInspectorInput.value || '').catch((error) => {
-                    if (commandInspectorOutput) commandInspectorOutput.textContent = `Inspector failed: ${error?.message || error}`;
-                });
-            });
-        }
-        if (refreshApiUsageBtn) {
-            refreshApiUsageBtn.onclick = () => {
-                refreshApiUsageSummary().catch(() => { });
-            };
-        }
-        if (openConversationInspectorBtn) {
-            openConversationInspectorBtn.onclick = () => {
-                refreshUiDebugDump();
-                openConversationInspector();
-            };
-        }
-        if (closeConversationInspectorBtn) {
-            closeConversationInspectorBtn.onclick = () => closeConversationInspector();
-        }
 
         // Chart Toggles
         if (closeChartBtn) closeChartBtn.onclick = () => setMode('core');
@@ -3996,10 +3552,9 @@ function setMode(mode) {
             break;
     }
 
-    // Full-browser layout uses fixed-height container. Enable scroll only when a panel needs vertical room.
+    // Keep the main Blip surface scrollable so tools stay reachable on shorter windows.
     if (appContainer) {
-        const allowPanelScroll = mode === 'map' || mode === 'chart' || mode === 'settings' || mode === 'hub' || mode === 'games' || mode === 'media' || state.isMediaStripOpen;
-        appContainer.style.overflowY = allowPanelScroll ? 'auto' : 'hidden';
+        appContainer.style.overflowY = 'auto';
         appContainer.style.overflowX = 'hidden';
     }
 
@@ -4108,7 +3663,6 @@ async function startCamera() {
         transcriptText.innerText = "Opening my eyes...";
 
         // Pause listening while camera is open
-        companionModeController.stop();
         speech.stopListening();
 
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
@@ -4150,14 +3704,8 @@ function stopCamera(options = {}) {
     if (watchBtn) watchBtn.classList.remove('active');
     if (liveIndicator) liveIndicator.style.display = 'none';
     if (state.cameraStream) {
-        state.cameraStream.getTracks().forEach(track => {
-            try { track.stop(); } catch (_) { }
-        });
+        state.cameraStream.getTracks().forEach(track => track.stop());
         state.cameraStream = null;
-    }
-    if (state.visionIdleTimer) {
-        clearTimeout(state.visionIdleTimer);
-        state.visionIdleTimer = null;
     }
     if (webcamVideo) {
         try { webcamVideo.pause?.(); } catch (_) { }
@@ -4201,13 +3749,6 @@ async function capturePhotoWhenReady() {
         const started = await startCamera();
         if (!started) return false;
     }
-    // Refresh idle timer on user action
-    if (state.visionIdleTimer) clearTimeout(state.visionIdleTimer);
-    state.visionIdleTimer = setTimeout(() => {
-        if (!state.isLiveWatch && state.cameraStream) {
-            exitVisionMode({ transcript: "Camera timed out to save battery." });
-        }
-    }, 60000);
     const ready = await waitForVideoReady(webcamVideo, 2200);
     if (!ready || !webcamVideo?.videoWidth || !webcamVideo?.videoHeight) return false;
     return capturePhoto();
@@ -4219,7 +3760,7 @@ function exitVisionMode(options = {}) {
     state.currentMode = 'core';
     if (cameraControls) cameraControls.style.display = 'none';
     if (appContainer) {
-        appContainer.style.overflowY = 'hidden';
+        appContainer.style.overflowY = 'auto';
         appContainer.style.overflowX = 'hidden';
     }
     document.body.setAttribute('data-mode', 'core');
@@ -4320,8 +3861,6 @@ async function toggleApp() {
             stopPassiveWakeLoop();
             // 🎙️ VITAL: Initialize AudioContext on the user gesture
             speech.initAudio();
-            // Prevent a stuck `isThinking` flag from blocking `startListeningLoop()`.
-            state.isThinking = false;
             markPassiveWakePrimed();
             if (state.idleAmbientEnabled) ensureIdleAmbienceEngine();
 
@@ -4341,7 +3880,6 @@ async function toggleApp() {
         } catch (err) {
             console.error("Wake up error:", err);
             state.isActive = false;
-            state.isThinking = false;
             talkBtn.classList.remove('active');
             chatEntry.classList.add('hidden');
             syncSleepButtonUI();
@@ -4360,7 +3898,6 @@ function cancelInteraction() {
     state.isActive = true;
     dismissActiveAlert({ resumeListening: false, clearVisual: true });
     speech.stopSpeaking?.();
-    companionModeController.stop();
     speech.stopListening();
 
     talkBtn.classList.add('active');
@@ -4378,13 +3915,11 @@ function stopApp() {
     state.isActive = false;
     state.softSleepMode = false;
     state.isListening = false;
-    state.isThinking = false;
     dismissActiveAlert({ resumeListening: false, clearVisual: true });
     resetBlipConversationMemory();
     document.body.classList.remove('reduce-motion');
     clearPendingImage();
     stopCamera();
-    companionModeController.stop();
     speech.stopListening();
     speech.stopSpeaking?.();
 
@@ -4406,7 +3941,6 @@ async function enterSoftSleepMode(message = SLEEP_PROMPT_TEXT) {
     state.softSleepMode = true;
     state.isThinking = false;
     stopListening();
-    stopCamera({ keepTranscript: true }); // Prevent mobile battery drain in sleep
     closeEverythingPanels();
     document.body.classList.remove('thinking-mode');
     face.classList.remove('thinking', 'listening');
@@ -4418,7 +3952,7 @@ async function enterSoftSleepMode(message = SLEEP_PROMPT_TEXT) {
     transcriptText.innerHTML = `<b>Blip:</b> ${message}`;
     state.history.push({ user: '(system)', blip: message });
     if (state.history.length > HISTORY_MAX) state.history.shift();
-    safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
     await speakWithGuard(message, 'sleepy');
     setPersona('sleepy');
     setRestingEyes(true);
@@ -4462,7 +3996,6 @@ function startListeningLoop() {
     }
     face.classList.remove('thinking');
     state.isListening = true;
-    companionModeController.start().catch(() => { });
     syncChatEngagementState();
     syncScenerySuppression();
     syncWakeReadinessUI();
@@ -4552,11 +4085,6 @@ function startListeningLoop() {
         return;
     }
 
-    // SpeechRecognition exists but could not start listening (permission prompt, busy mic, etc).
-    if (transcriptText && state.isActive) {
-        transcriptText.innerHTML = `<span style="color:#f59e0b">⚠️ Microphone not started. Allow mic permission, then try again.</span>`;
-    }
-
     state.isListening = false;
     syncScenerySuppression();
     syncWakeReadinessUI();
@@ -4571,103 +4099,10 @@ function startListeningLoop() {
 
 function stopListening() {
     state.isListening = false;
-    companionModeController.stop();
     speech.stopListening();
     syncScenerySuppression();
     syncWakeReadinessUI();
     if ((!state.isActive || state.softSleepMode) && !speech.isSpeaking) schedulePassiveWakeLoop(350);
-}
-
-function stopMicrophoneTest(reason = 'manual') {
-    if (!state.micTestRunning) return;
-    state.micTestRunning = false;
-    if (state.micTestTimeout) {
-        clearTimeout(state.micTestTimeout);
-        state.micTestTimeout = null;
-    }
-    try { speech.stopListening(); } catch (_) { }
-    state.isListening = false;
-    syncWakeReadinessUI();
-
-    if (talkBtn) {
-        talkBtn.classList.remove('listening');
-        if (state.isActive && !state.softSleepMode) {
-            talkBtn.classList.add('active');
-            talkBtn.textContent = 'Ask Blip';
-        } else {
-            talkBtn.classList.remove('active');
-            talkBtn.textContent = SLEEP_BUTTON_LABEL;
-        }
-    }
-    // Return the face to an idle look (mic is closed).
-    try {
-        setPersona('idle');
-        setRestingEyes(true);
-        face?.classList.remove('listening');
-        faceFrame?.classList.remove('listening-glow');
-    } catch (_) { }
-    if (transcriptText) {
-        transcriptText.innerText = reason === 'ended' ? 'Microphone test ended.' : 'Microphone test closed.';
-    }
-}
-
-async function startMicrophoneTest() {
-    if (state.micTestRunning) return;
-
-    // Ensure UI is in a state where the mic can run.
-    state.isThinking = false;
-    state.softSleepMode = false;
-    state.isActive = true;
-    state.emotionShowcaseActive = false;
-
-    setPersona('listening');
-    setRestingEyes(false);
-    talkBtn?.classList.add('active', 'listening');
-    if (talkBtn) talkBtn.textContent = '⏹ Mic Test';
-
-    stopListening();
-    stopPassiveWakeLoop();
-
-    speech.initAudio?.();
-
-    if (!speech.SR) {
-        if (transcriptText) transcriptText.innerText = 'Speech recognition is not supported in this browser.';
-        if (talkBtn) talkBtn.textContent = SLEEP_BUTTON_LABEL;
-        return;
-    }
-
-    if (micTestBtn) micTestBtn.classList.add('active');
-
-    const started = speech.startListening(
-        (result) => {
-            if (!transcriptText) return;
-            const text = String(result?.text || '').trim();
-            if (!text) return;
-            transcriptText.innerText = `🎤 Mic Test: ${text}`;
-        },
-        () => stopMicrophoneTest('ended'),
-        (err) => {
-            const code = String(err?.error || err?.message || '').toLowerCase();
-            if (code.includes('not-allowed') || code.includes('service-not-allowed')) {
-                if (transcriptText) transcriptText.innerText = '⚠️ Microphone blocked. Allow mic permission and try again.';
-            } else if (transcriptText) {
-                transcriptText.innerText = `⚠️ Microphone error: ${code || 'unknown'}`;
-            }
-            stopMicrophoneTest('error');
-        }
-    );
-
-    if (!started) {
-        if (transcriptText) transcriptText.innerHTML = `<span style="color:#f59e0b">⚠️ Could not start microphone test.</span>`;
-        if (micTestBtn) micTestBtn.classList.remove('active');
-        if (talkBtn) talkBtn.textContent = SLEEP_BUTTON_LABEL;
-        return;
-    }
-
-    state.micTestRunning = true;
-    state.micTestTimeout = setTimeout(() => {
-        stopMicrophoneTest('ended');
-    }, 9000);
 }
 
 function normalizeHatStyle(value) {
@@ -4716,7 +4151,7 @@ function ensureBlipAccessories() {
 
 function persistBlipPersonalization() {
     try {
-        safeStorageSet(BLIP_PERSONALIZATION_STORAGE_KEY, state.personalization);
+        localStorage.setItem(BLIP_PERSONALIZATION_STORAGE_KEY, JSON.stringify(state.personalization));
     } catch (_) { }
 }
 
@@ -4776,8 +4211,49 @@ function setFaceScale(nextScale) {
     const safeScale = Math.min(1.45, Math.max(0.72, Number(nextScale) || 1));
     state.faceScale = safeScale;
     applyFaceScale();
-    safeStorageSet('blip_face_scale', String(safeScale));
+    try { localStorage.setItem('blip_face_scale', String(safeScale)); } catch (e) { }
     return safeScale;
+}
+
+function initBlipFaceDepthMotion() {
+    const depthLayer = faceContainer?.querySelector('.blip-face-depth');
+    if (!faceFrame || !face || !depthLayer) return;
+
+    const resetDepth = () => {
+        depthLayer.style.setProperty('--blip-face-rotate-x', '0deg');
+        depthLayer.style.setProperty('--blip-face-rotate-y', '0deg');
+        depthLayer.style.setProperty('--blip-face-light-x', '42%');
+        depthLayer.style.setProperty('--blip-face-light-y', '28%');
+        face.style.setProperty('--pupil-x', '0px');
+        face.style.setProperty('--pupil-y', '0px');
+    };
+
+    let pendingFrame = 0;
+    const updateDepth = (event) => {
+        if (document.body.classList.contains('reduce-motion')) return;
+        if (pendingFrame) cancelAnimationFrame(pendingFrame);
+        pendingFrame = requestAnimationFrame(() => {
+            const rect = faceFrame.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            const x = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
+            const y = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+            const clampedX = Math.max(-1, Math.min(1, x));
+            const clampedY = Math.max(-1, Math.min(1, y));
+
+            depthLayer.style.setProperty('--blip-face-rotate-x', `${(-clampedY * 7).toFixed(2)}deg`);
+            depthLayer.style.setProperty('--blip-face-rotate-y', `${(clampedX * 9).toFixed(2)}deg`);
+            depthLayer.style.setProperty('--blip-face-light-x', `${(42 + clampedX * 8).toFixed(1)}%`);
+            depthLayer.style.setProperty('--blip-face-light-y', `${(28 + clampedY * 6).toFixed(1)}%`);
+            face.style.setProperty('--pupil-x', `${(clampedX * 4).toFixed(1)}px`);
+            face.style.setProperty('--pupil-y', `${(clampedY * 3).toFixed(1)}px`);
+            pendingFrame = 0;
+        });
+    };
+
+    faceFrame.addEventListener('pointermove', updateDepth, { passive: true });
+    faceFrame.addEventListener('pointerleave', resetDepth);
+    faceFrame.addEventListener('blur', resetDepth, true);
+    resetDepth();
 }
 
 function scrollActiveSurface(direction = 'down') {
@@ -5154,235 +4630,6 @@ function refreshUiDebugDump() {
     if (el) el.textContent = getUiDebugSnapshot();
 }
 
-async function runCommandInspectorPreview(rawCommand = '') {
-    if (!commandInspectorOutput) return;
-    const command = String(rawCommand || '').trim();
-    if (!command) {
-        commandInspectorOutput.textContent = 'Type a command first.';
-        return;
-    }
-
-    const normalized = normalizeVoiceTokens(command);
-    const blipNextEligible = shouldTryBlipNextRoute(command, state);
-    let blipNextPreview = null;
-    if (blipNextEligible && blipNextBridge?.router?.routeTurn) {
-        try {
-            const route = await blipNextBridge.router.routeTurn(command, state.blipNextConversationState || undefined);
-            blipNextPreview = {
-                intent_type: route?.envelope?.intent_type || 'unknown',
-                conversation_frame: route?.envelope?.conversation_frame || 'unknown',
-                tool_targets: route?.envelope?.tool_targets || [],
-                requires_confirmation: Boolean(route?.envelope?.requires_confirmation),
-                clarification_question: route?.envelope?.clarification_question || '',
-                validation_errors: route?.envelope?.validation_errors || [],
-                confidence: Number(route?.envelope?.confidence || 0),
-            };
-        } catch (error) {
-            blipNextPreview = { error: error?.message || String(error) };
-        }
-    }
-
-    const legacyPreview = buildVoiceRoutingSnapshot(command, state);
-    const report = {
-        command,
-        normalized,
-        predictedRoute: blipNextEligible ? 'blip-next (with legacy fallback)' : 'legacy voice router',
-        blipNextEligible,
-        blipNextPreview,
-        legacyPreview: {
-            family: legacyPreview?.family || 'none',
-            action: legacyPreview?.action || 'none',
-            confidence: Number(legacyPreview?.confidence || 0),
-            needsClarification: Boolean(legacyPreview?.needsClarification),
-            clarificationPrompt: legacyPreview?.clarificationPrompt || '',
-            gmailAction: legacyPreview?.gmailCmd?.action || '',
-            telegramAction: legacyPreview?.telegramCmd?.action || '',
-        }
-    };
-    commandInspectorOutput.textContent = JSON.stringify(report, null, 2);
-}
-
-async function runSelfParsingDiagnostic() {
-    const fixtures = [
-        { command: 'send', expect: { blipNextEligible: true, legacyFamily: 'telegram' }, statePatch: { pendingTelegramReview: true, currentSidePanelAction: 'telegram', telegramDraft: { chatId: 'Teo', text: 'hello' } } },
-        { command: 'forget the draft open notes', expect: { blipNextEligible: true, legacyFamily: 'none' }, statePatch: { pendingTelegramReview: true, currentSidePanelAction: 'telegram', telegramDraft: { chatId: 'Teo', text: 'hello' } } },
-        { command: 'send photo one to my telegram', expect: { blipNextEligible: true, legacyFamily: 'telegram' } },
-        { command: 'close telegram', expect: { blipNextEligible: true } },
-        { command: 'open media', expect: { legacyActionOneOf: ['none', 'clarify'] } },
-        { command: 'open games', expect: { legacyActionOneOf: ['none', 'clarify'] } },
-        { command: 'what you told me of the weather put it in my telegram', expect: { legacyFamily: 'telegram' } },
-    ];
-
-    const results = [];
-    for (const fixture of fixtures) {
-        const simulatedState = {
-            ...state,
-            ...(fixture.statePatch || {}),
-            blipNextConversationState: state.blipNextConversationState || undefined,
-        };
-        const blipNextEligible = shouldTryBlipNextRoute(fixture.command, simulatedState);
-        const legacy = buildVoiceRoutingSnapshot(fixture.command, simulatedState);
-        let blipNext = null;
-        if (blipNextEligible && blipNextBridge?.router?.routeTurn) {
-            try {
-                const route = await blipNextBridge.router.routeTurn(fixture.command, simulatedState.blipNextConversationState || undefined);
-                blipNext = {
-                    intent_type: route?.envelope?.intent_type || '',
-                    conversation_frame: route?.envelope?.conversation_frame || '',
-                    tool_targets: route?.envelope?.tool_targets || [],
-                    validation_errors: route?.envelope?.validation_errors || [],
-                };
-            } catch (error) {
-                blipNext = { error: error?.message || String(error) };
-            }
-        }
-
-        const checks = [];
-        if (typeof fixture.expect?.blipNextEligible === 'boolean') {
-            checks.push(blipNextEligible === fixture.expect.blipNextEligible);
-        }
-        if (fixture.expect?.legacyFamily) {
-            checks.push(String(legacy?.family || '') === fixture.expect.legacyFamily);
-        }
-        if (Array.isArray(fixture.expect?.legacyActionOneOf)) {
-            checks.push(fixture.expect.legacyActionOneOf.includes(String(legacy?.action || '')));
-        }
-        const pass = checks.length ? checks.every(Boolean) : true;
-        results.push({
-            command: fixture.command,
-            pass,
-            predictedRoute: blipNextEligible ? 'blip-next (with fallback)' : 'legacy',
-            legacy: {
-                family: legacy?.family || 'none',
-                action: legacy?.action || 'none',
-                confidence: Number(legacy?.confidence || 0),
-                clarificationPrompt: legacy?.clarificationPrompt || '',
-            },
-            blipNext,
-        });
-    }
-
-    const passed = results.filter((item) => item.pass).length;
-    const failed = results.length - passed;
-    const summary = `Parsing diagnostic complete: ${passed}/${results.length} passed, ${failed} failed.`;
-    const report = {
-        version: BLIP_VERSION,
-        ranAt: new Date().toISOString(),
-        summary,
-        results,
-    };
-    if (commandInspectorOutput) {
-        commandInspectorOutput.textContent = JSON.stringify(report, null, 2);
-    }
-    return { passed, failed, total: results.length, report };
-}
-
-function formatApiUsageSummary(summary = {}) {
-    const totalEvents = Number(summary?.totalEvents || 0);
-    const totalEstimatedCost = Number(summary?.totalEstimatedCost || 0);
-    const currency = String(summary?.currency || 'USD');
-    const byProvider = summary?.byProvider && typeof summary.byProvider === 'object' ? summary.byProvider : {};
-    const byModel = summary?.byModel && typeof summary.byModel === 'object' ? summary.byModel : {};
-    const byDay = summary?.byDay && typeof summary.byDay === 'object' ? summary.byDay : {};
-
-    const providerLines = Object.entries(byProvider)
-        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
-        .slice(0, 8)
-        .map(([name, cost]) => `- ${name}: ${Number(cost || 0).toFixed(6)} ${currency}`);
-    const modelLines = Object.entries(byModel)
-        .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
-        .slice(0, 8)
-        .map(([name, cost]) => `- ${name}: ${Number(cost || 0).toFixed(6)} ${currency}`);
-    const dayLines = Object.entries(byDay)
-        .sort((a, b) => String(b[0]).localeCompare(String(a[0])))
-        .slice(0, 10)
-        .map(([day, cost]) => `- ${day}: ${Number(cost || 0).toFixed(6)} ${currency}`);
-
-    return [
-        `Total calls: ${totalEvents}`,
-        `Estimated total: ${totalEstimatedCost.toFixed(6)} ${currency}`,
-        '',
-        'By provider:',
-        providerLines.length ? providerLines.join('\n') : '- no data',
-        '',
-        'By model:',
-        modelLines.length ? modelLines.join('\n') : '- no data',
-        '',
-        'By day:',
-        dayLines.length ? dayLines.join('\n') : '- no data'
-    ].join('\n');
-}
-
-async function refreshApiUsageSummary() {
-    if (!apiUsageStatus || !apiUsageSummary) return;
-    apiUsageStatus.classList.remove('connected', 'warning');
-    apiUsageStatus.textContent = 'Loading API usage...';
-    try {
-        const response = await fetch(`${EXPENSE_TRACKER_BASE}/summary`, { cache: 'no-store' });
-        if (!response.ok) {
-            throw new Error(`Expense tracker unavailable (${response.status}).`);
-        }
-        const data = await response.json();
-        const summary = data?.summary || {};
-        apiUsageSummary.textContent = formatApiUsageSummary(summary);
-        const amount = Number(summary?.totalEstimatedCost || 0).toFixed(6);
-        const currency = String(summary?.currency || 'USD');
-        apiUsageStatus.classList.add('connected');
-        apiUsageStatus.textContent = `Usage loaded: ${Number(summary?.totalEvents || 0)} calls, ${amount} ${currency}.`;
-    } catch (error) {
-        apiUsageStatus.classList.add('warning');
-        apiUsageStatus.textContent = error?.message || 'Could not load API usage.';
-        apiUsageSummary.textContent = 'Expense tracker is not reachable. Start local stack with `npm run dev`.';
-    }
-}
-
-function getConversationInspectorDump() {
-    const recentHistory = Array.isArray(state.history) ? state.history.slice(-10) : [];
-    const lastContext = state.lastContext || {};
-    const selectedModel = state.selectedModel || '';
-    const voiceEngine = state.voiceEngine || '';
-    const mode = state.currentMode || '';
-    const sidePanelAction = state.currentSidePanelAction || '';
-
-    const payload = {
-        snapshotAt: new Date().toISOString(),
-        ui: {
-            mode,
-            sidePanelAction,
-            isActive: !!state.isActive,
-            isThinking: !!state.isThinking,
-            isListening: !!state.isListening
-        },
-        models: {
-            chatModel: selectedModel,
-            voiceEngine
-        },
-        lastContext: lastContext,
-        historyLast10: recentHistory
-    };
-
-    return JSON.stringify(payload, null, 2);
-}
-
-function openConversationInspector() {
-    const modal = document.getElementById('conversation-inspector-modal');
-    const dump = document.getElementById('conversation-inspector-dump');
-    if (!modal || !dump) return;
-
-    if (typeof dump.textContent !== 'string') dump.textContent = '';
-    dump.textContent = getConversationInspectorDump();
-
-    modal.style.display = 'flex';
-    modal.setAttribute('aria-hidden', 'false');
-}
-
-function closeConversationInspector() {
-    const modal = document.getElementById('conversation-inspector-modal');
-    if (!modal) return;
-    modal.style.display = 'none';
-    modal.setAttribute('aria-hidden', 'true');
-}
-
 function openSettingsPanel() {
     if (!underTheHood) return false;
     underTheHood.style.display = 'flex';
@@ -5395,9 +4642,7 @@ function openSettingsPanel() {
         appContainer.style.overflowY = 'auto';
         appContainer.style.overflowX = 'hidden';
     }
-    applySettingsLockUi();
     refreshUiDebugDump();
-    refreshApiUsageSummary().catch(() => { });
     return true;
 }
 
@@ -5417,82 +4662,10 @@ function closeSettingsPanel() {
     document.body.setAttribute('data-mode', 'core');
     const appContainer = document.querySelector('.container');
     if (appContainer) {
-        appContainer.style.overflowY = state.isMediaStripOpen ? 'auto' : 'hidden';
+        appContainer.style.overflowY = 'auto';
         appContainer.style.overflowX = 'hidden';
     }
     return true;
-}
-
-function isSettingsLockConfigured() {
-    return !!String(state.settingsLockPin || '').trim();
-}
-
-function persistSettingsLockState() {
-    safeStorageSet(SETTINGS_LOCKED_STORAGE_KEY, state.settingsLocked ? '1' : '0');
-    if (isSettingsLockConfigured()) {
-        safeStorageSet(SETTINGS_LOCK_PIN_STORAGE_KEY, String(state.settingsLockPin || '').trim());
-    }
-}
-
-function applySettingsLockUi() {
-    if (!underTheHood) return;
-    const locked = Boolean(state.settingsLocked);
-    const controls = underTheHood.querySelectorAll('.panel-content input, .panel-content select, .panel-content textarea, .panel-content button');
-    controls.forEach((el) => {
-        if (!(el instanceof HTMLElement)) return;
-        if (el.id === 'settingsLockToggleBtn') return;
-        el.toggleAttribute('disabled', locked);
-    });
-    if (settingsLockToggleBtn) {
-        settingsLockToggleBtn.textContent = locked ? 'Unlock' : 'Lock';
-    }
-    if (settingsLockStatus) {
-        settingsLockStatus.textContent = locked
-            ? 'Locked'
-            : (isSettingsLockConfigured() ? 'Unlocked' : 'Unlocked (no PIN set)');
-    }
-}
-
-function bindSettingsLockControls() {
-    applySettingsLockUi();
-    if (!settingsLockToggleBtn || settingsLockToggleBtn.dataset.bound === '1') return;
-    settingsLockToggleBtn.dataset.bound = '1';
-    settingsLockToggleBtn.addEventListener('click', () => {
-        if (state.settingsLocked) {
-            const entered = window.prompt('Enter settings PIN to unlock:');
-            if (!entered) return;
-            if (String(entered).trim() !== String(state.settingsLockPin || '').trim()) {
-                if (transcriptText) transcriptText.innerText = 'Wrong PIN. Settings remain locked.';
-                return;
-            }
-            state.settingsLocked = false;
-            persistSettingsLockState();
-            applySettingsLockUi();
-            if (transcriptText) transcriptText.innerText = 'Settings unlocked.';
-            return;
-        }
-
-        if (!isSettingsLockConfigured()) {
-            const pin = window.prompt('Set a settings PIN (at least 4 characters):');
-            if (!pin) return;
-            const cleanPin = String(pin).trim();
-            if (cleanPin.length < 4) {
-                if (transcriptText) transcriptText.innerText = 'PIN too short. Use at least 4 characters.';
-                return;
-            }
-            const confirm = window.prompt('Confirm settings PIN:');
-            if (String(confirm || '').trim() !== cleanPin) {
-                if (transcriptText) transcriptText.innerText = 'PIN mismatch. Settings stay unlocked.';
-                return;
-            }
-            state.settingsLockPin = cleanPin;
-        }
-
-        state.settingsLocked = true;
-        persistSettingsLockState();
-        applySettingsLockUi();
-        if (transcriptText) transcriptText.innerText = 'Settings locked.';
-    });
 }
 
 function toggleChatEntry(forceOpen = null) {
@@ -5663,14 +4836,6 @@ const actionHandlers = {
         const opened = openMapRequest(request);
         if (!opened.ok) return { text: res.text };
 
-        publishConversationObject(state, {
-            id: `map-${Date.now()}`,
-            kind: opened.type === 'route' ? 'route' : 'location',
-            label: opened.label || request.query || (opened.type === 'route' ? `${request.from} to ${request.to}` : 'Location'),
-            value: opened.url,
-            tool: 'map'
-        });
-
         if (opened.type === 'route') {
             const routeText = `Route ready from ${request.from} to ${request.to}.`;
             const routeHtml = `<br><a href="${opened.url}" target="_blank" class="action-link green">🧭 OPEN ROUTE IN GOOGLE MAPS</a>`;
@@ -5712,11 +4877,7 @@ const actionHandlers = {
         if (!res.tool_params?.query) return { text: res.text };
         const recommendations = res.tool_params.recommendations || [];
         const retailer = String(res.tool_params.retailer || '');
-        const result = await web.getProducts(res.tool_params.query, recommendations, {
-            retailer,
-            apiKey: getActiveTextApiKey(state.selectedModel),
-            model: state.selectedModel
-        });
+        const result = await web.getProducts(res.tool_params.query, recommendations, { retailer, apiKey: state.geminiKey });
         let previewDataUrl = '';
         if (state.geminiKey) {
             try {
@@ -5745,92 +4906,7 @@ const actionHandlers = {
     },
 
     calendar: async (res) => {
-        if (!res.event_details) return { text: res.text };
-        const details = res.event_details || {};
-        if (!details.start || !details.end) {
-            return {
-                text: (typeof res.text === 'string' && res.text.trim())
-                    ? res.text
-                    : "I need a start and end time before I can create a calendar event."
-            };
-        }
-        if (!isCalendarDateLike(details.start) || !isCalendarDateLike(details.end)) {
-            return {
-                text: "I need a clearer day and time before I can create that calendar event."
-            };
-        }
-        const url = createGoogleCalendarUrl(details);
-        const eventTitle = details.title || details.summary || 'Event';
-        const reminderStatus = scheduleCalendarEventReminder(details);
-        await ensureGoogleCalendarConnected({ silent: true });
-        const authState = getGoogleCalendarAuthState();
-
-        if (authState.connected) {
-            try {
-                const event = await createGoogleCalendarEvent(details);
-                const eventUrl = event?.htmlLink || url;
-                mergeCalendarCache([{
-                    id: event?.id || eventTitle,
-                    summary: event?.summary || eventTitle,
-                    start: event?.start?.dateTime || event?.start?.date || details.start,
-                    end: event?.end?.dateTime || event?.end?.date || details.end,
-                    htmlLink: eventUrl,
-                    source: 'google'
-                }]);
-                await refreshOpenCalendarPanel();
-                addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url: eventUrl });
-                return {
-                    text: (typeof res.text === 'string' && res.text.trim())
-                        ? res.text
-                        : `I added ${eventTitle} to your Google Calendar.${buildCalendarReminderFollowUpText(details)}${reminderStatus.reason === 'too_late' ? ' Reminder skipped because the event is too soon.' : ''}`,
-                    extraHtml: `<br><a href="${eventUrl}" target="_blank" class="action-link blue">📅 OPEN GOOGLE CALENDAR EVENT</a>`
-                };
-            } catch (error) {
-                console.warn('Google Calendar event creation failed:', error?.message || error);
-                if (error?.code === 'calendar_auth_required') {
-                    const reconnected = await ensureGoogleCalendarConnected({ silent: true });
-                    if (reconnected) {
-                        try {
-                            const event = await createGoogleCalendarEvent(details);
-                            const eventUrl = event?.htmlLink || url;
-                            mergeCalendarCache([{
-                                id: event?.id || eventTitle,
-                                summary: event?.summary || eventTitle,
-                                start: event?.start?.dateTime || event?.start?.date || details.start,
-                                end: event?.end?.dateTime || event?.end?.date || details.end,
-                                htmlLink: eventUrl,
-                                source: 'google'
-                            }]);
-                            await refreshOpenCalendarPanel();
-                            addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url: eventUrl });
-                            return {
-                                text: (typeof res.text === 'string' && res.text.trim())
-                                    ? res.text
-                                    : `I added ${eventTitle} to your Google Calendar.${buildCalendarReminderFollowUpText(details)}${reminderStatus.reason === 'too_late' ? ' Reminder skipped because the event is too soon.' : ''}`,
-                                extraHtml: `<br><a href="${eventUrl}" target="_blank" class="action-link blue">📅 OPEN GOOGLE CALENDAR EVENT</a>`
-                            };
-                        } catch (retryError) {
-                            console.warn('Google Calendar event retry failed:', retryError?.message || retryError);
-                        }
-                    }
-                } else {
-                    return {
-                        text: `I could not save that event directly to Google Calendar, so I made a backup link for ${eventTitle}.`,
-                        extraHtml: `<br><a href="${url}" target="_blank" class="action-link blue">📅 ADD TO GOOGLE CALENDAR</a>`
-                    };
-                }
-            }
-        }
-
-        queuePendingCalendarEvent(details);
-        await refreshOpenCalendarPanel();
-        addToHub('link', `📅 Calendar Event: ${eventTitle}`, { url });
-        return {
-            text: (typeof res.text === 'string' && res.text.trim())
-                ? `${res.text} I also saved it in Blip and will sync it to Google Calendar when you reconnect.`
-                : `I saved ${eventTitle} in Blip and will sync it to Google Calendar when you reconnect. I also made a calendar link for now.${buildCalendarReminderFollowUpText(details)}${reminderStatus.reason === 'too_late' ? ' Reminder skipped because the event is too soon.' : ''}`,
-            extraHtml: `<br><a href="${url}" target="_blank" class="action-link blue">📅 ADD TO GOOGLE CALENDAR</a>`
-        };
+        return calendarController.createEventFromResponse(res);
     },
 
     youtube: async (res) => {
@@ -5864,13 +4940,6 @@ const actionHandlers = {
             state.lastContext.lastYoutubeQuery = rawQuery || 'video';
             state.lastContext.lastYoutubeSearchIndex = 0;
             addToHub('link', `🎬 YouTube: ${rawQuery || directVideoId}`, { url: watchUrl });
-            publishConversationObject(state, {
-                id: `yt-${directVideoId}`,
-                kind: 'link',
-                label: `YouTube: ${rawQuery || directVideoId}`,
-                value: watchUrl,
-                tool: 'youtube'
-            });
             document.body.classList.add('projecting-visual');
             return {
                 text: mergeTextParts(res.text, 'Playing your YouTube video now.'),
@@ -5889,13 +4958,6 @@ const actionHandlers = {
         state.lastContext.lastYoutubeQuery = effectiveQuery;
         state.lastContext.lastYoutubeSearchIndex = 0;
         addToHub('link', `🎬 YouTube: ${effectiveQuery}`, { url: result.watchUrl || result.url });
-        publishConversationObject(state, {
-            id: `yt-${result.videoId || Date.now()}`,
-            kind: 'link',
-            label: `YouTube: ${effectiveQuery}`,
-            value: result.watchUrl || result.url,
-            tool: 'youtube'
-        });
         document.body.classList.add('projecting-visual');
         return { text: mergeTextParts(res.text, result.text), extraHtml: `<br>${result.html}` };
     },
@@ -5926,21 +4988,8 @@ const actionHandlers = {
     },
 
     timer: async (res) => {
-        const ms = Number(res.tool_params?.ms ?? res.value_ms ?? 0);
-        const label = String(res.tool_params?.label || 'Timer');
-        if (!Number.isFinite(ms) || ms <= 0) return { text: "I can't set a timer for 0 seconds!" };
-
-        setBlipTimer(label, ms);
-
-        const durationText = ms >= 60000
-            ? `${Math.round(ms / 60000)} minute${Math.round(ms / 60000) === 1 ? '' : 's'}`
-            : `${Math.max(1, Math.round(ms / 1000))} second${Math.max(1, Math.round(ms / 1000)) === 1 ? '' : 's'}`;
-        const reply = (typeof res.text === 'string' && res.text.trim())
-            ? res.text.trim()
-            : label === 'Timer'
-                ? `OK! I've set a timer for ${durationText}.`
-                : `OK! I've set a timer for ${label} for ${durationText}.`;
-        return { text: reply };
+        const result = timerController.handleTimerAction(res);
+        return { text: result.text };
     },
 
     list: async (res) => {
@@ -5959,11 +5008,11 @@ const actionHandlers = {
 
         if (action === 'add' && item) {
             list.push(item);
-            safeStorageSet(key, list);
+            localStorage.setItem(key, JSON.stringify(list));
             return { text: `Added ${item} to your ${type} list.` };
         } else if (action === 'remove' && item) {
             list = list.filter(i => i.toLowerCase() !== item.toLowerCase());
-            safeStorageSet(key, list);
+            localStorage.setItem(key, JSON.stringify(list));
             return { text: `Removed ${item} from your ${type} list.` };
         }
 
@@ -5980,33 +5029,6 @@ const actionHandlers = {
         const query = res.tool_params?.query || 'food nutrition';
         const result = await web.search(query + " calories macros nutrition facts");
         return { text: result.text };
-    },
-
-    gmail: async (res) => {
-        const gmailCmd = {
-            action: res.tool_params?.action || (res.tool_params?.shareType ? 'shareCurrent' : 'compose'),
-            recipient: res.tool_params?.recipient || res.tool_params?.to || '',
-            subject: res.tool_params?.subject || '',
-            text: res.tool_params?.text || '',
-            shareType: res.tool_params?.shareType || 'auto',
-            quickSend: !!res.tool_params?.quickSend || (res.text || '').toLowerCase().includes('send')
-        };
-        await emailFeature.handleVoiceCommand(gmailCmd);
-        return { text: 'Email draft ready.' };
-    },
-
-    telegram: async (res) => {
-        const telegramCmd = {
-            action: res.tool_params?.action || (res.tool_params?.shareType ? 'shareCurrent' : 'compose'),
-            draft: {
-                chatId: res.tool_params?.chatId || res.tool_params?.to || '',
-                text: res.tool_params?.text || ''
-            },
-            shareType: res.tool_params?.shareType || 'auto',
-            quickSend: !!res.tool_params?.quickSend || (res.text || '').toLowerCase().includes('send')
-        };
-        await telegramFeature.handleVoiceCommand(telegramCmd);
-        return { text: 'Telegram draft ready.' };
     }
 };
 
@@ -6215,8 +5237,7 @@ function parseNoteItemsFromText(text = '') {
 }
 
 function isNotesDraftFinishIntent(text = '') {
-    const lower = normalizeVoiceTokens(text);
-    return /^(?:done|finished|finish|save|save it|save note|save the note|save list|save the list|you can save the note|you can save the list|that's all|thats all|that's it|thats it|that is all|end note|end list|complete|okay save note|ok save note)$/i.test(lower);
+    return isNotesDraftFinishIntentFromVoice(normalizeVoiceTokens(text));
 }
 
 function buildSavedNoteContent(draft) {
@@ -6243,12 +5264,7 @@ function formatPendingNotesDraftPrompt(draft) {
 }
 
 function parseFreeformNoteBody(text = '') {
-    return sanitizeVoiceQuery(text)
-        .replace(/^(?:yes\s+)?(?:this|here)(?:\s+is)?\s+(?:the\s+)?note[:\s,-]*/i, '')
-        .replace(/^(?:yes\s+)?(?:it'?s|it is)\s+(?:the\s+)?note[:\s,-]*/i, '')
-        .replace(/^(?:please\s+)?(?:take|save|write)\s+(?:this\s+)?note[:\s,-]*/i, '')
-        .replace(/^(?:note|memo)[:\s,-]*/i, '')
-        .trim();
+    return parseFreeformNoteBodyFromVoice(text);
 }
 
 function resolvePendingNotesFollowUp(cmd) {
@@ -6271,18 +5287,18 @@ function resolvePendingNotesFollowUp(cmd) {
     }
 
     if (draft.stage === 'awaiting_freeform') {
-        const bodyText = parseFreeformNoteBody(cmd);
-        if (!bodyText) {
-            return { needsMore: true, message: 'I am listening. Dictate the note when you are ready.' };
+        const advanced = advanceFreeformNotesDraft(draft, cmd, lower);
+        if (advanced?.type === 'needsMore') {
+            state.pendingNotesDraft = advanced.draft;
+            return { needsMore: true, message: advanced.message };
         }
-        state.pendingNotesDraft = null;
-        return {
-            completed: true,
-            draft: {
-                ...draft,
-                bodyText
-            }
-        };
+        if (advanced?.type === 'complete') {
+            state.pendingNotesDraft = null;
+            return {
+                completed: true,
+                draft: advanced.draft
+            };
+        }
     }
 
     if (isNotesDraftFinishIntent(cmd)) {
@@ -6837,7 +5853,7 @@ function toggleMediaGallery(forceOpen = null, lane = null) {
         mediaStrip.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
     }
     if (appContainer) {
-        appContainer.style.overflowY = shouldShow ? 'auto' : 'hidden';
+        appContainer.style.overflowY = 'auto';
         appContainer.style.overflowX = 'hidden';
     }
     renderMediaGallery();
@@ -6990,18 +6006,21 @@ function persistMediaGallery() {
     }));
 
     if (!persistableItems.length) {
-        if (safeStorageSet(MEDIA_STORAGE_KEY, [])) {
+        try {
+            localStorage.setItem(MEDIA_STORAGE_KEY, '[]');
             state.lastMediaPersistStatus = 'ok';
             return { ok: true, prunedCount: 0 };
-        } else {
-            state.lastMediaPersistStatus = 'quota';
-            return { ok: false, prunedCount: 0, reason: 'quota' };
+        } catch (e) {
+            state.lastMediaPersistStatus = isQuotaError(e) ? 'quota' : 'error';
+            console.warn('Media gallery save failed:', e.message);
+            return { ok: false, prunedCount: 0, reason: state.lastMediaPersistStatus };
         }
     }
 
     let keptItems = persistableItems.slice();
-    while (keptItems.length > 0) {
-        if (safeStorageSet(MEDIA_STORAGE_KEY, toPayload(keptItems))) {
+    while (keptItems.length) {
+        try {
+            localStorage.setItem(MEDIA_STORAGE_KEY, JSON.stringify(toPayload(keptItems)));
             const keptIds = new Set(keptItems.map((item) => item.id));
             const dropped = [];
             state.mediaItems = (state.mediaItems || []).filter((item) => {
@@ -7020,13 +6039,13 @@ function persistMediaGallery() {
             }
             state.lastMediaPersistStatus = 'ok';
             return { ok: true, prunedCount: dropped.length };
-        } else {
-            // Storage full - shrink and try again until it fits or we run out of items
-            if (keptItems.length <= 1) {
-                state.lastMediaPersistStatus = 'quota';
-                return { ok: false, prunedCount: 0, reason: 'quota' };
+        } catch (e) {
+            if (!isQuotaError(e) || keptItems.length <= 1) {
+                state.lastMediaPersistStatus = isQuotaError(e) ? 'quota' : 'error';
+                console.warn('Media gallery save failed:', e.message);
+                return { ok: false, prunedCount: 0, reason: state.lastMediaPersistStatus };
             }
-            keptItems.pop(); // Remove oldest to try and fit
+            keptItems.pop();
         }
     }
 
@@ -7374,6 +6393,15 @@ function addCreationToGallery(base64, source = 'design', options = {}) {
     return true;
 }
 
+function rememberGeneratedVisualInMedia(visualUrl, action = 'design', options = {}) {
+    if (typeof visualUrl !== 'string' || !visualUrl.startsWith('data:image/')) return false;
+    const title = normalizeCreationTitle(
+        options?.title || options?.prompt || state.lastContext?.lastDesignPrompt || action,
+        'Design'
+    );
+    return addCreationToGallery(visualUrl, action || 'design', { title });
+}
+
 function getMediaPersistFailureMessage(fallback = 'Could not save that.') {
     if (state.lastMediaPersistStatus === 'quota') {
         return 'Storage is full. Remove some old media and try again.';
@@ -7540,7 +6568,7 @@ Approx nutrition per serving: calories, protein, carbs, fiber.
 
 Keep it around 120-220 words.`;
     try {
-        const raw = await generateWithPrompt(systemPrompt, userPrompt, getActiveTextApiKey(state.selectedModel), state.selectedModel);
+        const raw = await generateWithPrompt(systemPrompt, userPrompt, state.geminiKey, state.selectedModel);
         const cleaned = String(raw || '').trim();
         return cleaned || buildFallbackRecipeText(focus);
     } catch (error) {
@@ -7937,7 +6965,7 @@ Rules:
 - Avoid external assets and avoid scripts.`;
     if (!preferRaster) {
         try {
-            const raw = await generateWithPrompt(systemPrompt, userPrompt, getActiveTextApiKey(state.selectedModel), state.selectedModel);
+            const raw = await generateWithPrompt(systemPrompt, userPrompt, state.geminiKey, state.selectedModel);
             const extracted = extractSvgMarkup(raw);
             const safeSvg = normalizeSvgMarkup(extracted);
             if (safeSvg) {
@@ -8203,6 +7231,24 @@ function saveLatestPhotoToGallery() {
     }
     toggleMediaGallery(true, 'shots');
     return true;
+}
+
+function getCurrentPhotoDataUrl() {
+    if (typeof state.pendingImage === 'string' && state.pendingImage.trim()) {
+        return state.pendingImage.startsWith('data:')
+            ? state.pendingImage
+            : `data:image/jpeg;base64,${state.pendingImage}`;
+    }
+    if (canSaveCurrentImageFromPanel()) return state.currentSidePanelVisualUrl;
+    if (Array.isArray(state.mediaItems)) {
+        const latestImage = state.mediaItems.find((item) =>
+            normalizeMediaBucket(item?.bucket) === MEDIA_BUCKET_SHOTS &&
+            item?.kind !== 'video' &&
+            item?.url
+        );
+        if (latestImage?.url) return latestImage.url;
+    }
+    return '';
 }
 
 function returnToPhotosAfterSave() {
@@ -8721,7 +7767,7 @@ function openMediaLightbox(url, index = null, kind = 'image', bucket = MEDIA_BUC
     mediaLightboxImage.style.setProperty('--media-rotation', `${normalizeMediaRotation(activeItem?.rotation)}deg`);
     mediaLightboxImage.style.setProperty(
         '--media-brightness',
-        String(normalizeMediaBrightness(overrideBrightness != null ? overrideBrightness : 1))
+        String(normalizeMediaBrightness(overrideBrightness != null ? overrideBrightness : activeItem?.brightness))
     );
     syncMediaLightboxActionButtons();
 }
@@ -8953,16 +7999,12 @@ function closeMediaLightboxAndVerify(cmd = '') {
 
 function syncMediaLightboxActionButtons() {
     const imageVisible = isMediaLightboxActuallyVisible('image');
-    [zoomMediaLightboxBtn, shareMediaLightboxBtn, downloadMediaLightboxBtn, wallpaperMediaLightboxBtn].forEach((btn) => {
+    [shareMediaLightboxBtn, downloadMediaLightboxBtn, wallpaperMediaLightboxBtn].forEach((btn) => {
         if (!btn) return;
         btn.disabled = !imageVisible;
         btn.style.opacity = imageVisible ? '1' : '0.55';
         btn.style.cursor = imageVisible ? '' : 'not-allowed';
     });
-    if (zoomMediaLightboxBtn) {
-        const zoom = Number(state.lastContext?.lastYouTubeSnapshotView?.zoom || 1);
-        zoomMediaLightboxBtn.title = `Snapshot zoom ${Math.round(zoom * 100)}%`;
-    }
 }
 
 function getEditableMediaImageIndex() {
@@ -8970,7 +8012,7 @@ function getEditableMediaImageIndex() {
         const activeItem = state.mediaItems?.[state.activeMediaIndex];
         if (activeItem && activeItem.kind !== 'video') return state.activeMediaIndex;
     }
-    const latest = getLatestImageItemByBucket(MEDIA_BUCKET_SHOTS);
+    const latest = getLatestImageItemByBucket(normalizeMediaBucket(state.activeMediaBucket));
     if (!latest?.id) return -1;
     return findMediaGlobalIndexById(latest.id);
 }
@@ -9057,13 +8099,16 @@ async function adjustActiveMediaBrightness(delta = 0.35) {
                 img.src = normalizedUrl;
             });
             item.url = adjustedUrl;
+            item.brightness = 1;
             // Baked into pixels; clear any per-session override.
             if (state.mediaBrightnessOverrides) delete state.mediaBrightnessOverrides[String(item.id)];
         } catch (_) {
+            item.brightness = nextBrightness;
             if (!state.mediaBrightnessOverrides) state.mediaBrightnessOverrides = {};
             state.mediaBrightnessOverrides[String(item.id)] = nextBrightness;
         }
     } else {
+        item.brightness = nextBrightness;
         if (!state.mediaBrightnessOverrides) state.mediaBrightnessOverrides = {};
         state.mediaBrightnessOverrides[String(item.id)] = nextBrightness;
     }
@@ -9083,6 +8128,7 @@ function undoActiveMediaEdits() {
     state.activeMediaBucket = normalizeMediaBucket(item.bucket);
     item.url = lastEdit.url;
     item.rotation = lastEdit.rotation;
+    item.brightness = lastEdit.brightness;
     if (state.mediaBrightnessOverrides) delete state.mediaBrightnessOverrides[String(item.id)];
     item.lastEdit = null;
     persistMediaGallery();
@@ -9103,6 +8149,7 @@ function resetActiveMediaEdits() {
     item.lastEdit = captureMediaEditSnapshot(item);
     item.url = originalUrl;
     item.rotation = 0;
+    item.brightness = 1;
     if (state.mediaBrightnessOverrides) delete state.mediaBrightnessOverrides[String(item.id)];
     persistMediaGallery();
     renderMediaGallery();
@@ -9346,10 +8393,7 @@ function formatTimerDueTime(timestamp) {
 }
 
 function getUpcomingTimersSorted() {
-    const now = Date.now();
-    return (state.timers || [])
-        .filter((t) => t && Number.isFinite(t.time) && t.time > now)
-        .sort((a, b) => a.time - b.time);
+    return timerController.getUpcomingTimersSorted();
 }
 
 function renderTimerPanelBody(sidePanel, focusId = null) {
@@ -9425,14 +8469,7 @@ function startTimerPanelTicker(options = {}) {
 }
 
 function getNextTimerDue() {
-    if (!Array.isArray(state.timers) || state.timers.length === 0) return null;
-    const now = Date.now();
-    let next = null;
-    for (const t of state.timers) {
-        if (!t || !Number.isFinite(t.time) || t.time <= now) continue;
-        if (!next || t.time < next.time) next = t;
-    }
-    return next;
+    return timerController.getNextTimerDue();
 }
 
 function updateTimerCorner() {
@@ -9468,117 +8505,80 @@ function startTimerCornerTicker() {
 }
 
 function persistTimers() {
-    try {
-        const now = Date.now();
-        const payload = (state.timers || [])
-            .filter((t) => t && Number.isFinite(t.time) && t.time > now)
-            .map((t) => ({
-                text: String(t.text || 'Timer'),
-                time: Number(t.time)
-            }));
-        safeStorageSet(TIMER_STORAGE_KEY, payload);
-    } catch (_) { }
-    const nextReminder = getNextTimerDue();
-    state.lastScheduledReminder = nextReminder
-        ? { id: nextReminder.id, text: nextReminder.text, time: nextReminder.time }
-        : null;
-    updateTimerCorner();
-    renderCountdownDisplay();
-    syncTimerSidePanel();
+    return timerController.persistTimers();
 }
 
 function cancelScheduledTimerById(timerId) {
-    if (!Array.isArray(state.timers) || !state.timers.length) return null;
-    const idx = state.timers.findIndex((timer) => timer?.id === timerId);
-    if (idx < 0) return null;
-    const [removed] = state.timers.splice(idx, 1);
-    try { clearTimeout(timerId); } catch (_) { }
-    persistTimers();
-    renderCountdownDisplay();
-    return removed || null;
+    return timerController.cancelScheduledTimerById(timerId);
 }
 
 function cancelNextScheduledTimer() {
-    const next = getNextTimerDue();
-    if (!next) return null;
-    return cancelScheduledTimerById(next.id);
+    return timerController.cancelNextScheduledTimer();
 }
 
 function cancelMatchingScheduledTimer(query = '') {
-    const needle = normalizeVoiceTokens(String(query || ''));
-    if (!needle) return cancelNextScheduledTimer();
-    const match = getUpcomingTimersSorted().find((timer) =>
-        normalizeVoiceTokens(String(timer?.text || '')).includes(needle)
-    );
-    if (!match) return null;
-    return cancelScheduledTimerById(match.id);
+    return timerController.cancelMatchingScheduledTimer(query);
 }
 
 function clearAllScheduledTimers() {
-    const timers = Array.isArray(state.timers) ? [...state.timers] : [];
-    if (!timers.length) return 0;
-    timers.forEach((timer) => {
-        try { clearTimeout(timer?.id); } catch (_) { }
-    });
-    state.timers = [];
-    persistTimers();
-    renderCountdownDisplay();
-    return timers.length;
+    return timerController.clearAllScheduledTimers();
 }
 
 function restorePersistedTimers() {
-    try {
-        const raw = localStorage.getItem(TIMER_STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed) || parsed.length === 0) return;
-        const now = Date.now();
-        parsed.forEach((item) => {
-            const text = String(item?.text || 'Timer');
-            const dueAt = Number(item?.time || 0);
-            if (!Number.isFinite(dueAt)) return;
-            const ms = Math.max(500, dueAt - now);
-            setBlipTimer(text, ms, dueAt);
-        });
-    } catch (_) { }
+    return timerController.restorePersistedTimers();
 }
 
 function dismissActiveAlert(options = {}) {
-    const { resumeListening = true, clearVisual = false } = options;
-    const activeAlert = state.activeAlert;
-    if (activeAlert?.autoClearTimer) clearTimeout(activeAlert.autoClearTimer);
-    state.activeAlert = null;
-    stopAlarmSoundLoop();
-    if (clearVisual) clearAlertDisplay();
-    const nextReminder = getNextTimerDue();
-    if (!nextReminder) state.lastScheduledReminder = null;
-    updateTimerCorner();
-    renderCountdownDisplay();
-    syncTimerSidePanel();
-    if (!nextReminder) {
-        const sidePanel = document.getElementById('blip-side-panel');
-        if (sidePanel && sidePanel.style.display !== 'none' && state.currentSidePanelAction === 'timer') {
-            sidePanel.style.display = 'none';
-            clearSidePanelContext();
-        }
-    }
-    if (!activeAlert) return false;
-
-    speech.stopSpeaking?.();
-    speech.isSpeaking = false;
-    state.lastSpeechStartedAt = 0;
-    animateMouth(0);
-
-    if (resumeListening && state.isActive && !state.isThinking && !state.softSleepMode) {
-        talkBtn.classList.remove('thinking', 'listening');
-        talkBtn.classList.add('active');
-        talkBtn.innerText = 'Ask Blip';
-        setPersona('listening');
-        setRestingEyes(false);
-        startListeningLoop();
-    }
-    return true;
+    return timerController.dismissActiveAlert(options);
 }
+
+const calendarController = createCalendarController({
+    isCalendarDateLike,
+    createGoogleCalendarUrl,
+    scheduleCalendarEventReminder,
+    ensureGoogleCalendarConnected,
+    getGoogleCalendarAuthState,
+    createGoogleCalendarEvent,
+    mergeCalendarCache,
+    refreshOpenCalendarPanel,
+    addToHub,
+    buildCalendarReminderFollowUpText,
+    queuePendingCalendarEvent,
+    getCalendarAgendaVoiceRequest,
+    getCalendarFocusDayVoiceRequest,
+    getCalendarTimeSlotVoiceRequest,
+    isCloseCalendarVoiceRequest,
+    closeCalendarPanel,
+    forceOpenCalendarOverview,
+    focusCalendarDaySelection,
+    focusCalendarHourSelection,
+    formatCalendarDateKey,
+});
+
+const timerController = createTimerController({
+    state,
+    storageKey: TIMER_STORAGE_KEY,
+    normalizeVoiceTokens,
+    renderActionInSidePanel,
+    clearSidePanelContext,
+    renderCountdownDisplay,
+    updateTimerCorner,
+    syncTimerSidePanel,
+    clearAlertDisplay,
+    showAlertDisplay,
+    stopListening,
+    speak,
+    startAlarmSoundLoop,
+    stopAlarmSoundLoop,
+    setPersona,
+    setRestingEyes,
+    startListeningLoop,
+    animateMouth,
+    speech,
+    face,
+    faceFrame,
+    talkBtn,
+});
 
 function isVideoPanelVisible() {
     return isYouTubePanelActuallyVisible();
@@ -9692,139 +8692,25 @@ function toggleProjectorMode() {
     console.log(`📽️ Projector Mode: ${state.isProjectorMode}`);
 }
 
-const HUB_MAX_STORED_ITEMS = 50;
-const HUB_MAX_CONTENT_CHARS = 30000;
-const HUB_MAX_URL_CHARS = 8000;
-const HUB_INLINE_DATA_URL_MAX = 2048;
-
-function truncateHubString(value, max = HUB_MAX_CONTENT_CHARS) {
-    const s = String(value ?? '');
-    if (s.length <= max) return s;
-    return `${s.slice(0, max)}…`;
-}
-
-function sanitizeHubDataForStorage(data) {
-    if (!data || typeof data !== 'object' || Array.isArray(data)) return data || {};
-    const o = { ...data };
-    if (typeof o.url === 'string') {
-        const u = o.url;
-        if (u.startsWith('data:')) {
-            if (u.length > HUB_INLINE_DATA_URL_MAX) {
-                o.url = '';
-                o._inlineDataOmitted = true;
-            }
-        } else if (u.length > HUB_MAX_URL_CHARS) {
-            o.url = `${u.slice(0, HUB_MAX_URL_CHARS)}…`;
-        }
-    }
-    for (const k of Object.keys(o)) {
-        if (typeof o[k] === 'string' && o[k].length > 50000) {
-            o[k] = `${o[k].slice(0, 50000)}…`;
-        }
-    }
-    return o;
-}
-
-function deepSanitizeHubItemsForStorage(items) {
-    return (Array.isArray(items) ? items : []).map((it) => ({
-        ...it,
-        content: truncateHubString(it?.content),
-        data: sanitizeHubDataForStorage(it?.data || {})
-    }));
-}
-
-function isStorageQuotaError(e) {
-    return Boolean(e && (e.name === 'QuotaExceededError' || e.code === 22));
-}
-
-/** Writes hub to localStorage; shrinks payload on quota (strip inline data, drop oldest items). */
-function persistHubItems(items) {
-    let itemsToSave = deepSanitizeHubItemsForStorage(items).slice(0, HUB_MAX_STORED_ITEMS);
-    while (itemsToSave.length > 0) {
-        if (safeStorageSet('blip_hub', itemsToSave)) {
-            state.hubItems = itemsToSave;
-            return;
-        } else {
-            // Storage full or failed - shrink and retry
-            if (itemsToSave.length <= 1) {
-                // Try one last-ditch minimal save
-                const minimal = itemsToSave.map((it) => ({
-                    id: it.id,
-                    type: it.type,
-                    content: truncateHubString(String(it?.content || ''), 500),
-                    data: {},
-                    timestamp: it.timestamp
-                }));
-                if (safeStorageSet('blip_hub', minimal)) {
-                    state.hubItems = minimal;
-                } else {
-                    safeStorageSet('blip_hub', []);
-                    state.hubItems = [];
-                }
-                return;
-            }
-            itemsToSave = itemsToSave.slice(0, -1);
-        }
-    }
-    safeStorageSet('blip_hub', []);
-    state.hubItems = [];
-}
-
 function addToHub(type, content, data = {}) {
     const item = {
         id: Date.now(),
-        type, // 'ai', 'link', 'image', 'video', 'user', 'note'
-        content: truncateHubString(content),
-        data: {
-            ...sanitizeHubDataForStorage(data),
-            createdAt: new Date().toISOString() // Persistent date for cleanup logic
-        },
+        type, // 'ai', 'link', 'image', 'user'
+        content,
+        data,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-    state.hubItems.unshift(item);
-    if (state.hubItems.length > HUB_MAX_STORED_ITEMS) {
-        state.hubItems = state.hubItems.slice(0, HUB_MAX_STORED_ITEMS);
-    }
-    persistHubItems(state.hubItems);
+    state.hubItems.unshift(item); // Newest at top
+    if (state.hubItems.length > 50) state.hubItems.pop();
+    localStorage.setItem('blip_hub', JSON.stringify(state.hubItems));
     renderHub();
-}
-
-/**
- * Checks if the hub needs a cleanup (Weekly maintenance).
- */
-function checkHubMaintenance() {
-    if (!Array.isArray(state.hubItems) || state.hubItems.length === 0) return null;
-    
-    const now = Date.now();
-    const lastCheck = Number(localStorage.getItem(HUB_LAST_CHECK_STORAGE_KEY) || 0);
-    
-    // Safety: don't nag more than once a week
-    if (now - lastCheck < HUB_MAINTENANCE_THROTTLE_DAYS * 24 * 60 * 60 * 1000) {
-        return null; 
-    }
-    
-    // Find items older than HUB_MAX_AGE_DAYS (30 days)
-    const oldItems = state.hubItems.filter(item => {
-        const created = item.data?.createdAt ? new Date(item.data.createdAt).getTime() : 0;
-        return created > 0 && (now - created > HUB_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
-    });
-    
-    // If we have more than 5 old items, or the hub is just getting too big (50+)
-    if (oldItems.length > 5 || state.hubItems.length > 50) {
-        return {
-            reason: oldItems.length > 5 ? 'age' : 'volume',
-            count: oldItems.length || state.hubItems.length
-        };
-    }
-    
-    return null;
 }
 
 function persistHub() {
     try {
-        persistHubItems(state.hubItems || []);
+        localStorage.setItem('blip_hub', JSON.stringify(state.hubItems || []));
     } catch (e) {
-        console.warn('Hub save failed:', e?.message || e);
+        console.warn('Hub save failed:', e.message);
     }
 }
 
@@ -9865,7 +8751,11 @@ function clearHub() {
 }
 
 function persistCart() {
-    safeStorageSet('blip_cart', state.cartItems || []);
+    try {
+        localStorage.setItem('blip_cart', JSON.stringify(state.cartItems || []));
+    } catch (e) {
+        console.warn('Cart save failed:', e.message);
+    }
 }
 
 function addToCart(item) {
@@ -10153,113 +9043,12 @@ function getNextJoke() {
     return BLIP_JOKES[state.lastJokeIndex];
 }
 
-async function runSelfDiagnosticReport() {
-    const checks = [];
-    const addCheck = (name, ok, detail = '') => {
-        checks.push({ name, ok: Boolean(ok), detail: String(detail || '') });
-    };
-
-    const model = String(state.selectedModel || '').trim() || 'unknown';
-    const voiceEngine = String(state.voiceEngine || '').trim() || 'unknown';
-    const isMiniMax = /^minimax(?:[-\s_]?)/i.test(model);
-    const isGemini = /^gemini-/i.test(model) || /gemini/i.test(model);
-    const hasGeminiKey = !!String(state.geminiKey || '').trim();
-    const hasMiniMaxKey = !!String(state.minimaxKey || '').trim();
-    const hasYouTubeKey = !!String(state.youtubeApiKey || '').trim();
-    const hasWeatherKey = !!String(state.weatherApiKey || '').trim();
-
-    addCheck(
-        'Model config',
-        true,
-        `model=${model}; reasoning=${state.reasoningMode}; voiceEngine=${voiceEngine}`
-    );
-    addCheck(
-        'API key check',
-        (isGemini ? hasGeminiKey : true) && (isMiniMax ? hasMiniMaxKey : true),
-        `geminiKey=${hasGeminiKey ? 'present' : 'missing'}; minimaxKey=${hasMiniMaxKey ? 'present' : 'missing'}; youtubeKey=${hasYouTubeKey ? 'present' : 'missing'}; weatherKey=${hasWeatherKey ? 'present' : 'missing'}`
-    );
-
-    let kokoroOnline = false;
-    try {
-        kokoroOnline = await speech.checkKokoroStatus();
-    } catch (_) { }
-    addCheck(
-        'Voice engine',
-        voiceEngine !== 'kokoro' || kokoroOnline,
-        voiceEngine === 'kokoro'
-            ? `Kokoro is ${kokoroOnline ? 'online' : 'offline'}`
-            : `using ${voiceEngine}`
-    );
-
-    try {
-        await initTelegram();
-        const t = getTelegramAuthState();
-        addCheck(
-            'Telegram backend',
-            t.backendConfigured,
-            t.backendConfigured
-                ? `ready${t.chatIdPreview ? ` (default ${t.chatIdPreview})` : ''}`
-                : 'missing TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID or backend not running'
-        );
-    } catch (e) {
-        addCheck('Telegram backend', false, e?.message || 'status check failed');
-    }
-
-    try {
-        await initGoogleGmail();
-        const g = getGoogleGmailAuthState();
-        addCheck(
-            'Gmail',
-            g.backendConfigured && g.connected,
-            `backend=${g.backendConfigured ? 'ready' : 'offline'}; connected=${g.connected ? (g.email || 'yes') : 'no'}`
-        );
-    } catch (e) {
-        addCheck('Gmail', false, e?.message || 'status check failed');
-    }
-
-    try {
-        await initGoogleCalendar();
-        const c = getGoogleCalendarAuthState();
-        addCheck(
-            'Calendar',
-            c.connected,
-            `backend=${c.backendConfigured ? 'ready' : 'offline'}; connected=${c.connected ? 'yes' : 'no'}; mode=${c.mode || 'none'}`
-        );
-    } catch (e) {
-        addCheck('Calendar', false, e?.message || 'status check failed');
-    }
-
-    try {
-        const ollamaOnline = await checkOllamaStatus();
-        addCheck('Ollama', ollamaOnline, ollamaOnline ? '127.0.0.1:11434 reachable' : 'offline/unreachable');
-    } catch (e) {
-        addCheck('Ollama', false, e?.message || 'status check failed');
-    }
-
-    const okCount = checks.filter((item) => item.ok).length;
-    const summary = `Self-diagnostic: ${okCount}/${checks.length} checks look healthy.`;
-    const lines = checks.map((item) => `${item.ok ? '✅' : '⚠️'} ${item.name}: ${item.detail || (item.ok ? 'ok' : 'issue detected')}`);
-    const generatedAt = new Date().toLocaleString('en-US');
-    const noteContent = [
-        `Self Diagnostic Report (${generatedAt})`,
-        summary,
-        '',
-        ...lines
-    ].join('\n');
-    return {
-        summary,
-        html: `<br><div class="tiny-label">Diagnostics</div><pre style="white-space:pre-wrap;max-height:240px;overflow:auto;margin:6px 0 0;">${escapeHtml(lines.join('\n'))}</pre>`,
-        noteContent
-    };
-}
-
 async function handleCommand(text) {
     if (!text.toLowerCase().includes('hey blip') && !parseWakePhrase(text).matched && text.length < 3) return;
 
     const normalizedText = normalizeVoiceTokens(text);
     const sleepLikePhrase = /^(?:go\s+back\s+to\s+sleep|go\s+to\s+sleep|sleep|sleep\s+blip|blip\s+sleep)$/i.test(normalizedText.trim());
     const wakeInfo = sleepLikePhrase ? { matched: false, command: '', score: 0 } : parseWakePhrase(text);
-    const isWakeWordOnly = Boolean(wakeInfo?.matched) && !String(wakeInfo?.command || '').trim();
     const cmd = wakeInfo.matched
         ? (wakeInfo.command || 'wake')
         : (normalizedText.includes('hey blip')
@@ -10268,23 +9057,12 @@ async function handleCommand(text) {
 
     if (!cmd) return;
     state.currentVoiceCommandText = cmd;
-    const lowerCmd = normalizeVoiceTokens(String(cmd || ''));
 
     const quickReply = async (message, emotion = 'happy', extraHtml = '', resumeListening = true) => {
-        let finalMessage = message;
-        if (state.pendingHubMaintenanceNotice && Math.random() > 0.7) {
-            const { reason, count } = state.pendingHubMaintenanceNotice;
-            const mention = reason === 'age' 
-                ? ` By the way, the Hub has ${count} items over a month old. Should we purge them?`
-                : ` Just a heads up, the Hub is getting full with over ${count} items. Maybe a quick cleanup?`;
-            finalMessage += mention;
-            state.pendingHubMaintenanceNotice = null;
-            safeStorageSet(HUB_LAST_CHECK_STORAGE_KEY, String(Date.now()));
-        }
-        transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${finalMessage}${extraHtml}`;
-        state.history.push({ user: cmd, blip: finalMessage });
+        transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${message}${extraHtml}`;
+        state.history.push({ user: cmd, blip: message });
         if (state.history.length > HISTORY_MAX) state.history.shift();
-        safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
         setBlipEmotion(emotion);
         setPersona(getReplyPersonaKey(emotion));
         const normalizedCmd = normalizeVoiceTokens(String(cmd || ''));
@@ -10307,10 +9085,10 @@ async function handleCommand(text) {
         };
         if (shouldSpeakAck) {
             talkBtn.innerText = '🔊 SPEAKING...';
-            await speakWithGuard(finalMessage, emotion);
+            await speakWithGuard(message, emotion);
         } else {
             talkBtn.innerText = '🔊 SPEAKING...';
-            speakWithGuard(finalMessage, emotion).catch(() => { });
+            speakWithGuard(message, emotion).catch(() => { });
             resumeAfterSpeech();
             return;
         }
@@ -10322,7 +9100,7 @@ async function handleCommand(text) {
         if (message) {
             state.history.push({ user: cmd, blip: message });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
         }
         setBlipEmotion(emotion);
         setPersona(getReplyPersonaKey(emotion));
@@ -10330,45 +9108,62 @@ async function handleCommand(text) {
         if (resumeListening && state.isActive && !state.isThinking && !speech.isSpeaking && !state.softSleepMode) startListeningLoop();
     };
 
-    // If the user said only the wake word ("blip"), do not call the LLM.
-    // Just wake/acknowledge and resume listening.
-    if (isWakeWordOnly) {
-        try {
-            if (!state.isActive) {
-                await wakeBlipHandsFree(text);
-            } else {
-                await quickReply('I am awake.', 'happy');
-            }
-        } finally {
-            // Make sure we leave the thinking state cleanly.
-            state.isThinking = false;
-            document.body.classList.remove('thinking-mode');
+    const lowerCmd = normalizeVoiceTokens(String(cmd || ''));
+
+    const pendingNotesFollowUp = resolvePendingNotesFollowUp(cmd);
+    if (pendingNotesFollowUp) {
+        face.classList.remove('thinking');
+        if (pendingNotesFollowUp.cancelled) {
+            syncNotesPanelIfVisible(pendingNotesFollowUp.message);
+            await quickReply(pendingNotesFollowUp.message, 'happy');
+            return;
         }
+        if (pendingNotesFollowUp.completed) {
+            const finalDraft = pendingNotesFollowUp.draft;
+            const saved = addNoteItem(buildSavedNoteContent(finalDraft), {
+                source: 'notes-draft',
+                noteType: finalDraft.noteType,
+                title: finalDraft.title,
+                items: finalDraft.items,
+                bodyText: String(finalDraft.bodyText || '').trim()
+            });
+            const hasBodyText = !!String(finalDraft.bodyText || '').trim();
+            const spokenItems = formatSpokenList(finalDraft.items);
+            const message = saved
+                ? (hasBodyText
+                    ? 'Note saved. You can say send this note to email it.'
+                    : `Okay, I saved the ${finalDraft.noteType} called ${finalDraft.title} with ${spokenItems}.`)
+                : 'I could not save that note.';
+            syncNotesPanelIfVisible(message, hasBodyText ? String(finalDraft.bodyText || '') : '');
+            await quickReply(message, 'happy');
+            return;
+        }
+        syncNotesPanelIfVisible(pendingNotesFollowUp.message);
+        await quickReply(pendingNotesFollowUp.message, 'happy');
         return;
     }
 
-    const earlySystemCmd = getSystemVoiceCommand(cmd);
-    if (state.autoScrollTimer && earlySystemCmd !== 'scrollDown' && earlySystemCmd !== 'scrollUp' && earlySystemCmd !== 'stopScroll') {
-        stopAutoScroll();
+    // --- BLIP POLYPHONY ENGINE (V2) ---
+    // The new ensemble-based reasoning system.
+    if (v2_brain_enabled) {
+        const capsule = await polyphony.process(cmd, {
+            user_id: 'user_main',
+            origin: 'voice',
+            isProjectorMode: state.isProjectorMode,
+            isThinking: state.isThinking
+        });
+
+        // We only take over completely if a specific tool intent was detected and planned.
+        const hasToolAction = capsule.plan.length > 0 && capsule.plan[0].tool !== 'llm';
+
+        if (capsule.response && hasToolAction) {
+            // The expression agent has synthesized a cohesive response for a tool action.
+            await quickReply(capsule.response, capsule.perception.mode || 'happy');
+            return;
+        }
     }
-    const learningHint = getToolLearningHint(cmd);
-    const runSelfDiagnosticCmd = (
-        /^(?:run|start|launch|do)\s+(?:self\s+)?(?:parsing|parser|routing)\s+diag(?:nostic|notic|nostic|noistic|nosic)?(?:s)?$/.test(lowerCmd)
-        || /^(?:run|start|launch|do)\s+diag(?:nostic|notic|nostic|noistic|nosic)?(?:s)?$/.test(lowerCmd)
-        || (/\b(?:run|start|launch|do)\b/.test(lowerCmd) && /\b(?:parsing|parser|routing)\b/.test(lowerCmd) && /\bdiag(?:nostic|notic|nostic|noistic|nosic)?\b/.test(lowerCmd))
-        || (/\b(?:can|could|would|please)\b/.test(lowerCmd) && /\b(?:run|start|launch|do)\b/.test(lowerCmd) && /\b(?:parsing|passing|parser|routing)\b/.test(lowerCmd) && /\bdiag(?:nostic|notic|nostic|noistic|nosic)?\b/.test(lowerCmd))
-        || (/\b(?:run|start|launch|do)\b/.test(lowerCmd) && /\bpassing\b/.test(lowerCmd) && /\bdiag(?:nostic|notic|nostic|noistic|nosic)?\b/.test(lowerCmd))
-        || (/\b(?:run|start|launch|do)\b/.test(lowerCmd) && /\bperson\b/.test(lowerCmd) && /\bdiag(?:nostic|notic|nostic|noistic|nosic)?\b/.test(lowerCmd))
-    );
-    if (runSelfDiagnosticCmd) {
-        face.classList.remove('thinking');
-        const result = await runSelfParsingDiagnostic();
-        await quickReply(
-            `Done. Parsing diagnostic finished with ${result.passed} of ${result.total} passing and ${result.failed} failing.`,
-            result.failed ? 'serious' : 'happy'
-        );
-        return;
-    }
+    // --- END POLYPHONY INTERCEPTION ---
+
     const jokeRequest = /^(?:tell\s+me\s+)?(?:a\s+)?joke\s*$|^tell\s+a\s+joke\s*$|^joke\s*$|^make\s+me\s+laugh\s*$|^say\s+(?:a\s+)?joke\s*$|^give\s+me\s+(?:a\s+)?joke\s*$|^another\s+joke\s*$/.test(lowerCmd);
     if (jokeRequest) {
         face.classList.remove('thinking');
@@ -10475,18 +9270,6 @@ async function handleCommand(text) {
             await quickReply(`Size ${Math.round(scale * 100)}%.`, 'happy');
             return;
         }
-        if (systemCmd === 'selfDiagnostic') {
-            const report = await runSelfDiagnosticReport();
-            const learningSummary = getLearningSummary();
-            const noteContent = `${report.noteContent}\n\nBehavioral Profile:\n${learningSummary}`;
-            addNoteItem(noteContent, {
-                source: 'self-diagnostic',
-                title: 'Self Diagnostic Report + Learning Profile'
-            });
-            openNotesPanel('Diagnostic report saved to notes.');
-            await quickReply(report.summary, 'happy', `${report.html}<br><div class="tiny-label">Learning Patterns</div><pre style="white-space:pre-wrap;max-height:160px;overflow:auto;margin:6px 0 0;font-size:0.85em;">${escapeHtml(learningSummary)}</pre>`);
-            return;
-        }
     }
 
     const reminderCancelCmd = getReminderCancelVoiceCommand(cmd);
@@ -10535,33 +9318,25 @@ async function handleCommand(text) {
         return;
     }
 
-    if (state.useBlipNextRouter && shouldTryBlipNextRoute(cmd, state)) {
-        face.classList.remove('thinking');
-        try {
-            const bridged = await blipNextBridge.handle(cmd, state);
-            if (bridged?.handled) {
-                const toolLabel = Array.isArray(bridged.route?.envelope?.tool_targets) && bridged.route.envelope.tool_targets.length
-                    ? bridged.route.envelope.tool_targets.join('+')
-                    : 'blip-next';
-                recordToolOutcome(cmd, toolLabel, 'success');
-                return;
-            }
-        } catch (error) {
-            console.warn('Blip next bridge failed, falling back to legacy routing:', error?.message || error);
-        }
-    }
-
     const telegramCmd = getTelegramVoiceCommand(cmd);
     if (telegramCmd) {
         face.classList.remove('thinking');
         try {
-            await telegramFeature.handleVoiceCommand(telegramCmd);
-            recordToolOutcome(cmd, 'telegram', 'success');
+            const nextTelegramCmd = { ...telegramCmd };
+            if (telegramCmd.switchFrom === 'gmail') {
+                const emailDraft = state.gmailComposeDraft || {};
+                const carriedChatId = String(emailDraft.recipientQuery || '').trim();
+                nextTelegramCmd.draft = {
+                    chatId: nextTelegramCmd.draft?.chatId || (carriedChatId && !String(emailDraft.to || '').trim() ? carriedChatId : ''),
+                    text: nextTelegramCmd.draft?.text || String(emailDraft.text || '').trim()
+                };
+                state.pendingEmailReview = null;
+            }
+            await telegramFeature.handleVoiceCommand(nextTelegramCmd);
             return;
         } catch (error) {
             console.warn('Telegram voice command failed:', error?.message || error);
             telegramFeature.updateTelegramAuthUi();
-            recordToolOutcome(cmd, 'telegram', 'failure');
             await quickReply(error?.message || 'Could not handle Telegram right now.', 'sad');
             return;
         }
@@ -10606,41 +9381,13 @@ async function handleCommand(text) {
         || hasRecentGmailSend
     );
 
-    const hasVoiceTelegramDraft = !!String(state.telegramDraft?.text || '').trim();
-    const shouldHandleTelegramDraftVoice = !telegramCmd && (
-        state.pendingTelegramReview
-        || (state.currentSidePanelAction === 'telegram' && hasVoiceTelegramDraft)
-    );
-
-    // Telegram review (e.g. note ready — "say send") must win over Gmail draft follow-up for bare "send",
-    // otherwise a leftover email draft or inbox focus steals the command.
-    if (shouldHandleTelegramDraftVoice) {
-        face.classList.remove('thinking');
-        try {
-            const handled = await telegramFeature.handlePendingVoiceFollowUp(cmd);
-            if (handled) {
-                recordToolOutcome(cmd, 'telegram', 'success');
-                return;
-            }
-        } catch (error) {
-            console.warn('Telegram draft follow-up failed:', error?.message || error);
-            recordToolOutcome(cmd, 'telegram', 'failure');
-            await quickReply(error?.message || 'Could not update that Telegram draft right now.', 'sad');
-            return;
-        }
-    }
-
     if (shouldHandleEmailDraftVoice) {
         face.classList.remove('thinking');
         try {
             const handled = await emailFeature.handlePendingVoiceFollowUp(cmd);
-            if (handled) {
-                recordToolOutcome(cmd, 'gmail', 'success');
-                return;
-            }
+            if (handled) return;
         } catch (error) {
             console.warn('Email draft follow-up failed:', error?.message || error);
-            recordToolOutcome(cmd, 'gmail', 'failure');
             await quickReply(error?.message || 'Could not update that email draft right now.', 'sad');
             return;
         }
@@ -10650,82 +9397,31 @@ async function handleCommand(text) {
         face.classList.remove('thinking');
         try {
             await emailFeature.handleVoiceCommand(gmailCmd);
-            recordToolOutcome(cmd, 'gmail', 'success');
             return;
         } catch (error) {
             console.warn('Gmail voice command failed:', error?.message || error);
             emailFeature.updateGmailAuthUi();
-            recordToolOutcome(cmd, 'gmail', 'failure');
             await quickReply(error?.message || 'Could not handle Gmail right now.', 'sad');
             return;
         }
     }
-    const deduceLikelyToolIntent = (() => {
-        if (learningHint?.tool && Number(learningHint.confidence || 0) >= 0.65) {
-            return {
-                tool: learningHint.tool,
-                confidence: learningHint.confidence,
-                learned: true,
-                clarifyFirst: Boolean(learningHint.clarifyFirst)
-            };
-        }
-        const lower = String(cmd || '').toLowerCase();
-        if (!lower) return null;
-        const hasActionVerb = /\b(send|share|open|show|play|set|start|stop|close|write|compose|search)\b/.test(lower);
-        if (!hasActionVerb) return null;
 
-        const toolHints = [
-            { tool: 'telegram', re: /\btelegram\b/ },
-            { tool: 'gmail', re: /\b(gmail|email|mail|inbox)\b/ },
-            { tool: 'calendar', re: /\b(calendar|agenda|schedule|event)\b/ },
-            { tool: 'notes', re: /\b(note|notes)\b/ },
-            { tool: 'youtube', re: /\b(youtube|video|music)\b/ },
-            { tool: 'photos', re: /\b(photo|photos|picture|image|snapshot|shot)\b/ },
-            { tool: 'timer', re: /\b(timer|countdown|alarm)\b/ },
-            { tool: 'chat', re: /\bchat\b/ }
-        ];
-        const matched = toolHints.find((hint) => hint.re.test(lower));
-        if (!matched) return null;
+    const hasVoiceTelegramDraft = !!String(state.telegramDraft?.text || '').trim();
+    const shouldHandleTelegramDraftVoice = !telegramCmd && (
+        state.pendingTelegramReview
+        || (state.currentSidePanelAction === 'telegram' && hasVoiceTelegramDraft)
+    );
 
-        // Confidence bump when verb + object both present.
-        const hasObjectWord = /\b(photo|video|message|note|event|timer|link|email)\b/.test(lower);
-        return {
-            tool: matched.tool,
-            confidence: hasObjectWord ? 0.78 : 0.62
-        };
-    })();
-
-    if (deduceLikelyToolIntent?.tool === 'telegram') {
+    if (shouldHandleTelegramDraftVoice) {
         face.classList.remove('thinking');
-        await quickReply(
-            'I could not parse that Telegram command exactly, but most likely you want to share via Telegram. Try: "send latest photo on telegram", "send this link to telegram", or "send telegram message ...".',
-            'sad'
-        );
-        return;
-    }
-    if (deduceLikelyToolIntent?.confidence >= 0.7) {
-        face.classList.remove('thinking');
-        const tool = deduceLikelyToolIntent.tool;
-        const toolLabel = tool === 'gmail' ? 'Gmail' : tool.charAt(0).toUpperCase() + tool.slice(1);
-        
-        // If confidence is very high, just trigger it instead of nagging.
-        if (deduceLikelyToolIntent.confidence >= 0.75) {
-            if (tool === 'gmail') return handleCommand('compose email');
-            if (tool === 'telegram') return handleCommand('share on telegram');
-            if (tool === 'youtube') return handleCommand('open youtube');
-            if (tool === 'calendar') return handleCommand('show calendar');
-            if (tool === 'notes') return handleCommand('show notes');
-            if (tool === 'photos') return handleCommand('show photos');
-            if (tool === 'timer') return handleCommand('set timer');
+        try {
+            const handled = await telegramFeature.handlePendingVoiceFollowUp(cmd);
+            if (handled) return;
+        } catch (error) {
+            console.warn('Telegram draft follow-up failed:', error?.message || error);
+            await quickReply(error?.message || 'Could not update that Telegram draft right now.', 'sad');
+            return;
         }
-
-        await quickReply(
-            deduceLikelyToolIntent.learned
-                ? `I learned that this usually means ${toolLabel}. Please say it one more time in a direct format so I can execute it safely.`
-                : `I think you mean ${toolLabel}. Please say it one more time in a direct format so I can execute it safely.`,
-            'sad'
-        );
-        return;
     }
 
     const learningGamesCmd = getLearningGamesVoiceCommand(cmd);
@@ -10836,7 +9532,7 @@ async function handleCommand(text) {
         transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${message}`;
         state.history.push({ user: cmd, blip: message });
         if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+        try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
         await speakWithGuard(message, personaKey);
         resumeListeningAfterEmotionShowcase(80);
         return;
@@ -10868,8 +9564,6 @@ async function handleCommand(text) {
     // Visual state: Start Thinking
     face.classList.remove('listening');
     face.classList.add('thinking');
-
-    updateDevBrainBanner({ thinking: true });
 
     try {
         const images = state.pendingImage ? [state.pendingImage] : [];
@@ -10928,14 +9622,12 @@ async function handleCommand(text) {
                 }
             }
 
-            replyText = adaptReplyToCompanionMode(replyText);
-
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${replyText}${extraHtml}`;
             state.lastContext.lastUserQuery = cmd;
             if (response.tool_params?.query) state.lastContext.lastSearchTopic = response.tool_params.query;
             state.history.push({ user: cmd, blip: replyText });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
 
             contextAgent.observe({
                 voiceTranscript: cmd,
@@ -10958,7 +9650,40 @@ async function handleCommand(text) {
             if (state.pendingImage) clearPendingImage();
 
             talkBtn.innerText = '🔊 SPEAKING...';
-            await speakWithGuard(replyText, emotion);
+            await speak(replyText, emotion);
+        };
+
+        const syncHybridResponseToUi = async (capsule, cmd) => {
+            const replyText = capsule.response || "I've handled that.";
+            const emotion = capsule.perception.mode || 'happy';
+            
+            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${replyText}`;
+            state.lastContext.lastUserQuery = cmd;
+            state.history.push({ user: cmd, blip: replyText });
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
+
+            contextAgent.observe({
+                voiceTranscript: cmd,
+                lastBlipReply: replyText,
+                hasCameraImage: !!state.pendingImage,
+                isLiveWatch: state.isLiveWatch,
+                timers: state.timers,
+                screenMode: state.currentMode,
+                recentQuestions: state.history
+            });
+            const decision = contextAgent.decide();
+            applyContextDecision(decision);
+
+            face.classList.remove('thinking', 'despair');
+            setBlipEmotion(emotion);
+            setEmotion(emotion);
+            setPersona(getReplyPersonaKey(emotion));
+            
+            if (state.pendingImage) clearPendingImage();
+
+            talkBtn.innerText = '🔊 SPEAKING...';
+            await speak(replyText, emotion);
         };
 
         const hubCmd = getHubVoiceCommand(cmd);
@@ -11008,6 +9733,60 @@ async function handleCommand(text) {
             } else if (hubCmd.action === 'clear') {
                 const removedCount = clearHub();
                 msg = removedCount ? `Hub cleared. Removed ${removedCount} item${removedCount === 1 ? '' : 's'}.` : 'Hub is already empty.';
+            }
+            if (msg) {
+                await quickReply(msg, 'happy');
+                return;
+            }
+        }
+
+        const studentDeskCmd = getStudentDeskVoiceCommand(cmd);
+        if (studentDeskCmd) {
+            face.classList.remove('thinking');
+            let msg = '';
+            if (studentDeskCmd.action === 'open') {
+                setMode('hub');
+                renderHub();
+                msg = state.hubItems.length ? `Student desk open. ${state.hubItems.length} item${state.hubItems.length === 1 ? '' : 's'}.` : 'Student desk open. Empty.';
+            } else if (studentDeskCmd.action === 'close') {
+                if (state.currentMode === 'hub') setMode('core');
+                msg = 'Student desk closed.';
+            } else if (studentDeskCmd.action === 'review') {
+                setMode('hub');
+                renderHub();
+                if (!state.hubItems.length) {
+                    msg = 'Student desk is empty.';
+                } else {
+                    const latest = state.hubItems[0];
+                    const latestLabel = String(latest?.content || latest?.type || 'item').slice(0, 60);
+                    msg = `Student desk has ${state.hubItems.length} item${state.hubItems.length === 1 ? '' : 's'}. Latest: ${latestLabel}.`;
+                }
+            } else if (studentDeskCmd.action === 'saveCurrent') {
+                if (state.pendingImage || state.currentImage) {
+                    saveCurrentVisionToHub();
+                    msg = 'Saved to student desk.';
+                } else if (state.lastContext?.lastYoutubeUrl) {
+                    addToHub('link', `Video: ${state.lastContext.lastYoutubeQuery || 'YouTube video'}`, { url: state.lastContext.lastYoutubeUrl, source: 'student-desk' });
+                    msg = 'Video saved to student desk.';
+                } else if (state.lastContext?.lastLocation) {
+                    const mapUrl = `https://www.google.com/maps/search/${encodeURIComponent(state.lastContext.lastLocation)}`;
+                    addToHub('link', `Map: ${state.lastContext.lastLocation}`, { url: mapUrl, source: 'student-desk' });
+                    msg = 'Map saved to student desk.';
+                } else {
+                    msg = 'Nothing ready to save to student desk.';
+                }
+            } else if (studentDeskCmd.action === 'saveNote') {
+                addToHub('note', studentDeskCmd.note, { source: 'student-desk' });
+                msg = 'Note saved to student desk.';
+            } else if (studentDeskCmd.action === 'removeLatest') {
+                const removed = removeLatestHubItem();
+                msg = removed ? 'Removed latest student desk item.' : 'Student desk is already empty.';
+            } else if (studentDeskCmd.action === 'removeMatch') {
+                const removed = removeMatchingHubItem(studentDeskCmd.query);
+                msg = removed ? 'Removed matching student desk item.' : 'No matching student desk item found.';
+            } else if (studentDeskCmd.action === 'clear') {
+                const removedCount = clearHub();
+                msg = removedCount ? `Student desk cleared. Removed ${removedCount} item${removedCount === 1 ? '' : 's'}.` : 'Student desk is already empty.';
             }
             if (msg) {
                 await quickReply(msg, 'happy');
@@ -11139,6 +9918,18 @@ async function handleCommand(text) {
         }
 
         // Universal save resolver (map/creation/photo) for commands like "save this".
+        const taskCmd = tryHandleTaskVoiceCommand(cmd, {
+            getUpcomingTimersSorted,
+            setBlipTimer,
+            cancelMatchingScheduledTimer,
+            cancelScheduledTimerById
+        });
+        if (taskCmd.handled) {
+            face.classList.remove('thinking');
+            await quickReply(taskCmd.text || 'Done.', taskCmd.mood || 'happy');
+            return;
+        }
+
         const timerCmd = getDirectTimerVoiceCommand(cmd);
         if (timerCmd) {
             face.classList.remove('thinking');
@@ -11193,7 +9984,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -11202,50 +9993,62 @@ async function handleCommand(text) {
             }
         }
 
-        const webImageQuery = getWebImageLookupVoiceQuery(cmd);
-        if (webImageQuery) {
+        const cameraDesignCmd = getCameraDesignTransferCommand(cmd);
+        if (cameraDesignCmd) {
             face.classList.remove('thinking');
+            setPersona('thinking');
             let msg = '';
-            try {
-                const lookup = await web.getImageLookup(webImageQuery);
-                const imageUrl = String(lookup?.imageUrl || '').trim();
-                if (!imageUrl) {
-                    msg = lookup?.text || `I couldn't find a picture for ${webImageQuery}.`;
-                } else {
-                    openMediaLightbox(imageUrl, null, 'image', MEDIA_BUCKET_SHOTS);
-                    try {
-                        const base64 = await urlToBase64Image(imageUrl);
-                        if (base64) {
-                            state.lastContext.lastYouTubeSnapshot = {
-                                data: base64,
-                                mimeType: 'image/jpeg'
-                            };
-                            state.lastContext.lastYouTubeSnapshotView = createSnapshotViewState();
-                        }
-                    } catch (_) {
-                        // Keep image open even if conversion fails; analysis step will report limitations.
-                    }
-                    state.lastContext.lastSearchTopic = webImageQuery;
-                    msg = lookup?.text || `I found an image for ${webImageQuery}.`;
+            if (!getCurrentPhotoDataUrl()) {
+                const ok = await capturePhotoWhenReady();
+                if (!ok) {
+                    await quickReply('Camera warming up. Try again.', 'serious');
+                    return;
                 }
-            } catch (error) {
-                msg = error?.message || `I couldn't find a picture for ${webImageQuery}.`;
             }
-            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
-            state.history.push({ user: cmd, blip: msg });
-            if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
-            setBlipEmotion('happy');
-            setPersona('happy');
-            talkBtn.innerText = '🔊 SPEAKING...';
-            await speakWithGuard(msg, 'happy');
+
+            const imageUrl = getCurrentPhotoDataUrl();
+            if (!imageUrl) {
+                await quickReply('I do not have a photo ready yet.', 'serious');
+                return;
+            }
+
+            if (cameraDesignCmd.action === 'analyzeHomework') {
+                try {
+                    const analysis = await analyzeHomeworkPhoto(
+                        { data: imageUrl, mimeType: 'image/jpeg' },
+                        cmd,
+                        state.geminiKey,
+                        state.selectedModel
+                    );
+                    msg = analysis.text || 'I looked at the homework photo.';
+                    await quickReply(msg, analysis.emotion || 'curious');
+                    return;
+                } catch (error) {
+                    console.warn('Homework photo analysis failed:', error?.message || error);
+                    await quickReply(error?.message || 'I could not analyze that homework photo.', 'sad');
+                    return;
+                }
+            }
+
+            state.lastContext.lastDesignDataUrl = imageUrl;
+            state.lastContext.lastDesignPrompt = cameraDesignCmd.title || 'Camera Photo';
+            closeAuxiliaryPanelsForDesign();
+            renderActionInSidePanel({
+                action: 'design',
+                tool_params: {
+                    dataUrl: imageUrl,
+                    source: 'camera',
+                    prompt: cameraDesignCmd.title || 'Camera Photo'
+                },
+                text: 'Photo moved to design.'
+            });
+            msg = 'Photo moved to design.';
+            await quickReply(msg, 'happy');
             return;
         }
 
         // Voice shortcuts: camera controls (open/close/snap) should not depend on model interpretation.
-        const wantsYouTubeSnapshot = isYouTubeSnapshotIntent(cmd)
-            && (isYouTubePanelActuallyVisible() || !!state.lastContext?.lastYoutubeUrl);
-        const cameraCmd = wantsYouTubeSnapshot ? null : getCameraVoiceCommand(cmd);
+        const cameraCmd = getCameraVoiceCommand(cmd);
         if (cameraCmd) {
             face.classList.remove('thinking');
             let msg = '';
@@ -11298,7 +10101,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -11401,7 +10204,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -11415,11 +10218,11 @@ async function handleCommand(text) {
             face.classList.remove('thinking');
             const lane = state.activeMediaBucket === MEDIA_BUCKET_CREATED ? 'created' : 'shots';
             toggleMediaGallery(true, lane);
-            const recoveryLowerCmd = cmd.toLowerCase();
-            if (/\b(open|expand|zoom)\s+(it|this)\b/.test(recoveryLowerCmd)) {
+            const lowerCmd = cmd.toLowerCase();
+            if (/\b(open|expand|zoom)\s+(it|this)\b/.test(lowerCmd)) {
                 openLatestMediaByBucket(lane === 'created' ? MEDIA_BUCKET_CREATED : MEDIA_BUCKET_SHOTS);
             }
-            const wantsLightbox = /\b(open|expand|zoom)\s+(it|this)\b/.test(recoveryLowerCmd);
+            const wantsLightbox = /\b(open|expand|zoom)\s+(it|this)\b/.test(lowerCmd);
             const msg = getVerifiedOpenMessage({
                 cmd,
                 target: wantsLightbox ? 'media-lightbox' : 'media-strip',
@@ -11429,7 +10232,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -11474,12 +10277,6 @@ async function handleCommand(text) {
             };
             setTimeout(() => chartContainer.classList.remove('reveal'), 700);
             await quickReply('Graph ready. Say "save to media".', 'happy');
-            return;
-        }
-
-        if (/\b(?:purge|clear|clean|empty)\b.*\b(?:hub|memory|strip)\b/.test(lowerCmd)) {
-            const count = clearHub();
-            await quickReply(count > 0 ? `Hub cleared. Removed ${count} items. We are all fresh!` : 'Hub is already empty.', 'happy');
             return;
         }
 
@@ -11569,25 +10366,6 @@ async function handleCommand(text) {
             const autoPlaylist = resolveAutoPlaylistForYouTube(directYouTubeQuery, currentEntry);
             saveCurrentYouTubeToPlaylist(autoPlaylist);
             await quickReply('Opening video.', 'happy');
-            return;
-        }
-
-        const genericVideoRequest = isGenericYouTubeVideoRequest(cmd);
-        if (genericVideoRequest) {
-            face.classList.remove('thinking');
-            const fallbackQuery = 'trending videos';
-            if (wantsUnmuteVideo(cmd)) state.pendingYouTubeAction = 'unmute';
-            await actionHandlers.youtube({ text: '', tool_params: { query: fallbackQuery } }, state);
-            const ytUrl = state.lastContext.lastYoutubeUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(fallbackQuery)}`;
-            const embedUrl = state.lastContext.lastYoutubeEmbedUrl || null;
-            const videoId = state.lastContext.lastYoutubeVideoId || null;
-            const searchResults = state.lastContext.lastYoutubeSearchResults || null;
-            renderActionInSidePanel({
-                action: 'youtube',
-                tool_params: { query: fallbackQuery, url: ytUrl, embedUrl, videoId, searchResults },
-                text: 'Opening video.'
-            });
-            await quickReply('Opening a video now. Tell me a topic if you want something specific.', 'happy');
             return;
         }
 
@@ -11890,7 +10668,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${result.message}`;
             state.history.push({ user: cmd, blip: result.message });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
             setBlipEmotion(result.ok ? 'happy' : 'serious');
             setPersona(result.ok ? 'happy' : 'serious');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -11952,7 +10730,7 @@ async function handleCommand(text) {
                     transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                     state.history.push({ user: cmd, blip: msg });
                     if (state.history.length > HISTORY_MAX) state.history.shift();
-                    safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
                     setBlipEmotion('happy');
                     setPersona('happy');
                     talkBtn.innerText = '🔊 SPEAKING...';
@@ -12056,7 +10834,7 @@ async function handleCommand(text) {
                     transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                     state.history.push({ user: cmd, blip: msg });
                     if (state.history.length > HISTORY_MAX) state.history.shift();
-                    safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                    try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
                     setBlipEmotion('happy');
                     setPersona('happy');
                     talkBtn.innerText = '🔊 SPEAKING...';
@@ -12228,7 +11006,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -12425,11 +11203,10 @@ async function handleCommand(text) {
                 state.lastContext.lastSearchTopic = visualExplain.topic;
                 state.lastContext.lastOpenableUrl = `https://www.google.com/search?q=${encodeURIComponent(visualExplain.topic)}`;
             }
-            const textModel = isMiniMaxModel(state.selectedModel) ? 'gemini-2.5-flash' : state.selectedModel;
             const result = await explainWithImage({
                 userText: visualExplain.userText,
-                apiKey: isMiniMaxModel(state.selectedModel) ? state.geminiKey : getActiveTextApiKey(state.selectedModel),
-                textModel,
+                apiKey: state.geminiKey,
+                textModel: state.selectedModel,
                 imagePrompt: visualExplain.imagePrompt,
                 explanationPrompt: visualExplain.explanationPrompt,
                 imageOptions: { model: state.imageModel, imageEngine: state.imageEngine, comfyuiBaseUrl: state.comfyuiBaseUrl, comfyuiCheckpoint: state.comfyuiCheckpoint },
@@ -12669,39 +11446,6 @@ async function handleCommand(text) {
             return;
         }
 
-        const pendingNotesFollowUp = resolvePendingNotesFollowUp(cmd);
-        if (pendingNotesFollowUp) {
-            face.classList.remove('thinking');
-            if (pendingNotesFollowUp.cancelled) {
-                syncNotesPanelIfVisible(pendingNotesFollowUp.message);
-                await quickReply(pendingNotesFollowUp.message, 'happy');
-                return;
-            }
-        if (pendingNotesFollowUp.completed) {
-            const finalDraft = pendingNotesFollowUp.draft;
-            const saved = addNoteItem(buildSavedNoteContent(finalDraft), {
-                source: 'notes-draft',
-                noteType: finalDraft.noteType,
-                title: finalDraft.title,
-                items: finalDraft.items,
-                bodyText: String(finalDraft.bodyText || '').trim()
-            });
-            const hasBodyText = !!String(finalDraft.bodyText || '').trim();
-            const spokenItems = formatSpokenList(finalDraft.items);
-            const message = saved
-                ? (hasBodyText
-                    ? 'Note saved. You can say send this note to email it.'
-                    : `Okay, I saved the ${finalDraft.noteType} called ${finalDraft.title} with ${spokenItems}.`)
-                : 'I could not save that note.';
-            syncNotesPanelIfVisible(message, hasBodyText ? String(finalDraft.bodyText || '') : '');
-            await quickReply(message, 'happy');
-            return;
-        }
-            syncNotesPanelIfVisible(pendingNotesFollowUp.message);
-            await quickReply(pendingNotesFollowUp.message, 'happy');
-            return;
-        }
-
         // Unified panel navigation: picture/video/graph/map.
         const panelCmd = getPanelNavigationVoiceCommand(cmd);
         if (panelCmd) {
@@ -12913,7 +11657,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -12947,7 +11691,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -12964,7 +11708,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -13001,7 +11745,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
             setBlipEmotion(result.ok ? 'happy' : 'serious');
             setPersona(result.ok ? 'happy' : 'serious');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -13028,42 +11772,11 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
             setBlipEmotion(result.ok ? 'happy' : 'serious');
             setPersona(result.ok ? 'happy' : 'serious');
             talkBtn.innerText = '🔊 SPEAKING...';
             await speakWithGuard(msg, result.ok ? 'happy' : 'serious');
-            return;
-        }
-
-        if (isYouTubeSnapshotIntent(cmd)) {
-            face.classList.remove('thinking');
-            const msg = await runYouTubeSnapshotVision(cmd);
-            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
-            state.history.push({ user: cmd, blip: msg });
-            if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
-            setBlipEmotion('happy');
-            setPersona('happy');
-            talkBtn.innerText = '🔊 SPEAKING...';
-            await speakWithGuard(msg, 'happy');
-            return;
-        }
-
-        const snapshotZoomResult = await runYouTubeSnapshotZoomCommand(cmd);
-        if (snapshotZoomResult) {
-            face.classList.remove('thinking');
-            const msg = snapshotZoomResult === '__ANALYZE_ZOOM__'
-                ? await runYouTubeSnapshotVision('analyze this zoomed area')
-                : snapshotZoomResult;
-            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
-            state.history.push({ user: cmd, blip: msg });
-            if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
-            setBlipEmotion('happy');
-            setPersona('happy');
-            talkBtn.innerText = '🔊 SPEAKING...';
-            await speakWithGuard(msg, 'happy');
             return;
         }
 
@@ -13082,27 +11795,41 @@ async function handleCommand(text) {
                 msg = ytCmd === 'videoBig' ? 'Video full.' : 'Video normal.';
             } else if ((ytCmd === 'blipBig' || ytCmd === 'blipSmall') && panelVisible) {
                 state.videoCompanionSize = ytCmd === 'blipBig' ? 'big' : 'mini';
-                safeStorageSet('blip_video_companion_size', state.videoCompanionSize);
+                try { localStorage.setItem('blip_video_companion_size', state.videoCompanionSize); } catch (e) { }
                 if (ytCmd === 'blipBig' && !state.videoBigMode) setVideoBigMode(true);
                 applyVideoCompanionSizing();
                 msg = ytCmd === 'blipBig' ? 'Blip big.' : 'Blip mini.';
             } else if (ytCmd === 'videoBig' || ytCmd === 'videoSmall' || ytCmd === 'blipBig' || ytCmd === 'blipSmall') {
                 msg = 'Open video first.';
             } else if (ytCmd === 'openYouTube' || ytCmd === 'openMusic' || ytCmd === 'openVideos') {
-                // Voice "open youtube" should open the YouTube side panel (library mode),
-                // not the media gallery/strip.
-                const nextView = ytCmd === 'openVideos' ? 'Videos' : (ytCmd === 'openMusic' ? 'Music' : state.youtubeLibraryView || 'Music');
-                state.youtubeLibraryView = normalizeYouTubeLibraryView(nextView);
-                state.youtubeLibraryBrowseIndex = 0;
-                        safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
-
-                renderActionInSidePanel({
-                    action: 'youtube',
-                    tool_params: { query: state.youtubeLibraryView, libraryOnly: true },
-                    text: 'Opening YouTube library.'
-                });
-
-                msg = `YouTube (${state.youtubeLibraryView}) open.`;
+                if (ytCmd === 'openVideos') {
+                    const activeView = openSavedMediaLane('Videos');
+                    msg = getVerifiedOpenMessage({
+                        cmd,
+                        target: 'media-strip',
+                        visible: isMediaStripActuallyVisible(),
+                        successMessage: `${activeView} open.`,
+                        details: { lane: 'videos' }
+                    });
+                } else if (ytCmd === 'openMusic') {
+                    const activeView = openSavedMediaLane('Music');
+                    msg = getVerifiedOpenMessage({
+                        cmd,
+                        target: 'media-strip',
+                        visible: isMediaStripActuallyVisible(),
+                        successMessage: `${activeView} open.`,
+                        details: { lane: 'music' }
+                    });
+                } else {
+                    toggleMediaGallery(true, 'all');
+                    msg = getVerifiedOpenMessage({
+                        cmd,
+                        target: 'media-strip',
+                        visible: isMediaStripActuallyVisible(),
+                        successMessage: 'Media open.',
+                        details: { lane: 'all' }
+                    });
+                }
             } else if (ytCmd === 'close' || ytCmd === 'new') {
                 closeYouTubePanel();
                 if (ytCmd === 'new') {
@@ -13132,7 +11859,7 @@ async function handleCommand(text) {
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
                 state.history.push({ user: cmd, blip: msg });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
                 setBlipEmotion('happy');
                 setPersona('happy');
                 talkBtn.innerText = '🔊 SPEAKING...';
@@ -13176,7 +11903,7 @@ async function handleCommand(text) {
                 state.speechVolume = Math.round(state.speechVolume * 100) / 100;
                 if (speechVolumeInput) speechVolumeInput.value = Math.round(state.speechVolume * 100);
                 if (speechVolumeValue) speechVolumeValue.textContent = Math.round(state.speechVolume * 100) + '%';
-                safeStorageSet('blip_speech_volume', String(state.speechVolume));
+                try { localStorage.setItem('blip_speech_volume', String(state.speechVolume)); } catch (e) { }
                 msg = `Volume ${Math.round(state.speechVolume * 100)}%.`;
             } else {
                 msg = "I didn't catch the volume.";
@@ -13185,7 +11912,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -13208,7 +11935,7 @@ async function handleCommand(text) {
             transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
             state.history.push({ user: cmd, blip: msg });
             if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX))); } catch (e) { }
             setBlipEmotion('happy');
             setPersona('happy');
             talkBtn.innerText = '🔊 SPEAKING...';
@@ -13216,32 +11943,25 @@ async function handleCommand(text) {
             return;
         }
 
-        const taskVoiceResult = tryHandleTaskVoiceCommand(cmd, {
-            now: new Date(),
-            getUpcomingTimersSorted,
-            setBlipTimer,
-            cancelMatchingScheduledTimer
-        });
-        if (taskVoiceResult.handled) {
-            face.classList.remove('thinking');
-            const msg = taskVoiceResult.text || 'OK.';
-            const mood = taskVoiceResult.mood === 'serious' ? 'serious' : 'happy';
-            transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${msg}`;
-            state.history.push({ user: cmd, blip: msg });
-            if (state.history.length > HISTORY_MAX) state.history.shift();
-                safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
-            setBlipEmotion(mood === 'serious' ? 'serious' : 'happy');
-            setPersona(mood === 'serious' ? 'serious' : 'happy');
-            talkBtn.innerText = '🔊 SPEAKING...';
-            await speakWithGuard(msg, mood);
-            return;
+        try {
+            const engineResult = await blipEngine.process(cmd, { source: 'legacy-fallback' });
+            if (
+                engineResult?.ok
+                && Number(engineResult.confidence || 0) > 0.7
+                && engineResult.plan?.executionReady
+            ) {
+                await quickReply(engineResult.text || 'Done.', 'happy');
+                return;
+            }
+        } catch (engineError) {
+            console.warn('Blip engine fallback failed:', engineError?.message || engineError);
         }
 
         const reasoningContext = {
             message: cmd,
             history: state.history,
             images,
-            apiKey: getActiveTextApiKey(state.selectedModel),
+            apiKey: state.geminiKey,
             model: state.selectedModel,
             mode: '',
             lastMode: state.currentMode,
@@ -13259,22 +11979,24 @@ async function handleCommand(text) {
                 voiceEngine: state.voiceEngine || ''
             }
         };
-        let reasoningRoute = classifyReasoningMode(cmd, reasoningContext);
-        if (isMiniMaxModel(state.selectedModel)) {
-            reasoningRoute = {
-                ...reasoningRoute,
-                mode: 'fast',
-                reason: 'MiniMax quick mode',
-                reasonCodes: [],
-            };
-        }
+        const reasoningRoute = classifyReasoningMode(cmd, reasoningContext);
         console.info(`[Blip Reasoning] brain=${reasoningRoute.mode} reason=${reasoningRoute.reason}`);
 
-        updateDevBrainBanner({
-            thinking: true,
-            reasoningMode: reasoningRoute.mode,
-            reason: reasoningRoute.reason
-        });
+        // ── HYBRID BRAIN (POLYPHONY V2) ──
+        if (v2_brain_enabled) {
+            try {
+                console.log(`[HybridBrain] Attempting agentic flow for: "${cmd}"`);
+                const capsule = await polyphony.process(cmd);
+                
+                if (capsule.status === 'completed' && capsule.plan.length > 0) {
+                    console.log(`[HybridBrain] Success! Generated ${capsule.plan.length} steps.`);
+                    await syncHybridResponseToUi(capsule, cmd);
+                    return;
+                }
+            } catch (e) {
+                console.error(`[HybridBrain] Failure:`, e);
+            }
+        }
 
         if (reasoningRoute.mode === 'fast') {
             const fastResponse = await runFastReasoning(cmd, {
@@ -13311,13 +12033,13 @@ async function handleCommand(text) {
                 setPersona("thinking");
                 face.classList.add("thinking");
 
-                const answer = await reasoningLoop(cmd, getActiveTextApiKey(state.selectedModel), state.selectedModel);
+                const answer = await reasoningLoop(cmd, state.geminiKey);
 
                 face.classList.remove("thinking");
                 setPersona("happy");
 
                 const displayTextRaw = typeof answer === "string" ? answer : (answer?.text || JSON.stringify(answer, null, 2));
-                const displayText = adaptReplyToCompanionMode(toCompactReply(displayTextRaw, BLIP_REPLY_MAX_WORDS));
+                const displayText = toCompactReply(displayTextRaw, BLIP_REPLY_MAX_WORDS);
                 const extraHtml = `<br><a href="https://www.google.com/search?q=${encodeURIComponent(cmd)}" target="_blank" class="action-link blue">🔍 SEARCH ON GOOGLE</a>`;
                 transcriptText.innerHTML = `<b>You:</b> ${cmd}<br><b>Blip:</b> ${displayText}${extraHtml}`;
                 state.lastContext.lastUserQuery = cmd;
@@ -13325,7 +12047,7 @@ async function handleCommand(text) {
                 state.history.push({ user: cmd, blip: displayText });
                 if (state.history.length > HISTORY_MAX) state.history.shift();
                 try {
-                    safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+                    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX)));
                 } catch (e) { /* quota or private */ }
 
                 spawnSymbol("brain");
@@ -13358,7 +12080,7 @@ Preferred tools: ${deepReasoning.preferredActions.join(', ') || 'chat'}.
 
 `;
         const reviewedRequest = deepReasoning.reviewedMessage || cmd;
-        const intentPrompt = `${contextBlock}${deepReasoningBlock}${getCompanionPromptBlock()}You are the Intent Interpreter.
+        const intentPrompt = `${contextBlock}${deepReasoningBlock}You are the Intent Interpreter.
 Analyze the user's latest request: "${reviewedRequest}".
 Use the context above and conversation history so that "another graph", "that place", "same" etc. refer to the last topic (e.g. same city, same chart subject).
 
@@ -13368,7 +12090,7 @@ Return a simple JSON object: {
   "entities": ["entity1", "entity2"]
 }`;
 
-        const intentResponse = await askGemini(intentPrompt, state.history, [], getActiveTextApiKey(state.selectedModel), state.selectedModel);
+        const intentResponse = await askGemini(intentPrompt, state.history, [], state.geminiKey, state.selectedModel);
         let intent = extractJSON(intentResponse.rawResponse) || { actions: [intentResponse.action || 'chat'], query: cmd, entities: [] };
         const fallbackIntentAction = intent.action || intentResponse.action || 'chat';
         if (Array.isArray(intent.actions)) {
@@ -13392,7 +12114,7 @@ Return a simple JSON object: {
             .map((e) => String(e || '').trim())
             .filter(Boolean);
 
-        const reasoningLowerCmd = cmd.toLowerCase();
+        const lowerCmd = cmd.toLowerCase();
         const isLookForIt = /\b(look for it|search for it|find it|get it|look it up|go find|go look|just search|then search)\b/i.test(cmd);
         if (isLookForIt && state.lastContext.lastSearchTopic) {
             intent.query = state.lastContext.lastSearchTopic;
@@ -13411,8 +12133,8 @@ Return a simple JSON object: {
 
         // Optimization: Skip research for pure chat/none or extremely short inputs (unless "look for it")
         const isPureChat = !isLookForIt && intent.actions.every(a => a === 'chat' || a === 'none' || a === 'time');
-        const wantsChart = intent.actions.includes('chart') || reasoningLowerCmd.includes('graph') || reasoningLowerCmd.includes('chart');
-        const wantsPopulation = reasoningLowerCmd.includes('population') || reasoningLowerCmd.includes('demographic') || reasoningLowerCmd.includes('men') || reasoningLowerCmd.includes('women') || reasoningLowerCmd.includes('male') || reasoningLowerCmd.includes('female');
+        const wantsChart = intent.actions.includes('chart') || lowerCmd.includes('graph') || lowerCmd.includes('chart');
+        const wantsPopulation = lowerCmd.includes('population') || lowerCmd.includes('demographic') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('male') || lowerCmd.includes('female');
         const hasNumbers = /\d/.test(cmd);
         const isLocalNumericChart = wantsChart && hasNumbers && !wantsPopulation;
 
@@ -13425,7 +12147,7 @@ Return a simple JSON object: {
                 const lastTopicWantsData = /population|demographic|men|women|stat|graph|chart/i.test(lastTopic);
                 const runDataResearch = wantsPopulation || (wantsChart && (lowerCmd.includes('population') || lowerCmd.includes('men') || lowerCmd.includes('women') || lowerCmd.includes('demographic') || lowerCmd.includes('stat') || lowerCmd.includes('data'))) || (isLookForIt && lastTopicWantsData);
                 if (runDataResearch) {
-                    const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || [], getActiveTextApiKey(state.selectedModel), state.selectedModel);
+                    const research = await web.deepDemographicSearch(intent.query || cmd, intent.entities || [], state.geminiKey);
                     evidence += (research?.text != null ? String(research.text) : '') + "\n";
                     const searchQuery = (intent.query || cmd).replace(/\b(graph|chart|make me a)\b/gi, '').trim() || intent.query || cmd;
                     const standardResult = await actionHandlers.search({ tool_params: { query: searchQuery } }, state);
@@ -13464,7 +12186,7 @@ Return a simple JSON object: {
         console.log("✍️ Step 3: Synthesizing Final Answer");
         const synthesisContextBlock = getContextBlock();
         const valuesLine = BLIP_VALUES.slice(0, 3).join(', ');
-        const synthesisPrompt = `${synthesisContextBlock}${getCompanionPromptBlock()}You are Blip.
+        const synthesisPrompt = `${synthesisContextBlock}You are Blip.
 Deep reasoning review:
 - Original request: "${cmd}"
 - Reviewed request: "${deepReasoning.reviewedMessage || cmd}"
@@ -13508,10 +12230,7 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
             synthesisResponse = { emotion: 'happy', text: finalReplyPlain };
             setBlipEmotion('happy');
         } else {
-            const useGeminiVisionFallback = Array.isArray(images) && images.length > 0 && isMiniMaxModel(state.selectedModel);
-            const synthesisApiKey = useGeminiVisionFallback ? state.geminiKey : getActiveTextApiKey(state.selectedModel);
-            const synthesisModel = useGeminiVisionFallback ? 'gemini-2.5-flash' : state.selectedModel;
-            synthesisResponse = await askGemini(synthesisPrompt, state.history, images, synthesisApiKey, synthesisModel);
+            synthesisResponse = await askGemini(synthesisPrompt, state.history, images, state.geminiKey, state.selectedModel);
             setBlipEmotion(synthesisResponse.emotion);
             synthData = extractJSON(synthesisResponse.rawResponse);
             let conclusion = synthData?.conclusion || synthData?.text || synthesisResponse.text;
@@ -13521,8 +12240,8 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
                 else if (parsedConclusion?.conclusion) conclusion = parsedConclusion.conclusion;
             }
             const compactConclusion = sanitizeBlipReplyText(toCompactReply(conclusion, BLIP_REPLY_MAX_WORDS));
-            finalReply = adaptReplyToCompanionMode(compactConclusion);
-            finalReplyPlain = finalReply;
+            finalReply = compactConclusion;
+            finalReplyPlain = compactConclusion;
         }
 
         // Auto-Chart Rendering: from model or fallback from evidence (V4.3.12)
@@ -13617,7 +12336,7 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
         state.history.push({ user: cmd, blip: finalReplyPlain });
         if (state.history.length > HISTORY_MAX) state.history.shift();
         try {
-            safeStorageSet(HISTORY_STORAGE_KEY, state.history.slice(-HISTORY_PERSIST_MAX));
+            localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.history.slice(-HISTORY_PERSIST_MAX)));
         } catch (e) { /* quota or private */ }
 
         // BlipContextAgent: observe real signals, decide mode/tone/action, apply
@@ -13664,9 +12383,7 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
         let errorMsg = "I'm sorry, I'm having trouble connecting to my brain.";
 
         // Handle specific "model not found" errors
-        if (isMiniMaxModel(state.selectedModel)) {
-            errorMsg = `MiniMax Brain Error: ${error.message}`;
-        } else if (state.selectedModel.startsWith('gemini')) {
+        if (state.selectedModel.startsWith('gemini')) {
             errorMsg = `Gemini Brain Error: ${error.message}`;
         } else if (error.message.includes('not found') || error.message.includes('pull') || error.message.includes('llava')) {
             errorMsg = "I can't see yet because my vision model is still downloading! Please wait a moment.";
@@ -13683,7 +12400,6 @@ PERSONA: Calm, warm, quietly curious, and practical.`;
         document.body.classList.remove('thinking-mode');
         face.classList.remove('thinking');
         talkBtn.classList.remove('thinking');
-        updateDevBrainBanner({ thinking: false });
         if (state.isActive) {
             startListeningLoop();
         } else {
@@ -15174,7 +13890,16 @@ function getCalendarAgendaVoiceRequest(cmd) {
     const directCalendarOpenIntent = /^(?:can you\s+)?(?:please\s+)?open\s+(?:(?:my|the)\s+)?(?:calendar|schedule|agenda|events?)$/.test(lower);
     const conversationalCalendarOpenIntent = /\b(?:open|show|view|check)\b[\s\w]{0,24}\b(?:calendar|schedule|agenda|events?)\b/.test(lower);
     const explicitViewMatch = lower.match(/\b(day|week|month)\s+view\b/);
-    const directDateOpenIntent = /\b(show|display|view)\b/.test(lower) && (Boolean(parseCalendarDayNumberFromText(lower)) || Boolean(parseMonthDayReferenceFromText(lower)));
+    const calendarVoiceDateReference = parseCalendarVoiceDateReference(lower, {
+        referenceDate: getCalendarReferenceDate()
+    });
+    const hasDateReference = Boolean(
+        calendarVoiceDateReference
+        || parseCalendarDayNumberFromText(lower)
+        || parseMonthDayReferenceFromText(lower)
+        || parseVoiceDateFromText(lower)
+    );
+    const directDateOpenIntent = /\b(?:show|display|view|what(?:'s| is)|list|tell me|give me|see|check)\b/.test(lower) && hasDateReference;
     if (!hasCalendarIntent && !explicitViewMatch && !directDateOpenIntent && !directCalendarOpenIntent && !conversationalCalendarOpenIntent) return null;
     if (!explicitViewMatch && !directCalendarOpenIntent && !conversationalCalendarOpenIntent && !/\b(open|show|display|view|what(?:'s| is)|list|tell me|give me|see|check|my)\b/.test(lower)) return null;
 
@@ -15188,7 +13913,7 @@ function getCalendarAgendaVoiceRequest(cmd) {
     monthEnd.setDate(monthEnd.getDate() + 30);
     const requestedView = explicitViewMatch?.[1] || (/\bmonth\b/.test(lower) ? 'month' : /\bday\b/.test(lower) ? 'day' : /\bweek\b/.test(lower) ? 'week' : '');
     const requestedDay = parseDayOnlyRange(lower);
-    const explicitCommandDate = getCalendarDateFromCommand(lower, state.activeCalendarViewRequest || { anchorDate: state.calendarAnchorDate });
+    const explicitCommandDate = calendarVoiceDateReference || getCalendarDateFromCommand(lower, state.activeCalendarViewRequest || { anchorDate: state.calendarAnchorDate });
 
     if (!explicitViewMatch && explicitCommandDate && /\b(show|display|view)\b/.test(lower) && !(/\bweek\b|\bmonth\b/.test(lower))) {
         const anchor = startOfCalendarDay(explicitCommandDate);
@@ -16604,6 +15329,7 @@ function getDirectSaveVoiceCommand(cmd) {
     if (isPronounSave) {
         if (state.currentMode === 'map' || mapFrame?.src || state.lastContext?.lastLocation) return 'saveMap';
         if (state.currentMode === 'chart') return 'saveCreation';
+        if (typeof state.lastContext?.lastDesignDataUrl === 'string' && state.lastContext.lastDesignDataUrl.startsWith('data:image/')) return 'saveCreation';
         if (canSaveCurrentImageFromPanel()) return 'savePhoto';
         const sidePanel = document.getElementById('blip-side-panel');
         if (sidePanel && sidePanel.style.display !== 'none') return 'saveCreation';
@@ -16763,8 +15489,6 @@ function getDirectYouTubeVoiceQuery(cmd) {
     if (controlOnly.test(lower) && !/\b(about|of|for|on)\b/.test(lower)) return null;
 
     const patterns = [
-        // e.g. "open youtube with yo-yo ma"
-        /^(?:please\s+)?(?:open|show|watch|play)\s+(?:the\s+)?youtube\s+(?:with|about|for|of|on)?\s+(.+)$/,
         /^(?:find|search|look(?:\s+for)?|play|open|show|watch)\s+(?:me\s+)?(?:a\s+)?(?:youtube\s+)?video\s+(?:about|of|for|on)\s+(.+)$/,
         /\b(?:youtube|yt|video)\s+(?:about|of|for|on)\s+(.+)$/,
         /^(?:play|watch|show|open)\s+(.+?)\s+on\s+(?:youtube|yt)\b/,
@@ -16777,24 +15501,12 @@ function getDirectYouTubeVoiceQuery(cmd) {
             .replace(/\b(?:and|then)\s+(?:un\s*-?\s*mute|sound\s+on|audio\s+on)\b[\s\S]*$/i, '')
             .replace(/\b(?:with\s+)?sound\s+on\b[\s\S]*$/i, '')
             .trim();
-        let query = sanitizeVoiceQuery(cleaned);
-        // Often STT captures leading "with/about/for/of/on" as part of the query.
-        query = String(query || '').replace(/^(?:with|about|for|of|on)\s+/i, '').trim();
+        const query = sanitizeVoiceQuery(cleaned);
         if (!query) continue;
         if (/^(?:video|youtube|yt|it|something|anything|please|thanks|thank you)$/.test(query)) continue;
         return query;
     }
     return null;
-}
-
-function isGenericYouTubeVideoRequest(cmd) {
-    if (!cmd || typeof cmd !== 'string') return false;
-    const lower = sanitizeVoiceQuery(normalizeVoiceTokens(cmd));
-    if (!lower) return false;
-    if (!/\b(video|youtube|yt)\b/.test(lower)) return false;
-    if (/\babout|of|for|on\b/.test(lower)) return false;
-    if (/\b(mute|unmute|pause|resume|stop|rewind|forward|skip|next|restart|close|hide|dismiss|volume|fullscreen|full\s*screen|bigger|smaller)\b/.test(lower)) return false;
-    return /\b(play|open|show|find|search|watch|want|need|asking|ask)\b/.test(lower);
 }
 
 /** Parse quick local numeric chart requests, e.g. "chart apples 10 pears 30". */
@@ -16897,13 +15609,11 @@ function getDirectImageLookupRequest(cmd) {
     if (/\b(?:last|latest|current|my\s+last|my\s+latest|this)\s+(?:picture|photo|image|portrait|snapshot|shot)\b/.test(lower)) {
         return null;
     }
-    const descriptor = '(?:[a-z0-9-]+\\s+){0,4}';
     const patterns = [
-        new RegExp(`^(?:can\\s+you\\s+)?(?:show|find|get|open|search|look)\\s+(?:me\\s+)?(?:for\\s+)?(?:a|an)?\\s*${descriptor}(?:picture|photo|image|portrait)\\s+(?:of|for)\\s+(.+)$`),
+        /^(?:can\s+you\s+)?(?:show|find|get|open)\s+(?:me\s+)?(?:a|an)?\s*(?:picture|photo|image|portrait)\s+(?:of|for)\s+(.+)$/,
         /^(?:can\s+you\s+)?(?:show|find|get|open)\s+(?:me\s+)?(.+?)'?s\s+(?:picture|photo|image|portrait)$/,
         /^(?:can\s+you\s+)?(?:show|find|get|open)\s+(?:me\s+)?(.+?)\s+(?:picture|photo|image|portrait)$/ ,
         /^(?:i\s+want\s+to\s+see|let\s+me\s+see)\s+(?:a|an)?\s*(?:picture|photo|image)\s+(?:of|for)\s+(.+)$/,
-        /^(?:search|look)\s+(?:for\s+)?(?:a|an)?\s*(?:picture|photo|image)\s+(?:of|for)\s+(.+)$/,
         /^(?:who\s+is|what\s+does)\s+(.+?)\s+look\s+like$/
     ];
     for (const pattern of patterns) {
@@ -16962,17 +15672,6 @@ function getSystemVoiceCommand(cmd) {
     const systemCandidate = stripped.replace(/^play\s+/, '').trim();
     const sleepPhrase = '(?:go\\s+back\\s+to\\s+sleep|go\\s+to\\s+sleep)';
     const condensedSleep = systemCandidate.replace(/\bsleep\b/g, 'sleep').replace(/\s+/g, ' ').trim();
-    // Match "self-diagnostic" and "self diagnostic" (hyphen was breaking the old regex).
-    // Also treat "… and make a note" as part of the same utterance.
-    const selfDiagnosticIntent =
-        (!/\b(?:don'?t|do\s+not|never|skip)\s+.*\bself[\s-]*diagnostic\b/.test(trimmed)
-            && (
-                /\bself[\s-]*diagnostic\b/.test(trimmed)
-                || /\b(?:tools?|system)\s*health\s*check\b/.test(trimmed)
-                || /\bdiagnos(?:e|is)\s+(?:tools?|system|blip)\b/.test(trimmed)
-            ))
-        || /^(?:run\s+)?(?:a\s+)?(?:self|system|tools?)[\s-]*(?:diagnostic|health\s*check|check)\b/.test(stripped)
-        || /^(?:can|could|would|please)\s+you\s+(?:run|do)\s+(?:a\s+)?(?:self|system|tools?)[\s-]*(?:diagnostic|health\s*check)\b/.test(trimmed);
     const wantsScrollDown =
         /\bscroll\b[\s\w]{0,28}\bdown\b/.test(trimmed) ||
         /\b(?:go|move|page)\s+down\b/.test(trimmed) ||
@@ -17021,7 +15720,6 @@ function getSystemVoiceCommand(cmd) {
     if (closeAlertIntent) return 'closeAlert';
     if (stopScrollIntent) return 'stopScroll';
     if (wakeIntent) return 'wake';
-    if (selfDiagnosticIntent) return 'selfDiagnostic';
     if (/^(?:sleep|sleep\s+blip|blip\s+sleep)$/.test(stripped)) return 'sleepHelp';
     if (sleepIntent || sleepPromptIntent || politeSleepIntent || embeddedSleepIntent) return 'sleep';
     if (wantsScrollDown && !wantsScrollUp) return 'scrollDown';
@@ -17065,65 +15763,6 @@ function getCameraVoiceCommand(cmd) {
     if (stopRecordIntentRe.test(lower)) return 'videoStop';
     if (/\b(save|store|keep)\s+(this\s+)?(photo|picture|pic|image|shot|snapshot)\b/.test(lower)) return 'save';
     return null;
-}
-
-function getWebImageLookupVoiceQuery(cmd) {
-    if (!cmd || typeof cmd !== 'string') return '';
-    const lower = normalizeVoiceTokens(cmd);
-    const descriptor = '(?:[a-z0-9-]+\\s+){0,3}';
-    const match = lower.match(new RegExp(`^(?:look|search|find|show|open)\\s+(?:for\\s+)?(?:an?\\s+)?${descriptor}(?:image|picture|photo)\\s+(?:of|for)\\s+(.+)$`))
-        || lower.match(new RegExp(`^(?:can\\s+you\\s+)?(?:please\\s+)?(?:find|search|look)\\s+(?:me\\s+)?(?:another\\s+)?(?:an?\\s+)?${descriptor}(?:image|picture|photo)\\s+(?:of|for)\\s+(.+)$`))
-        || lower.match(/^(?:look|search|find)\s+(.+?)\s+(?:image|picture|photo)$/)
-        || lower.match(new RegExp(`^(?:show|open)\\s+me\\s+(?:an?\\s+)?${descriptor}(?:image|picture|photo)\\s+(?:of|for)\\s+(.+)$`))
-        || lower.match(new RegExp(`^(?:look|search|find)\\s+(?:me\\s+)?(?:in|on)\\s+(?:the\\s+)?(?:internet|web|online)\\s+(?:an?\\s+)?${descriptor}(?:image|picture|photo)\\s+(?:of|for)\\s+(.+)$`));
-    return String(match?.[1] || '').trim();
-}
-
-async function urlToBase64Image(url = '') {
-    const src = String(url || '').trim();
-    if (!src) return '';
-    const res = await fetch(src, { cache: 'no-store' });
-    if (!res.ok) throw new Error('Could not load the image source.');
-    const blob = await res.blob();
-    return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = () => reject(new Error('Could not read image data.'));
-        reader.onload = () => {
-            const dataUrl = String(reader.result || '');
-            const b64 = dataUrl.replace(/^data:[\w/+.-]+;base64,/, '').trim();
-            resolve(b64);
-        };
-        reader.readAsDataURL(blob);
-    });
-}
-
-async function ensureSnapshotFromActiveLightboxImage() {
-    if (state.lastContext.lastYouTubeSnapshot?.data) return true;
-    const src = getActiveMediaLightboxImageUrl();
-    if (!src) return false;
-    try {
-        const base64 = await urlToBase64Image(src);
-        if (!base64) return false;
-        state.lastContext.lastYouTubeSnapshot = { data: base64, mimeType: 'image/jpeg' };
-        state.lastContext.lastYouTubeSnapshotView = createSnapshotViewState();
-        return true;
-    } catch (_) {
-        return false;
-    }
-}
-
-async function applySnapshotZoomStep() {
-    const ready = await ensureSnapshotFromActiveLightboxImage();
-    if (!ready) return { ok: false, text: 'Open an image first so I can zoom it.' };
-    const prev = createSnapshotViewState(state.lastContext.lastYouTubeSnapshotView);
-    const atMax = prev.zoom >= 4.95;
-    const next = updateSnapshotViewState(prev, atMax ? 'zoomReset' : 'zoomIn');
-    state.lastContext.lastYouTubeSnapshotView = next;
-    syncMediaLightboxActionButtons();
-    return {
-        ok: true,
-        text: atMax ? 'Snapshot zoom reset.' : `Snapshot zoom ${Math.round(next.zoom * 100)}%.`
-    };
 }
 
 function getSettingsVoiceCommand(cmd) {
@@ -17372,7 +16011,6 @@ function getMediaGalleryVoiceCommand(cmd) {
     const lower = normalizeVoiceTokens(cmd);
     if (resolveYouTubeLibraryViewFromVoice(lower)) return null;
     const inPhotosContext = state.isMediaStripOpen && normalizeMediaLane(state.mediaStripLane) === 'shots';
-    const canEditPhoto = inPhotosContext || !!mediaLightbox?.classList?.contains?.('active');
     const photoWordsRe = /\b(?:photos?|fotos?|pictures?|shots?|snapshots?|images?)\b/;
     const ordinalWordsRe = /^(?:latest|last|newest|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)$/;
     const namedPhotoOpenMatch = lower.match(/^(?:open|show|view)\s+(.+)$/);
@@ -17434,7 +16072,7 @@ function getMediaGalleryVoiceCommand(cmd) {
     const rotateLeftRe = /\b(?:rotate|turn)\s+(?:the\s+)?(?:last|latest|current)?\s*(photo|picture|image|snapshot|shot)\s*(?:to\s+the\s+)?left\b|\brotate\s+left\b|^(?:rotate|turn)(?:\s+(?:it|this))?\s+left$/;
     const rotateAgainRe = /\b(?:rotate|turn)\s+(?:it\s+)?again\b|\bone\s+more\s+rotation\b|\brotate\s+(?:it\s+)?one\s+more\s+time\b|\bturn\s+(?:it\s+)?one\s+more\s+time\b/;
     const brightenAgainRe = /\b(?:brighten|brightness)\s+(?:it\s+)?again\b|\bone\s+more\s+brightness\b|\bmake\s+(?:it\s+)?brighter\s+again\b/;
-    const brightenRe = /\b(?:brighten|brightness\s+up|more\s+brightness|lighter|make\s+(?:it|the\s+photo|the\s+picture|the\s+image)\s+brighter)\b|^(?:brighten|brighter|lighter|brightness)$/;
+    const brightenRe = /\b(?:brighten|brightness\s+up|more\s+brightness|lighter|make\s+(?:it|the\s+photo|the\s+picture|the\s+image)\s+brighter|(?:add|increase|up)\s+(?:more\s+|extra\s+|add\s+)?(?:the\s+)?brightness)\b|^(?:brighten|brighter|lighter|brightness|add\s+brightness|increase\s+brightness)$/;
     const darkenRe = /\b(?:darken|less\s+brightness|lower\s+brightness|dimmer|make\s+(?:it|the\s+photo|the\s+picture|the\s+image)\s+darker)\b|^(?:darken|darker|dimmer)$/;
     const undoEditsRe = /\b(?:undo|revert)\s+(?:the\s+)?(?:last\s+)?(?:edit|edits|change|changes)\b|^(?:undo|revert)(?:\s+it)?$/;
     const resetPhotoRe = /\b(?:reset|restore)\s+(?:the\s+)?(?:photo|picture|image|snapshot|shot)(?:\s+edits)?\b|\bgo\s+back\s+to\s+(?:the\s+)?original\b|\boriginal\s+photo\b/;
@@ -17451,7 +16089,6 @@ function getMediaGalleryVoiceCommand(cmd) {
     const deleteLatestRe = new RegExp(`\\b(delete|remove|erase|trash)\\s+(?:the\\s+)?(?:last|latest)\\s+${mediaDeleteNouns}\\b`);
     const deleteCurrentRe = new RegExp(`\\b(delete|remove|erase|trash|clear)\\s+(?:the\\s+)?(?:(?:current|this|that)(?:\\s+one|\\s+item)?(?:\\s+${mediaDeleteNouns})?|(?:current|this|that)\\s+${mediaDeleteNouns})\\b`);
     const clearMediaRe = /\b(delete|remove|erase|trash|clear)\b[\s\w]{0,16}\b(?:all|every|entire|whole)\s+(media|gallery|photos?|fotos?|pictures?|snapshots?|shots?|videos?|clips?)\b/;
-    const clearMediaSimpleRe = /^(?:hey\s+blip\s+)?(?:(?:please|can|could|would|will)\s+you\s+)?(?:please\s+)?(?:delete|remove|erase|trash|clear)\s+(?:my\s+|the\s+)?(?:media|media\s+gallery|photos?|fotos?|pictures?|snapshots?|shots?|videos?|clips?)(?:\s+please)?$/;
     const showThemRe = /\b(show|open|view)\s+(them|those|pictures?|photos?|fotos?|snapshots?|shots)\b/;
     const showCollectionRe = /\b(show|open|view|display)\b(?:\s+me)?(?:\s+the)?(?:\s+(all|any|my|these|those|last))?(?:\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve))?\s+(photos?|fotos?|pictures?|snapshots?|shots?|gallery)\b/;
     const showRecordingsCollectionRe = /\b(show|open|view|display)\b(?:\s+me)?(?:\s+the)?(?:\s+(all|any|my|these|those|last|latest))?\s+(recordings?|video\s+clips?|clips?)\b/;
@@ -17487,26 +16124,21 @@ function getMediaGalleryVoiceCommand(cmd) {
     if (makeLastVideoBigRe.test(lower)) return { action: 'openLatestVideo' };
     if (openRecordingRe.test(lower)) return { action: 'openLatestVideo' };
     if (openVideoRe.test(lower)) return { action: 'openLatestVideo' };
-    // Only allow destructive/transform edits when a photo context is actually open.
-    // This prevents STT noise like "turn it again" from accidentally rotating while the user
-    // is trying to do something else (e.g. Telegram).
-    if (canEditPhoto) {
-        if (rotateLeftRe.test(lower)) return { action: 'rotateCurrentImage', delta: -90 };
-        if (rotateAgainRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
-        if (rotateRightRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
-        if (brightenAgainRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
-        if (brightenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
-        if (darkenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: -0.35 };
-        if (undoEditsRe.test(lower)) return { action: 'undoCurrentImageEdits' };
-        if (resetPhotoRe.test(lower)) return { action: 'resetCurrentImageEdits' };
-        if (cropRe.test(lower)) return { action: 'cropCurrentImageUnsupported' };
-        if (sharePhotoRe.test(lower)) return { action: 'shareCurrentImage' };
-        if (downloadPhotoRe.test(lower)) return { action: 'downloadCurrentImage' };
-        if (wallpaperPhotoRe.test(lower)) return { action: 'wallpaperCurrentImage' };
-    }
+    if (rotateLeftRe.test(lower)) return { action: 'rotateCurrentImage', delta: -90 };
+    if (rotateAgainRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
+    if (rotateRightRe.test(lower)) return { action: 'rotateCurrentImage', delta: 90 };
+    if (brightenAgainRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
+    if (brightenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: 0.35 };
+    if (darkenRe.test(lower)) return { action: 'adjustCurrentImageBrightness', delta: -0.35 };
+    if (undoEditsRe.test(lower)) return { action: 'undoCurrentImageEdits' };
+    if (resetPhotoRe.test(lower)) return { action: 'resetCurrentImageEdits' };
+    if (cropRe.test(lower)) return { action: 'cropCurrentImageUnsupported' };
+    if (sharePhotoRe.test(lower)) return { action: 'shareCurrentImage' };
+    if (downloadPhotoRe.test(lower)) return { action: 'downloadCurrentImage' };
+    if (wallpaperPhotoRe.test(lower)) return { action: 'wallpaperCurrentImage' };
     if (deleteLatestRe.test(lower)) return 'deleteLatest';
     if (deleteCurrentRe.test(lower)) return 'deleteCurrent';
-    if ((clearMediaRe.test(lower) && deleteVerbAnyRe.test(lower)) || clearMediaSimpleRe.test(lower)) return 'clear';
+    if (clearMediaRe.test(lower) && deleteVerbAnyRe.test(lower)) return 'clear';
     if (showThemRe.test(lower)) return 'open';
     if (showCollectionRe.test(lower)) return 'open';
 
@@ -17671,86 +16303,6 @@ function getYouTubeVoiceCommand(cmd) {
     if (/\brewind\b/.test(lower) || /\bgo\s+back\b/.test(lower) || /\breplay\b/.test(lower)) return 'rewind';
     if (/\bforward\b/.test(lower) || /\bskip\s+ahead\b/.test(lower) || /\bfast\s*forward\b/.test(lower) || /\bgo\s+forward\b/.test(lower)) return 'forward';
     return null;
-}
-
-async function runYouTubeSnapshotVision(cmd = '') {
-    let snapshotImage = state.lastContext.lastYouTubeSnapshot || null;
-    if (!snapshotImage) {
-        const lightboxImageSrc = getActiveMediaLightboxImageUrl();
-        if (lightboxImageSrc) {
-            try {
-                const base64 = await urlToBase64Image(lightboxImageSrc);
-                if (base64) {
-                    snapshotImage = { data: base64, mimeType: 'image/jpeg' };
-                    state.lastContext.lastYouTubeSnapshot = snapshotImage;
-                    state.lastContext.lastYouTubeSnapshotView = createSnapshotViewState();
-                }
-            } catch (_) {
-                // Ignore and continue with normal capture path.
-            }
-        }
-    }
-    const hasFreshSnapshotRequest = isYouTubeSnapshotCaptureIntent(cmd);
-    if (hasFreshSnapshotRequest || !snapshotImage) {
-        const capture = captureCurrentYouTubeFrame();
-        if (!capture.ok) {
-            if (capture.code === 'no_video') {
-                if (state.lastContext?.lastYoutubeUrl) {
-                    return 'I found your YouTube video context, but I cannot capture a frame right now. Keep the YouTube panel open and paused, then try again.';
-                }
-                return 'I can’t inspect the video right now because no YouTube video is active.';
-            }
-            if (capture.code === 'cross_origin_blocked') {
-                return capture.message || 'I can’t inspect this frame because the embedded video blocks capture.';
-            }
-            return capture.message || 'I could not capture the current frame.';
-        }
-        snapshotImage = capture.image;
-        state.lastContext.lastYouTubeSnapshot = snapshotImage;
-        state.lastContext.lastYouTubeSnapshotView = createSnapshotViewState();
-    }
-
-    const activeView = createSnapshotViewState(state.lastContext.lastYouTubeSnapshotView);
-    const imageForVision = await buildSnapshotViewImage(snapshotImage, activeView);
-    if (isMiniMaxModel(state.selectedModel)) {
-        return 'Frame captured, but the current text model does not support image analysis. Switch to a Gemini model to inspect the frame.';
-    }
-
-    try {
-        const answer = await analyzeYouTubeSnapshot({
-            image: imageForVision || snapshotImage,
-            question: buildYouTubeSnapshotQuestion(cmd),
-            apiKey: getActiveTextApiKey(state.selectedModel),
-            model: state.selectedModel
-        });
-        return answer;
-    } catch (error) {
-        const message = String(error?.message || '').trim();
-        if (!message) return 'I could not analyze that frame right now.';
-        return message;
-    }
-}
-
-async function runYouTubeSnapshotZoomCommand(cmd = '') {
-    const parsed = parseYouTubeSnapshotZoomCommand(cmd);
-    if (!parsed) return null;
-    if (!state.lastContext.lastYouTubeSnapshot?.data) {
-        const ready = await ensureSnapshotFromActiveLightboxImage();
-        if (!ready) return 'Take a snapshot first, then I can zoom it.';
-    }
-    if (parsed.action === 'analyzeZoom') return '__ANALYZE_ZOOM__';
-
-    const prev = createSnapshotViewState(state.lastContext.lastYouTubeSnapshotView);
-    const next = updateSnapshotViewState(prev, parsed.action);
-    state.lastContext.lastYouTubeSnapshotView = next;
-    if (parsed.action === 'zoomIn') return `Snapshot zoom ${Math.round(next.zoom * 100)} percent.`;
-    if (parsed.action === 'zoomOut') return `Snapshot zoom ${Math.round(next.zoom * 100)} percent.`;
-    if (parsed.action === 'zoomReset') return 'Snapshot zoom reset.';
-    if (parsed.action === 'panLeft') return 'Moved snapshot left.';
-    if (parsed.action === 'panRight') return 'Moved snapshot right.';
-    if (parsed.action === 'panUp') return 'Moved snapshot up.';
-    if (parsed.action === 'panDown') return 'Moved snapshot down.';
-    return 'Snapshot updated.';
 }
 
 function getYouTubeLibraryBrowseVoiceCommand(cmd) {
@@ -17947,7 +16499,7 @@ function wantsToSeeMediaAgain(cmd) {
         /\bshow\s+me\s+.*\b(display|screen)\b/.test(lower);
 }
 
-/** Build a short "memory" block from lastContext + recent history + shared objects for better continuity. */
+/** Build a short "memory" block from lastContext + recent history for better continuity. */
 function getContextBlock() {
     const c = state.lastContext;
     const parts = [];
@@ -17955,23 +16507,12 @@ function getContextBlock() {
     if (c.lastChartTitle) parts.push(`Last chart shown: ${c.lastChartTitle}`);
     if (c.lastLocation) parts.push(`Last location/map: ${c.lastLocation}`);
     if (c.lastSearchTopic) parts.push(`Last search topic: ${c.lastSearchTopic}`);
-
-    if (Array.isArray(state.hubItems) && state.hubItems.length > 0) {
-        const hubList = state.hubItems.slice(0, 5).map(item => `[${item.type}] ${item.content || item.data?.title || 'item'}`).join(', ');
-        parts.push(`Recent Hub items: ${hubList}`);
-    }
-
-    if (Array.isArray(state.sharedObjects) && state.sharedObjects.length > 0) {
-        const sharedList = state.sharedObjects.slice(-5).map(obj => `[${obj.kind}] ${obj.label}`).join(', ');
-        parts.push(`Recent Shared objects: ${sharedList}`);
-    }
-
     if (state.history.length > 0) {
         const recent = state.history.slice(-3).map(h => `User: ${h.user.slice(0, 60)}${h.user.length > 60 ? '…' : ''} → Blip replied.`).join(' | ');
         parts.push(`Recent turns: ${recent}`);
     }
     if (parts.length === 0) return '';
-    return `[Context from this session — use it when the user says "that", "this video", "send to", etc.]\n${parts.join('\n')}\n\n`;
+    return `[Context from this session — use it when the user says "that", "another graph", "there", "same place", etc.]\n${parts.join('\n')}\n\n`;
 }
 
 function extractJSON(text) {
@@ -18048,7 +16589,6 @@ async function speak(text, emotion = 'serious') {
         surprised: { pitch: 1.1, rate: 1.05 },
         serious: { pitch: 1, rate: 1 }
     }[emotion] || { pitch: 1, rate: 1 };
-    cfg.rate = getCompanionSpeechRate(cfg.rate || 1);
 
     if (state.voiceEngine === 'gemini') {
         if (!state.geminiKey || !state.geminiKey.trim()) {
@@ -18085,7 +16625,6 @@ async function speak(text, emotion = 'serious') {
 async function speakWithGuard(text, emotion = 'serious') {
     state.lastSpeechStartedAt = Date.now();
     state.lastSpokenText = String(text || '').trim();
-    companionModeController.pauseForSpeech();
     syncScenerySuppression();
     try {
         await speak(text, emotion);
@@ -18097,7 +16636,6 @@ async function speakWithGuard(text, emotion = 'serious') {
     } finally {
         state.lastSpeechStartedAt = 0;
         state.lastSpokenFinishedAt = Date.now();
-        companionModeController.resumeAfterSpeech().catch(() => { });
         syncScenerySuppression();
     }
 }
@@ -18666,52 +17204,7 @@ async function updateKokoroStatus() {
 }
 
 function setBlipTimer(text, ms, dueAt = null) {
-    const safeMs = Math.max(500, Number(ms) || 0);
-    const targetTime = Number.isFinite(dueAt) ? Number(dueAt) : (Date.now() + safeMs);
-    console.log(`⏰ Timer set for ${safeMs}ms: ${text}`);
-    const timerId = setTimeout(async () => {
-        // Wake up Blip if he's resting
-        if (!state.isActive) {
-            state.isActive = true;
-        }
-
-        const alertText = `Excuse me Pablo! I have a reminder for you: ${text}`;
-        stopListening();
-        dismissActiveAlert({ resumeListening: false, clearVisual: true });
-        const alertId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        executeTimerFire(state, { text, timerId, alertId }, { renderActionInSidePanel });
-        showAlertDisplay(text, 45000);
-        state.isThinking = false;
-        document.body.classList.remove('thinking-mode');
-        face.classList.remove('thinking', 'listening');
-        faceFrame?.classList.remove('listening-glow');
-        talkBtn.classList.remove('thinking', 'listening');
-        talkBtn.classList.add('active');
-        talkBtn.innerText = 'Alarm';
-        setPersona('warning');
-        setRestingEyes(false);
-        renderCountdownDisplay();
-        updateTimerCorner();
-        startAlarmSoundLoop();
-        try {
-            await speak(alertText, 'serious');
-        } finally {
-            state.timers = state.timers.filter(t => t.id !== timerId);
-            persistTimers();
-            if (state.activeAlert?.id === alertId) {
-                state.activeAlert.autoClearTimer = setTimeout(() => {
-                    if (state.activeAlert?.id === alertId) dismissActiveAlert({ resumeListening: false, clearVisual: true });
-                }, 45000);
-            }
-            if (state.isActive && !state.activeAlert) startListeningLoop();
-        }
-    }, safeMs);
-
-    const timerEntry = { id: timerId, text, time: targetTime };
-    state.timers.push(timerEntry);
-    persistTimers();
-    renderCountdownDisplay();
-    return timerEntry;
+    return timerController.setTimer(text, ms, dueAt);
 }
 
 function scheduleCalendarEventReminder(details = {}) {
@@ -18812,6 +17305,7 @@ function downloadChart() {
  */
 function bindCalendarPanelControls(sidePanel) {
     sidePanel.querySelector('.blip-calendar-orb-close')?.addEventListener('click', () => {
+        state.activeCalendarViewRequest = null;
         closeCalendarPanel();
     });
 
@@ -18959,19 +17453,6 @@ function formatLatestNoteForEmail(note = null) {
     };
 }
 
-function formatPendingNoteForEmail(draft = null) {
-    if (!draft || typeof draft !== 'object') return null;
-    const title = String(draft?.title || 'Blip note').trim() || 'Blip note';
-    const body = buildSavedNoteContent(draft);
-    const text = String(body || '').trim();
-    if (!text) return null;
-    return {
-        kind: 'note',
-        subject: title,
-        text
-    };
-}
-
 function formatYouTubeShareForEmail() {
     const url = String(state.lastContext?.lastYoutubeUrl || '').trim();
     if (!url) return null;
@@ -18980,24 +17461,6 @@ function formatYouTubeShareForEmail() {
         kind: 'youtube',
         subject: title,
         text: `${title}\n\n${url}`
-    };
-}
-
-function formatWeatherShareForEmail() {
-    const weather = state.lastContext?.lastWeather || null;
-    if (!weather || typeof weather !== 'object') return null;
-    const location = String(state.lastContext?.lastWeatherLocation || weather.city || '').trim() || 'Current location';
-    const description = String(weather.description || '').trim();
-    const temp = weather.temp != null ? `${weather.temp}°C` : '';
-    const humidity = weather.humidity != null ? `${weather.humidity}% humidity` : '';
-    const wind = weather.windSpeed != null ? `${weather.windSpeed} wind` : '';
-    const parts = [description, temp, humidity, wind].filter(Boolean);
-    const detailLine = parts.join(' · ').trim();
-    if (!detailLine) return null;
-    return {
-        kind: 'weather',
-        subject: `Weather: ${location}`,
-        text: `${location}\n${detailLine}`
     };
 }
 
@@ -19053,7 +17516,6 @@ async function buildEmailPayloadFromContext(request = {}) {
     const shareType = String(request.shareType || 'auto').trim().toLowerCase();
     const requestedSubject = String(request.subject || '').trim();
     const latestNote = getNoteItems()[0] || null;
-    const pendingNoteDraft = state.pendingNotesDraft || null;
 
     const usePayload = async (payloadFactory) => {
         const payload = typeof payloadFactory === 'function' ? await payloadFactory() : payloadFactory;
@@ -19066,9 +17528,8 @@ async function buildEmailPayloadFromContext(request = {}) {
         };
     };
 
-    if (shareType === 'note') return usePayload(formatLatestNoteForEmail(latestNote) || formatPendingNoteForEmail(pendingNoteDraft));
+    if (shareType === 'note') return usePayload(formatLatestNoteForEmail(latestNote));
     if (shareType === 'youtube' || shareType === 'video' || shareType === 'link') return usePayload(formatYouTubeShareForEmail());
-    if (shareType === 'weather' || shareType === 'forecast' || shareType === 'temperature' || shareType === 'temp') return usePayload(formatWeatherShareForEmail());
     if (shareType === 'photo' || shareType === 'foto' || shareType === 'picture' || shareType === 'image') return usePayload(() => getEmailPhotoAttachmentPayload());
     if (shareType === 'date' || shareType === 'calendar' || shareType === 'event') return usePayload(getPreferredCalendarSharePayload());
 
@@ -19081,7 +17542,7 @@ async function buildEmailPayloadFromContext(request = {}) {
         if (payload) return payload;
     }
     if (state.currentSidePanelAction === 'notes' || state.pendingNotesDraft || latestNote) {
-        const payload = await usePayload(formatLatestNoteForEmail(latestNote) || formatPendingNoteForEmail(pendingNoteDraft));
+        const payload = await usePayload(formatLatestNoteForEmail(latestNote));
         if (payload) return payload;
     }
     if (state.currentSidePanelAction === 'youtube' || state.lastContext?.lastYoutubeUrl) {
@@ -19506,16 +17967,23 @@ function renderActionInSidePanel(parsedResponse) {
         case 'drawing': {
             state.designPanelZoomed = false;
             const visualUrl = tool_params.imageUrl || tool_params.url || tool_params.dataUrl || '';
+            const designPrompt = String(tool_params.prompt || state.lastContext?.lastDesignPrompt || '');
+            if (designPrompt) state.lastContext.lastDesignPrompt = designPrompt;
             if (typeof visualUrl === 'string' && visualUrl) {
                 state.currentSidePanelVisualUrl = visualUrl;
-                if (visualUrl.startsWith('data:image/')) state.lastContext.lastDesignDataUrl = visualUrl;
+                if (visualUrl.startsWith('data:image/')) {
+                    state.lastContext.lastDesignDataUrl = visualUrl;
+                    rememberGeneratedVisualInMedia(visualUrl, action, {
+                        title: tool_params.title || designPrompt || action,
+                        prompt: designPrompt
+                    });
+                }
                 const img = document.createElement('img');
                 img.src = visualUrl;
                 img.alt = 'Blip design';
                 img.className = 'blip-panel-visual';
                 sidePanel.appendChild(img);
 
-                const designPrompt = String(tool_params.prompt || state.lastContext?.lastDesignPrompt || '');
                 if (shouldShowSolarSystemLegend(designPrompt)) {
                     appendSolarSystemLegend(sidePanel);
                 }
@@ -19645,7 +18113,7 @@ function renderActionInSidePanel(parsedResponse) {
                         const next = btn.getAttribute('data-yt-library') || 'Music';
                         state.youtubeLibraryView = next === 'Videos' ? 'Videos' : 'Music';
                         state.youtubeLibraryBrowseIndex = 0;
-                                safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
+                        try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
                         renderActionInSidePanel({ action: 'youtube', tool_params: { ...tool_params, query: state.youtubeLibraryView, libraryOnly: true }, text });
                     });
                 });
@@ -19781,7 +18249,7 @@ function renderActionInSidePanel(parsedResponse) {
                         const next = btn.getAttribute('data-yt-library') || 'Music';
                         state.youtubeLibraryView = next === 'Videos' ? 'Videos' : 'Music';
                         state.youtubeLibraryBrowseIndex = 0;
-                                safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
+                        try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
                         renderActionInSidePanel({ action: 'youtube', tool_params, text });
                     });
                 });
@@ -19869,7 +18337,7 @@ function renderActionInSidePanel(parsedResponse) {
                         const next = btn.getAttribute('data-yt-library') || 'Music';
                         state.youtubeLibraryView = next === 'Videos' ? 'Videos' : 'Music';
                         state.youtubeLibraryBrowseIndex = 0;
-                                safeStorageSet('blip_youtube_library_view', state.youtubeLibraryView);
+                        try { localStorage.setItem('blip_youtube_library_view', state.youtubeLibraryView); } catch (_) { }
                         renderActionInSidePanel({ action: 'youtube', tool_params, text });
                     });
                 });

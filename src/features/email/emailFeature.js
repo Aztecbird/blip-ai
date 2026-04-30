@@ -1,3 +1,7 @@
+export function canConfirmGmailSend(state = {}) {
+    return !!(state.pendingEmailReview && state.currentSidePanelAction === 'gmail' && state.isGmailPanelVisible);
+}
+
 import { extractRecipientReference, extractSpokenEmailAddress } from '../../services/gmailVoice.js';
 import { isRecipientNoiseOnly } from '../../services/voiceDialog/emailFollowUpParse.js';
 

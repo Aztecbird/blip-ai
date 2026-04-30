@@ -31,9 +31,6 @@
         <div class="ufo-drift">
             <span class="ufo-core"></span>
         </div>
-        <div class="ufo-drift ufo-rise">
-            <span class="ufo-core"></span>
-        </div>
     </div>
     <div id="timer-corner" class="timer-corner hidden" aria-live="polite">
         <span class="timer-corner-dot" aria-hidden="true"></span>
@@ -53,8 +50,7 @@
         </svg>
 
         <main class="container">
-            <div id="version-tag">V4.3.25</div>
-            <div id="dev-brain-banner" class="dev-brain-banner" aria-hidden="true"></div>
+            <div id="version-tag">V—</div>
 
             <!-- Hidden Compatibility Elements for Legacy JS -->
             <div style="display:none;">
@@ -83,18 +79,24 @@
                         <div id="dream-thoughts" aria-hidden="true"></div>
                         <div id="floating-symbols" aria-hidden="true"></div>
                         <div id="face-container">
-                            <div id="blip-face" class="blip-face emotion-serious">
-                                <div class="face-core">
-                                    <div class="brow brow-left"></div>
-                                    <div class="brow brow-right"></div>
-                                    <div class="eye eye-left">
-                                        <div class="pupil"></div>
+                            <div class="blip-face-depth" aria-hidden="true">
+                                <div id="blip-face" class="blip-face emotion-serious">
+                                    <div class="face-core">
+                                        <div class="face-depth-shadow"></div>
+                                        <div class="face-depth-glint"></div>
+                                        <div class="cheek cheek-left"></div>
+                                        <div class="cheek cheek-right"></div>
+                                        <div class="brow brow-left"></div>
+                                        <div class="brow brow-right"></div>
+                                        <div class="eye eye-left">
+                                            <div class="pupil"></div>
+                                        </div>
+                                        <div class="eye eye-right">
+                                            <div class="pupil"></div>
+                                        </div>
+                                        <div class="nose"></div>
+                                        <div class="mouth"></div>
                                     </div>
-                                    <div class="eye eye-right">
-                                        <div class="pupil"></div>
-                                    </div>
-                                    <div class="nose"></div>
-                                    <div class="mouth"></div>
                                 </div>
                             </div>
                         </div>
@@ -112,7 +114,6 @@
                         <span class="btn-text">Ask Blip</span>
                     </button>
                     <button id="sleepBtn" class="secondary-orb-btn" type="button">Sleep</button>
-                    <button id="careCamQuickBtn" class="care-cam-quick-btn" type="button" aria-label="Start Care Cam Demo" title="Start Care Cam Demo"></button>
                     <div id="live-indicator">LIVE OBSERVER</div>
                 </div>
                 <div class="mic-meter" id="wake-meter" aria-live="polite" aria-label="Wake listening status">
@@ -122,10 +123,6 @@
                         <div id="meter-level"></div>
                     </div>
                 </div>
-                <button id="companion-indicator" class="companion-indicator companion-indicator-off" type="button" aria-live="polite" aria-label="Companion mode off" title="Companion mode off">
-                    <span class="companion-indicator-heart" aria-hidden="true">♥</span>
-                    <span class="companion-indicator-label" aria-hidden="true">off</span>
-                </button>
 
                 <div id="weather-display" class="weather-display hidden" aria-live="polite" aria-label="Weather display"></div>
                 <div id="countdown-display" class="weather-display countdown-display hidden" aria-live="polite" aria-label="Countdown display"></div>
@@ -144,16 +141,13 @@
                 <div class="mini-actions">
                     <button id="chatBtn" title="Chat">⌨️</button>
                     <button id="notesBtn" title="Take Notes">📝</button>
-                    <button id="emailBtn" title="Email">📧</button>
                     <button id="telegramBtn" title="Telegram">📨</button>
-                    <button type="button" id="micTestBtn" title="Mic Test">🎙️</button>
-                    <button type="button" id="snapshotZoomBtn" title="Snapshot Zoom Tool">🔍</button>
                     <button id="cameraBtn" title="Camera">📷</button>
                     <button id="calendarBtn" title="Calendar">📅</button>
                     <button id="mediaBtn" title="Media">🖼️</button>
                     <button id="gamesBtn" title="Learning Games">🎲</button>
                     <button id="cartBtn" title="Cart">🛒</button>
-                    <button id="hubBtn" title="Student Desk">🎓</button>
+                    <button id="hubBtn" title="Hub">📱</button>
                     <button id="gearBtn" title="Settings">⚙️</button>
                 </div>
 
@@ -207,10 +201,6 @@
             <div id="under-the-hood" class="hidden-panel">
                 <div class="panel-header">
                     <h3>SYSTEM SETTINGS</h3>
-                    <div class="settings-lock-controls">
-                        <button id="settingsLockToggleBtn" type="button" class="secondary-btn">Lock</button>
-                        <span id="settingsLockStatus" class="settings-lock-status" aria-live="polite">Unlocked</span>
-                    </div>
                     <button id="closePanelBtn">✕</button>
                 </div>
                 <div class="panel-content">
@@ -219,15 +209,6 @@
                         <label for="geminiKeyInput">Gemini API Key <small>(for chat and voice)</small></label>
                         <input type="password" id="geminiKeyInput" placeholder="Enter your Gemini key">
                         <span class="setting-hint">Main Blip key — not the YouTube key.</span>
-                        <div class="setting-inline-row" style="margin-top:0.65rem;">
-                            <button type="button" id="copyGeminiKeyBtn" class="secondary-btn">📋 Copy Gemini Key</button>
-                        </div>
-                        <span class="setting-hint">Copies the saved key from Blip to your clipboard so you can reuse it elsewhere.</span>
-                    </div>
-                    <div class="setting-group">
-                        <label for="minimaxKeyInput">MiniMax API Key <small>(for MiniMax 2.7 chat)</small></label>
-                        <input type="password" id="minimaxKeyInput" placeholder="Enter your MiniMax key">
-                        <span class="setting-hint">Use this key when you switch Chat model to MiniMax M2.7 or M2.7-highspeed.</span>
                     </div>
                     <div class="setting-group">
                         <label for="youtubeKeyInput">YouTube API Key <small>(for video search in panel only)</small></label>
@@ -265,28 +246,6 @@
                     </div>
                     <p class="settings-section-label">Telegram</p>
                     <div class="setting-group">
-                        <label for="telegramBotTokenInput">Bot token</label>
-                        <input type="password" id="telegramBotTokenInput" placeholder="123456789:AA...">
-                    </div>
-                    <div class="setting-group">
-                        <label for="telegramChatIdInput">Default chat ID</label>
-                        <input type="text" id="telegramChatIdInput" placeholder="e.g. 8651008577 or -1001234567890">
-                    </div>
-                    <div class="setting-group">
-                        <label for="telegramChatAliasesInput">Chat aliases</label>
-                        <input type="text" id="telegramChatAliasesInput" placeholder="joy:-1001234567890,mom:8651008577">
-                        <span class="setting-hint">Format: alias:chatId,alias2:chatId2</span>
-                    </div>
-                    <div class="setting-group">
-                        <label for="telegramBackendPortInput">Backend port</label>
-                        <input type="number" id="telegramBackendPortInput" min="1" max="65535" step="1" placeholder="8789">
-                        <span class="setting-hint">Blip frontend target port. If you run backend on another port, set it here.</span>
-                    </div>
-                    <div class="setting-group">
-                        <button id="applyTelegramSettingsBtn" type="button" class="secondary-btn">Apply Telegram Settings</button>
-                        <button id="copyTelegramEnvBtn" type="button" class="secondary-btn">Copy .env.local Telegram Block</button>
-                    </div>
-                    <div class="setting-group">
                         <div class="calendar-auth-actions">
                             <button id="openTelegramBtn" type="button" class="secondary-btn">Open Telegram</button>
                             <button id="sendTelegramTestBtn" type="button" class="secondary-btn">Send Test</button>
@@ -294,14 +253,13 @@
                         <div id="telegramAuthStatus" class="calendar-auth-status" aria-live="polite">Telegram not ready.</div>
                         <span class="setting-hint">Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, then Blip can send quick text and photo messages.</span>
                     </div>
-                    <p class="settings-section-label">API usage</p>
+                    <p class="settings-section-label">Polyphony Engine</p>
                     <div class="setting-group">
-                        <div class="calendar-auth-actions">
-                            <button id="refreshApiUsageBtn" type="button" class="secondary-btn">Refresh Usage</button>
-                        </div>
-                        <div id="apiUsageStatus" class="calendar-auth-status" aria-live="polite">No API usage data yet.</div>
-                        <pre id="apiUsageSummary" class="api-usage-summary">Open Settings and press "Refresh Usage".</pre>
-                        <span class="setting-hint">Reads from the local Expense Tracker backend summary endpoint.</span>
+                        <label class="toggle-pill" for="polyphonyToggle">
+                            <input type="checkbox" id="polyphonyToggle" checked>
+                            <span>Enable Polyphony (Smart Path)</span>
+                        </label>
+                        <span class="setting-hint">Turn this off to completely bypass the LLM orchestration and force all commands through the classic legacy engine.</span>
                     </div>
                     <p class="settings-section-label">Models</p>
                     <div class="setting-group">
@@ -323,17 +281,6 @@
                         <span class="setting-hint">Gemini: ~100 free/day then paid. Kokoro &amp; browser: free.</span>
                         <span class="setting-hint" id="voiceEngineStatus" aria-live="polite"></span>
                     </div>
-                    <div class="setting-group">
-                        <label>Companion mode</label>
-                        <div class="setting-inline-row">
-                            <label class="toggle-pill" for="companionModeToggle">
-                                <input type="checkbox" id="companionModeToggle">
-                                <span>Emotion-aware companion</span>
-                            </label>
-                        </div>
-                        <div id="companionSettingsStatus" class="calendar-auth-status" aria-live="polite">Checking companion status...</div>
-                        <span class="setting-hint">Backend availability and your local preference are separate. When on, Blip uses Hume softly during live listening.</span>
-                    </div>
                     <div class="setting-group" id="kokoro-hint-group" style="display: none;">
                         <span class="setting-hint">Start Kokoro in the <strong>same terminal</strong> (it runs in background and frees the terminal):</span>
                         <pre class="kokoro-bash" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.3); border-radius:6px; font-size:0.7rem; overflow-x:auto;">./start-kokoro.sh</pre>
@@ -352,21 +299,7 @@
                         <select id="modelSelect">
                             <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
                             <option value="gemini-2.5-pro">Gemini 2.5 Pro (Brainy)</option>
-                            <option value="MiniMax-M2.7">MiniMax M2.7</option>
-                            <option value="MiniMax-M2.7-highspeed">MiniMax M2.7 High-Speed</option>
-                            <option value="qwen2.5-coder:32b">Qwen 2.5 Coder (Ollama)</option>
-                            <option value="llama3.2:latest">Llama 3.2 (Ollama)</option>
                         </select>
-                    </div>
-                    <div class="setting-group">
-                        <label for="conversationTemperatureInput">Conversation temperature <span id="conversationTemperatureValue">0.78</span></label>
-                        <input type="range" id="conversationTemperatureInput" min="0" max="1" step="0.01" value="0.78" title="Conversation creativity">
-                        <span class="setting-hint">Higher = lighter/more creative replies. Lower = more literal and consistent.</span>
-                    </div>
-                    <div class="setting-group">
-                        <label for="parsingTemperatureInput">Parsing temperature <span id="parsingTemperatureValue">0.00</span></label>
-                        <input type="range" id="parsingTemperatureInput" min="0" max="0.5" step="0.01" value="0" title="Intent parsing precision">
-                        <span class="setting-hint">Keep low for deterministic command parsing and routing.</span>
                     </div>
                     <div class="setting-group">
                         <label for="imageModelSelect">Image model</label>
@@ -438,63 +371,28 @@ http://127.0.0.1:8188</pre>
                         <button id="uploadBtn">📁 Upload</button>
                         <input type="file" id="fileInput" hidden accept="image/*">
                     </div>
-                    <p class="settings-section-label">Care Cam Demo</p>
-                    <div class="setting-group">
-                        <div class="setting-inline-row">
-                            <button id="careCamDemoBtn" class="secondary-btn">🍼 Start Care Cam Demo</button>
-                            <button id="copyCareCamLinkBtn" class="secondary-btn">📱 Copy Viewer Link</button>
-                        </div>
-                        <button id="openCareCamViewerBtn" class="secondary-btn">Open Viewer</button>
-                        <div id="careCamStatus" class="calendar-auth-status" aria-live="polite">No care cam session running.</div>
-                        <span class="setting-hint">This is the investor demo: the home device streams Blip’s camera to a second device and accepts talk-back commands.</span>
-                    </div>
                     <p class="settings-section-label">UI Debug</p>
                     <div class="setting-group">
-                        <div class="setting-inline-row">
-                            <button type="button" id="ui-debug-refresh-btn" class="secondary-btn">Refresh UI state</button>
-                            <button type="button" id="openConversationInspectorBtn" class="secondary-btn">Open Conversation Inspector</button>
-                        </div>
+                        <button type="button" id="ui-debug-refresh-btn" class="secondary-btn">Refresh UI state</button>
                         <span class="setting-hint">Dump current UI state below. Use when debugging panels, mode, or side panel.</span>
                         <pre id="ui-debug-dump" class="ui-debug-dump" aria-live="polite" style="margin:0.5rem 0 0 0; padding:0.6rem; background:rgba(0,0,0,0.4); border-radius:6px; font-size:0.7rem; max-height:240px; overflow:auto; white-space:pre-wrap; word-break:break-all;"></pre>
                     </div>
-                    <p class="settings-section-label">Command Inspector</p>
-                    <div class="setting-group">
-                        <input type="text" id="commandInspectorInput" placeholder="Type a voice command to preview routing...">
-                        <div class="setting-inline-row">
-                            <button type="button" id="runCommandInspectorBtn" class="secondary-btn">Preview Command</button>
-                        </div>
-                        <span class="setting-hint">No side effects. Shows how Blip parses and routes this command.</span>
-                        <pre id="commandInspectorOutput" class="api-usage-summary" aria-live="polite">No preview yet.</pre>
-                    </div>
                 </div>
             </div>
-
-            <!-- Conversation Inspector Modal -->
-            <div id="conversation-inspector-modal" class="conversation-inspector-modal" style="display:none;" aria-hidden="true">
-                <div class="conversation-inspector-card">
-                    <div class="panel-header">
-                        <h3>Conversation Inspector</h3>
-                        <button id="closeConversationInspectorBtn" type="button">✕</button>
-                    </div>
-                    <div class="panel-content">
-                        <pre id="conversation-inspector-dump" class="conversation-inspector-dump" aria-live="polite"></pre>
-                    </div>
-                </div>
-            </div>
-            <!-- Student Desk (shared workspace) -->
+            <!-- Blip Hub (WhatsApp style) -->
             <div id="hub-container" class="widget-panel hub-panel">
                 <div class="panel-header">
-                    <span>🎓 Student Desk</span>
-                    <button id="closeHubBtn" class="panel-close-btn" aria-label="Close student desk">✕</button>
+                    <span>💬 Blip Hub</span>
+                    <button id="closeHubBtn" class="panel-close-btn" aria-label="Close hub">✕</button>
                 </div>
                 <div id="hub-messages">
                     <!-- Items will be injected here -->
-                    <div class="hub-empty">Student Desk is empty. Save homework photos, notes, and links here!</div>
+                    <div class="hub-empty">Hub is empty. Save photos or notes here!</div>
                 </div>
                 <div class="hub-footer">
-                    <input type="text" id="hubInput" placeholder="Write a note or paste a homework link..."
-                        aria-label="Student desk note">
-                    <button id="sendHubBtn" aria-label="Post to Student Desk">Post</button>
+                    <input type="text" id="hubInput" placeholder="Write a note or paste a link..."
+                        aria-label="Hub note">
+                    <button id="sendHubBtn" aria-label="Post to Hub">Post</button>
                 </div>
             </div>
             <div id="cart-container" class="widget-panel cart-panel">
@@ -512,7 +410,6 @@ http://127.0.0.1:8188</pre>
                     <button id="closeGamesBtn" class="panel-close-btn" aria-label="Close learning games">✕</button>
                 </div>
                 <div id="games-panel-body" class="games-panel-body">
-                    <div id="learning-games-debug" class="learning-games-debug">Debug: waiting</div>
                     <div id="blip-math-game" class="blip-game-card">
                         <div class="blip-game-kicker">Game 1</div>
                         <h2>Blip Math Game</h2>
@@ -525,29 +422,6 @@ http://127.0.0.1:8188</pre>
                             <button id="math-next-btn" type="button" style="display:none;">Next</button>
                         </div>
                         <div id="math-score" class="math-score">Score: 0</div>
-                    </div>
-                    <div id="blip-ear-training-game" class="blip-game-card ear-training-card">
-                        <div class="blip-game-kicker">Game 2</div>
-                        <h2>Ear Training</h2>
-                        <div id="ear-training-menu-wrap" class="ear-training-menu">
-                            <div class="ear-training-menu-subtitle">Choose a mode</div>
-                            <button id="ear-training-btn-intervals" type="button" class="ear-training-big-btn">Intervals</button>
-                            <button id="ear-training-btn-harmony" type="button" class="ear-training-big-btn">Harmony (Major / Minor)</button>
-                        </div>
-                        <div id="ear-training-exercise-wrap" class="ear-training-exercise" style="display:none;">
-                            <div class="ear-training-topline">
-                                <div class="ear-training-mode-label" id="ear-training-mode-label">Intervals</div>
-                            </div>
-                            <div class="ear-training-tutorial" id="ear-training-tutorial"></div>
-                            <div class="ear-training-prompt" id="ear-training-prompt"></div>
-                            <div class="ear-training-options" id="ear-training-options"></div>
-                            <div class="ear-training-feedback" id="ear-training-feedback"></div>
-                            <div class="ear-training-controls">
-                                <div class="ear-training-score ear-training-score--bottom" id="ear-training-score">Score: 0 / 0</div>
-                                <button id="ear-training-replay-btn" type="button" class="ear-training-small-btn">Replay</button>
-                                <button id="ear-training-next-btn" type="button" class="ear-training-small-btn" disabled>Next</button>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -564,7 +438,6 @@ http://127.0.0.1:8188</pre>
             <div id="media-lightbox" class="media-lightbox" aria-hidden="true">
                 <button id="closeMediaLightboxBtn" class="panel-close-btn media-lightbox-close" aria-label="Close image">✕</button>
                 <div class="media-lightbox-actions">
-                    <button id="zoomMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action media-lightbox-zoom" aria-label="Zoom snapshot">🔍</button>
                     <button id="shareMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Share</button>
                     <button id="downloadMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Download</button>
                     <button id="wallpaperMediaLightboxBtn" type="button" class="action-link outline media-lightbox-action">Wallpaper</button>
@@ -589,38 +462,48 @@ http://127.0.0.1:8188</pre>
             <div id="vision-preview-container" style="display:none;">
                 <img id="vision-preview" alt="Vision preview">
                 <button id="clear-image-btn" title="Clear image" aria-label="Clear image">✕</button>
-                <button id="save-to-hub-btn" class="mini-save-btn" aria-label="Save image to Student Desk">Save</button>
-            </div>
-
-            <div id="care-cam-viewer-shell" class="care-cam-viewer-shell hidden" aria-hidden="true">
-                <div class="care-cam-viewer-card">
-                    <div class="care-cam-viewer-topbar">
-                        <div>
-                            <div class="care-cam-viewer-eyebrow">Blip Care Cam</div>
-                            <h2 id="care-cam-viewer-title">Investor demo</h2>
-                        </div>
-                        <div id="care-cam-viewer-status" class="care-cam-viewer-status">Waiting for a live session...</div>
-                    </div>
-                    <div class="care-cam-viewer-screen">
-                        <img id="care-cam-frame" alt="Live care cam feed">
-                        <div id="care-cam-empty" class="care-cam-empty">
-                            <div class="care-cam-empty-title">Connect to Blip</div>
-                            <p>Open the viewer link from the home device and the live room feed will appear here.</p>
-                        </div>
-                    </div>
-                    <div class="care-cam-viewer-controls">
-                        <input id="care-cam-talk-input" type="text" placeholder="Talk back to Blip...">
-                        <button id="care-cam-talk-btn" type="button">Send</button>
-                        <button id="care-cam-alert-btn" type="button" class="secondary-btn">Alert</button>
-                    </div>
-                    <div class="care-cam-viewer-note" id="care-cam-viewer-note">Use this on your phone to view the live room and talk to Blip.</div>
-                </div>
+                <button id="save-to-hub-btn" class="mini-save-btn" aria-label="Save image to hub">Save</button>
             </div>
 
             <canvas id="capture-canvas" style="display: none;"></canvas>
         </main>
     </div>
-    <script type="module" src="src/main.js"></script>
+    <!-- BLIP TOWER: THE BRAIN'S DASHBOARD -->
+    <div id="blip-tower">
+        <div class="tower-header">
+            <span>CITY ORCHESTRATION</span>
+            <span id="tower-capsule-id">#ID</span>
+        </div>
+        <div class="district-map">
+            <div class="district district-presence" id="dist-perception">
+                <div class="district-dot">👁️</div>
+                <span>PRESENCE: Perception</span>
+            </div>
+            <div class="district district-judgment" id="dist-planning">
+                <div class="district-dot">🧠</div>
+                <span>JUDGMENT: Planning</span>
+            </div>
+            <div class="district district-action" id="dist-tool">
+                <div class="district-dot">⚡</div>
+                <span>ACTION: Execution</span>
+            </div>
+            <div class="district district-library" id="dist-memory">
+                <div class="district-dot">📚</div>
+                <span>LIBRARY: Archiving</span>
+            </div>
+            <div class="district district-action" id="dist-bridge" style="color: #f472b6;">
+                <div class="district-dot">🌉</div>
+                <span>BRIDGE: Proactive</span>
+            </div>
+            <div class="district district-presence" id="dist-expression">
+                <div class="district-dot">🗣️</div>
+                <span>PRESENCE: Expression</span>
+            </div>
+        </div>
+        <div class="tower-footer" id="tower-status">WAITING FOR COMMAND...</div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
 </body>
 
 </html>

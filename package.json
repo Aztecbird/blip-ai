@@ -30,5 +30,9 @@
     },
     "devDependencies": {
         "vite": "^5.0.0"
+    },
+    "dependencies": {
+        "@arcadeai/arcadejs": "^2.3.0",
+        "dotenv": "^17.4.0"
     }
 }

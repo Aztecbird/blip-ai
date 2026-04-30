@@ -46,6 +46,18 @@ test('buildVoiceRoutingSnapshot still detects telegram and care cam intents', ()
     assert.equal(telegramRoute.telegramCmd?.action, 'compose');
 });
 
+test('buildVoiceRoutingSnapshot treats telegram instead as a telegram correction route', () => {
+    const route = buildVoiceRoutingSnapshot('telegram instead', {
+        pendingEmailReview: true,
+        currentSidePanelAction: 'gmail',
+        gmailComposeDraft: { to: '', recipientQuery: 'ana', subject: '', text: 'hello' }
+    });
+
+    assert.equal(route.family, 'telegram');
+    assert.equal(route.action, 'compose');
+    assert.equal(route.telegramCmd?.switchFrom, 'gmail');
+});
+
 test('buildVoiceRoutingSnapshot asks for clarification on vague messaging', () => {
     const route = buildVoiceRoutingSnapshot('message alex', {});
     assert.equal(route.family, 'message');

@@ -29,6 +29,16 @@ Blip should not become, yet:
 - a multi-agent orchestration platform
 - a high-permission desktop agent
 
+### Polyphony (Hybrid Brain) — Default State
+
+The Polyphony agentic orchestration layer (`v2_brain_enabled`) must be **off by default**.
+
+- On every fresh load, Blip routes through the legacy deterministic engine.
+- The user or developer can opt in via the `polyphonyToggle` UI switch in Settings.
+- The enabled state is persisted to `localStorage` under the key `blip_polyphony_enabled`.
+- A value of `'1'` means on; anything else (including absent) means off.
+- This keeps Blip fast and predictable for normal use while Polyphony matures.
+
 ## Core Principles
 
 ### 1. Keep Agency Light
@@ -328,3 +338,15 @@ Not:
 
 - a full autonomous agent system
 - not yet
+
+## Feature Flags
+
+| Flag | Storage Key | Default | Description |
+|------|-------------|---------|-------------|
+| Polyphony (Hybrid Brain) | `blip_polyphony_enabled` | `off` (`'0'` / absent) | Enables the Polyphony agentic orchestration layer. Must be explicitly opted in via the Settings toggle. |
+
+### Rules for Feature Flags
+
+- All new experimental layers must default to **off**.
+- The off state must be enforced in code with a hard `false` default, not just relying on a missing localStorage key.
+- Each flag must be documented here with its key, default, and purpose.

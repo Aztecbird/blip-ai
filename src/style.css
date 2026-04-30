@@ -18,11 +18,11 @@
     --error: #f43f5e;
     --success: #10b981;
     --face-glow: rgba(34, 211, 238, 0.4);
-    --projector-frame-width: 480px;
-    --projector-frame-height: 360px;
-    --projector-face-width: 404px;
-    --projector-face-height: 320px;
-    --projector-face-shadow: 0 0 92px rgba(110, 231, 255, 0.44);
+    --projector-frame-width: 820px;
+    --projector-frame-height: 580px;
+    --projector-face-width: 740px;
+    --projector-face-height: 520px;
+    --projector-face-shadow: 0 0 120px rgba(110, 231, 255, 0.44);
     --projector-eye-shadow: 0 0 34px rgba(255, 255, 255, 0.95);
     --projector-transcript-bg: rgba(3, 7, 18, 0.68);
     --projector-transcript-border: rgba(226, 232, 240, 0.34);
@@ -32,6 +32,9 @@
     --display-space-opacity: 0.56;
     --display-ambient-opacity: 0.58;
     --display-panel-blur: 12px;
+    --face-square-edge-x: calc(50% - (var(--projector-face-width) / 2));
+    --face-square-edge-y: calc(50% - (var(--projector-face-height) / 2));
+    --face-square-edge-pad: 0.4rem;
 }
 
 body[data-display-luma="low"] {
@@ -45,10 +48,10 @@ body[data-display-luma="low"] {
     --face-glow: rgba(199, 244, 255, 0.82);
     --card-bg: rgba(248, 250, 252, 0.14);
     --card-border: rgba(248, 250, 252, 0.36);
-    --projector-frame-width: 456px;
-    --projector-frame-height: 346px;
-    --projector-face-width: 386px;
-    --projector-face-height: 302px;
+    --projector-frame-width: 820px;
+    --projector-frame-height: 580px;
+    --projector-face-width: 740px;
+    --projector-face-height: 520px;
     --projector-face-shadow: 0 0 132px rgba(199, 244, 255, 0.92);
     --projector-eye-shadow: 0 0 62px rgba(255, 255, 255, 1);
     --projector-transcript-bg: rgba(0, 0, 0, 0.92);
@@ -72,10 +75,10 @@ body[data-display-luma="medium"] {
     --face-glow: rgba(116, 221, 255, 0.54);
     --card-bg: rgba(240, 249, 255, 0.06);
     --card-border: rgba(240, 249, 255, 0.18);
-    --projector-frame-width: 480px;
-    --projector-frame-height: 360px;
-    --projector-face-width: 404px;
-    --projector-face-height: 320px;
+    --projector-frame-width: 820px;
+    --projector-frame-height: 580px;
+    --projector-face-width: 740px;
+    --projector-face-height: 520px;
     --projector-face-shadow: 0 0 96px rgba(116, 221, 255, 0.54);
     --projector-eye-shadow: 0 0 38px rgba(255, 255, 255, 0.96);
     --projector-transcript-bg: rgba(3, 7, 18, 0.7);
@@ -99,10 +102,10 @@ body[data-display-luma="high"] {
     --face-glow: rgba(84, 207, 255, 0.42);
     --card-bg: rgba(16, 185, 129, 0.04);
     --card-border: rgba(16, 185, 129, 0.12);
-    --projector-frame-width: 520px;
-    --projector-frame-height: 390px;
-    --projector-face-width: 434px;
-    --projector-face-height: 344px;
+    --projector-frame-width: 900px;
+    --projector-frame-height: 640px;
+    --projector-face-width: 820px;
+    --projector-face-height: 580px;
     --projector-face-shadow: 0 0 80px rgba(84, 207, 255, 0.34);
     --projector-eye-shadow: 0 0 28px rgba(255, 255, 255, 0.88);
     --projector-transcript-bg: rgba(15, 23, 42, 0.56);
@@ -136,8 +139,9 @@ body {
     overflow-x: hidden;
     position: relative;
     letter-spacing: -0.01em;
-    padding: 2rem 0;
+    padding: 2rem 0 12rem 0;
     /* Add top/bottom padding for the container */
+    zoom: 0.85; /* Globally scale down the UI by 15% */
 }
 
 body::before {
@@ -857,8 +861,8 @@ body::before {
 }
 
 .container {
-    width: 100%;
-    max-width: 420px;
+    width: min(95vw, var(--projector-frame-width));
+    max-width: var(--projector-frame-width);
     background: rgba(4, 10, 26, 0.68);
     backdrop-filter: blur(80px) saturate(210%);
     -webkit-backdrop-filter: blur(80px) saturate(210%);
@@ -915,35 +919,92 @@ body::before {
     width: 100%;
 }
 
-.weather-display {
+/* Weather + countdown: tucked in upper corners, *before* #face-container in DOM so the face draws on top — not parked on the eyes. */
+#blip-stage > .weather-display {
     position: absolute;
-    left: max(-6.5rem, calc(50% - 29rem));
-    top: 4.35rem;
-    max-width: 220px;
+    left: calc(var(--face-square-edge-x) + var(--face-square-edge-pad));
+    top: calc(var(--face-square-edge-y) + var(--face-square-edge-pad));
+    /* Narrow column hugging the left rim; type can be larger without sweeping across the face */
+    max-width: min(7.4rem, 34%);
     padding: 0;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     justify-content: flex-start;
-    gap: 0.7rem;
+    gap: 0.22rem;
     color: #f8fbff;
     font-family: 'JetBrains Mono', monospace;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-shadow: 0 0 14px rgba(9, 18, 42, 0.95), 0 0 30px rgba(56, 189, 248, 0.14);
-    z-index: 6;
+    z-index: 2;
     pointer-events: none;
-    opacity: 0.9;
+    opacity: 0.92;
+}
+
+#blip-stage > .weather-display .weather-display-icon {
+    font-size: clamp(1.12rem, 2.85vw, 1.5rem);
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+#blip-stage > .weather-display .weather-display-temp {
+    font-size: clamp(0.92rem, 2.4vw, 1.14rem);
+}
+
+#blip-stage > .weather-display .weather-display-desc {
+    max-width: 100%;
+    font-size: 0.7rem;
+    line-height: 1.22;
+}
+
+#blip-stage > .weather-display .weather-display-copy {
+    gap: 0.08rem;
+    width: 100%;
+}
+
+#blip-stage > .weather-display .weather-display-city {
+    font-size: 0.72rem;
+}
+
+#blip-stage > .weather-display .weather-display-date {
+    font-size: 0.64rem;
+}
+
+#blip-stage > .weather-display .weather-display-time--stack {
+    gap: 0.06rem;
+    max-width: 100%;
+}
+
+#blip-stage > .weather-display .weather-display-time--stack .weather-display-time-label {
+    font-size: 0.58rem;
+    letter-spacing: 0.09em;
+}
+
+#blip-stage > .weather-display .weather-display-time--stack .weather-display-time-value {
+    font-size: 0.86rem;
+}
+
+#blip-stage > .countdown-display {
+    left: auto;
+    right: calc(var(--face-square-edge-x) + var(--face-square-edge-pad));
+    top: calc(var(--face-square-edge-y) + var(--face-square-edge-pad));
+    max-width: min(7.4rem, 34%);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-start;
+    gap: 0.22rem;
+    text-align: right;
+    z-index: 2;
+}
+
+#blip-stage > .countdown-display .weather-display-icon {
+    line-height: 1;
 }
 
 .weather-display.hidden {
     display: none;
-}
-
-.countdown-display {
-    left: auto;
-    right: max(-6.5rem, calc(50% - 29rem));
-    justify-content: flex-end;
-    text-align: right;
 }
 
 .countdown-display .weather-display-copy {
@@ -1018,12 +1079,41 @@ body::before {
     line-height: 1.25;
 }
 
+/* Default: single-line (e.g. countdown “day” row). */
 .weather-display-time {
-    font-size: 0.99rem;
-    font-weight: 800;
-    color: rgba(228, 244, 255, 0.92);
-    letter-spacing: 0.04em;
-    line-height: 1.05;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: rgba(228, 244, 255, 0.88);
+    letter-spacing: 0.03em;
+    line-height: 1.15;
+}
+
+/* Weather clock: small caption + compact time so it fits the face-area corner. */
+.weather-display-time--stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.06rem;
+    max-width: 12.5rem;
+}
+
+.weather-display-time--stack .weather-display-time-label {
+    font-size: 0.56rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: rgba(196, 230, 255, 0.72);
+    line-height: 1.1;
+}
+
+.weather-display-time--stack .weather-display-time-value {
+    font-size: 0.74rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    line-height: 1.12;
+    color: rgba(236, 249, 255, 0.94);
+    text-shadow: 0 0 10px rgba(56, 189, 248, 0.12);
+    text-transform: none;
 }
 
 .weather-display-date {
@@ -1034,26 +1124,29 @@ body::before {
 }
 
 @media (max-width: 900px) {
-    .weather-display {
-        position: static;
-        max-width: min(88vw, 320px);
-        margin-top: -0.35rem;
-        margin-bottom: 0.2rem;
-        justify-content: center;
+    #blip-stage > .weather-display {
+        left: calc(var(--face-square-edge-x) + 0.4rem);
+        top: calc(var(--face-square-edge-y) + 0.36rem);
+        max-width: min(6.9rem, 38%);
+        gap: 0.18rem;
     }
 
-    .countdown-display {
-        right: auto;
+    #blip-stage > .countdown-display {
+        right: calc(var(--face-square-edge-x) + 0.4rem);
+        top: calc(var(--face-square-edge-y) + 0.36rem);
+        max-width: min(6.9rem, 38%);
+        gap: 0.18rem;
     }
 
-    .weather-display-copy {
-        align-items: center;
-        text-align: center;
+    #blip-stage > .weather-display .weather-display-copy,
+    #blip-stage > .countdown-display .weather-display-copy {
+        align-items: flex-start;
+        text-align: left;
     }
 
-    .countdown-display .weather-display-copy {
-        align-items: center;
-        text-align: center;
+    #blip-stage > .countdown-display .weather-display-copy {
+        align-items: flex-end;
+        text-align: right;
     }
 }
 
@@ -2764,6 +2857,7 @@ button[data-tooltip]:focus-visible::after {
     align-items: center;
     text-align: center;
     position: relative;
+    z-index: 5;
 }
 
 /* Face frame glow ring */
@@ -3220,8 +3314,51 @@ body.blip-calendar-panel-open #blip-status {
 #blip-stage .weather-particle,
 #blip-stage .weather-sun-ring,
 #blip-stage .weather-cloud-bank,
-#blip-stage .weather-night-halo {
+#blip-stage .weather-night-halo,
+#blip-stage .weather-drift-cloud {
     will-change: transform, opacity, filter;
+}
+
+/* Extra cloudy-only cloud: slow loop drift; start position & timing re-randomized in setWeatherScene */
+.weather-drift-cloud {
+    position: absolute;
+    left: var(--weather-drift-left, 12%);
+    top: var(--weather-drift-top, 18%);
+    font-size: clamp(1.05rem, 3.1vw, 1.82rem);
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.55s ease;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 8px rgba(96, 130, 172, 0.34));
+    animation: none;
+}
+
+#blip-stage.blip-weather-cloudy .weather-drift-cloud {
+    opacity: 0.9;
+    animation: weatherAmbientDrift var(--weather-drift-duration, 22s) ease-in-out infinite;
+    animation-delay: var(--weather-drift-delay, 0s);
+}
+
+#blip-stage.blip-weather-cloudy #weather-layer[data-intensity="subtle"] .weather-drift-cloud {
+    opacity: 0.52;
+}
+
+@keyframes weatherAmbientDrift {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+    }
+    22% {
+        transform: translate3d(11vw, -2.2vh, 0) rotate(1.8deg);
+    }
+    48% {
+        transform: translate3d(23vw, 0.8vh, 0) rotate(0deg);
+    }
+    72% {
+        transform: translate3d(9vw, 3vh, 0) rotate(-1.4deg);
+    }
+    100% {
+        transform: translate3d(0, 0, 0) rotate(0deg);
+    }
 }
 
 .weather-sun-ring,
@@ -3565,6 +3702,8 @@ body.media-strip-open #blip-face.blip-face {
     width: 100%;
     height: 100%;
     z-index: 3;
+    perspective: 880px;
+    transform-style: preserve-3d;
 }
 
 #face-container::before,
@@ -3575,6 +3714,24 @@ body.media-strip-open #blip-face.blip-face {
     pointer-events: none;
     opacity: 0;
     z-index: 1;
+}
+
+.blip-face-depth {
+    --blip-face-rotate-x: 0deg;
+    --blip-face-rotate-y: 0deg;
+    --blip-face-light-x: 42%;
+    --blip-face-light-y: 28%;
+    position: relative;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform-style: preserve-3d;
+    transform:
+        rotateX(var(--blip-face-rotate-x))
+        rotateY(var(--blip-face-rotate-y));
+    transition: transform 220ms ease-out;
+    will-change: transform;
 }
 
 #blip-aura {
@@ -3916,13 +4073,28 @@ body.projecting-visual .small-ui {
     transition: transform 0.3s ease, filter 0.3s ease, opacity 0.3s ease;
 }
 
+#blip-face.blip-face::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 76%;
+    width: 62%;
+    height: 16%;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(1, 7, 19, 0.28) 0%, rgba(1, 7, 19, 0.12) 42%, transparent 72%);
+    filter: blur(9px);
+    transform: translate3d(-50%, -50%, -42px) rotateX(72deg);
+    pointer-events: none;
+    z-index: 0;
+}
+
 #blip-face .face-core {
     position: relative;
     width: 236px;
     height: 236px;
     border-radius: 50%;
     background:
-        radial-gradient(circle at 42% 30%, rgba(255,255,255,0.14) 0 12%, rgba(255,255,255,0.05) 34%, rgba(255,255,255,0.015) 72%),
+        radial-gradient(circle at var(--blip-face-light-x, 42%) var(--blip-face-light-y, 30%), rgba(255,255,255,0.18) 0 11%, rgba(255,255,255,0.06) 34%, rgba(255,255,255,0.015) 72%),
         radial-gradient(circle at 58% 72%, rgba(95, 178, 255, 0.08) 0 18%, rgba(95, 178, 255, 0) 54%);
     box-shadow:
         0 0 24px rgba(0,255,255,0.24),
@@ -3932,6 +4104,7 @@ body.projecting-visual .small-ui {
     backdrop-filter: blur(10px);
     overflow: hidden;
     animation: blipIdleFloat 4s ease-in-out infinite;
+    transform-style: preserve-3d;
 }
 
 #blip-face .face-core::before {
@@ -3958,8 +4131,54 @@ body.projecting-visual .small-ui {
     pointer-events: none;
 }
 
+#blip-face .face-depth-shadow,
+#blip-face .face-depth-glint,
+#blip-face .cheek {
+    position: absolute;
+    pointer-events: none;
+}
+
+#blip-face .face-depth-shadow {
+    inset: 0;
+    z-index: 0;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 78% 76%, rgba(0, 0, 0, 0.24), transparent 36%),
+        radial-gradient(circle at 18% 82%, rgba(0, 255, 255, 0.08), transparent 30%);
+    mix-blend-mode: soft-light;
+    opacity: 0.86;
+}
+
+#blip-face .face-depth-glint {
+    left: 48px;
+    top: 34px;
+    z-index: 1;
+    width: 96px;
+    height: 34px;
+    border-radius: 999px;
+    background: linear-gradient(105deg, rgba(255,255,255,0.34), rgba(255,255,255,0.08) 54%, transparent);
+    filter: blur(1px);
+    opacity: 0.58;
+    transform: rotate(-18deg);
+}
+
+#blip-face .cheek {
+    top: 128px;
+    z-index: 1;
+    width: 38px;
+    height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(127, 245, 255, 0.16), rgba(127, 245, 255, 0.02) 68%, transparent);
+    filter: blur(1px);
+    opacity: 0.76;
+}
+
+#blip-face .cheek-left { left: 48px; }
+#blip-face .cheek-right { right: 48px; }
+
 #blip-face .eye {
     position: absolute;
+    z-index: 3;
     top: 82px;
     width: 36px;
     height: 30px;
@@ -4073,6 +4292,7 @@ body.projecting-visual .small-ui {
 
 #blip-face .brow {
     position: absolute;
+    z-index: 4;
     top: 62px;
     width: 42px;
     height: 5px;
@@ -4090,6 +4310,7 @@ body.projecting-visual .small-ui {
 /* Nose: always visible for projector; subtle animations per emotion below */
 #blip-face .nose {
     position: absolute;
+    z-index: 3;
     top: 108px;
     left: 50%;
     width: 14px;
@@ -4106,6 +4327,7 @@ body.projecting-visual .small-ui {
 
 #blip-face .mouth {
     position: absolute;
+    z-index: 3;
     left: 50%;
     top: 148px;
     width: 54px;
@@ -5070,6 +5292,29 @@ body.projector-mode.projecting-visual .eye {
 body.projector-mode.projecting-visual .mouth {
     width: 25px !important;
     height: 4px !important;
+}
+
+/* Mini face + graph fullscreen: same corner inset idea, tighter type */
+body.projector-mode.projecting-visual #blip-stage > .weather-display {
+    max-width: min(4.6rem, calc(100% - 0.5rem));
+    left: 0.3rem;
+    top: 0.26rem;
+    gap: 0.18rem;
+}
+
+body.projector-mode.projecting-visual #blip-stage > .countdown-display {
+    max-width: min(4.6rem, calc(100% - 0.5rem));
+    right: 0.3rem;
+    top: 0.26rem;
+    gap: 0.18rem;
+}
+
+body.projector-mode.projecting-visual .weather-display-time--stack .weather-display-time-label {
+    font-size: 0.5rem;
+}
+
+body.projector-mode.projecting-visual .weather-display-time--stack .weather-display-time-value {
+    font-size: 0.64rem;
 }
 
 body.projector-mode.projecting-visual #transcript-container {
