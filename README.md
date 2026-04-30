@@ -19,8 +19,6 @@ Blip is a local-first voice assistant with a Vite frontend and a small set of lo
   Handles Telegram bot sends for text and photos
 - `server/openaiImageBackend.js`
   Handles OpenAI image requests with server-side API key
-- `server/humeBackend.js`
-  Mints short-lived Hume access tokens for browser-side companion sensing
 - `server/mediaActionsBackend.js`
   Handles local desktop-only actions like wallpaper
 - `kokoro_server.py`
@@ -31,6 +29,52 @@ Blip is a local-first voice assistant with a Vite frontend and a small set of lo
 - Secrets stay in `.env.local`
 - OAuth refresh tokens are stored locally in `.blip-data/`
 - Backends bind to `127.0.0.1` only
+
+## 🧠 Agentic Architecture: Polyphony v2
+
+Unlike standard "wrapper" bots, Blip AI uses a custom agentic orchestration layer called **Polyphony**. This framework enables complex, multi-turn reasoning by routing user intent through a series of specialized agents.
+
+```mermaid
+graph TD
+    User([User Voice/Text]) --> Creator[Capsule Creator]
+    Creator --> Capsule{Capsule}
+
+    subgraph "Circle 1: Presence"
+        Capsule --> DetAgent[Deterministic Agent]
+        DetAgent -- "High Confidence" --> ToolAgent
+        DetAgent -- "Low Confidence" --> PercepAgent[Perception Agent]
+    end
+
+    subgraph "Circle 2: Judgment"
+        PercepAgent --> PlanAgent[Planning Agent]
+        PlanAgent --> Policy[Policy Store / MistakeLearner]
+        Policy --> PlanAgent
+    end
+
+    subgraph "Circle 3: Action"
+        PlanAgent --> ToolAgent[Tool Agent]
+        ToolAgent --> API[Arcade / Gmail / Telegram]
+        API --> ToolAgent
+    end
+
+    subgraph "Circle 4: Expression"
+        ToolAgent --> ExprAgent[Expression Agent]
+        ExprAgent --> Voice[Gemini / Kokoro TTS]
+    end
+
+    Voice --> UserResponse([Final Response])
+
+    style Capsule fill:#f9f,stroke:#333,stroke-width:4px
+    style DetAgent fill:#bbf,stroke:#333
+    style PlanAgent fill:#dfd,stroke:#333
+    style ToolAgent fill:#ffd,stroke:#333
+```
+
+### Key Innovations:
+*   **The Capsule System:** A centralized state object that travels through the orchestration pipeline. Each agent (Perception, Planning, Action, and Expression) adds its "partial reading" to the capsule, ensuring a single source of truth for the assistant's context and logic.
+*   **Hybrid Brain Logic:** Blip combines a **Deterministic Agent** for zero-latency, high-confidence commands (like local media control) with a **Gemini-powered Planning Agent** for complex, multi-step tasks (like cross-service automation between Gmail and Telegram).
+*   **Confidence-Based Routing:** Every intent is assigned a confidence score. If the engine detects a "messy" command or potential hallucination, the **MistakeLearner** logic triggers a soft-confirmation flow or re-routes the task to a more conservative reasoning path.
+*   **Arcade Tool Integration:** A unified tool-calling interface that maps natural language intents to real-world actions across third-party APIs, managed by a robust **Policy Store** to ensure safe and predictable execution.
 
 ## Recommended local structure
 
@@ -89,10 +133,6 @@ Important values:
 - `TELEGRAM_BOT_TOKEN=...`
 - `TELEGRAM_CHAT_ID=...`
 - `OPENAI_API_KEY=...`
-- `HUME_COMPANION_ENABLED=false`
-- `HUME_API_KEY=...`
-- `HUME_SECRET_KEY=...`
-- `HUME_CONFIG_ID=...`
 
 Service toggles:
 - `BLIP_ENABLE_KOKORO=1`
@@ -101,7 +141,6 @@ Service toggles:
 - `BLIP_ENABLE_TELEGRAM_BACKEND=0`
 - `BLIP_ENABLE_MEDIA_BACKEND=1`
 - `BLIP_ENABLE_OPENAI_IMAGE_BACKEND=0`
-- `BLIP_ENABLE_HUME_BACKEND=`
 
 ## Python backend setup
 
@@ -158,14 +197,8 @@ https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
 ```bash
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
-# Optional: name shortcuts voice/UI can use, e.g. joy:123456789
-TELEGRAM_CHAT_ALIASES=joy:123456789
-# Optional: when Blip sends with an empty chat id (common for voice), use this alias first
-TELEGRAM_DEFAULT_ALIAS=joy
 BLIP_ENABLE_TELEGRAM_BACKEND=1
 ```
-
-If you only define `joy` in `TELEGRAM_CHAT_ALIASES`, Blip also accepts **Blip Joy** / `blip joy` as the same chat. Set `TELEGRAM_DEFAULT_ALIAS=joy` when messages should go to Joy by default instead of whatever numeric id is in `TELEGRAM_CHAT_ID` alone.
 
 6. Start the backend:
 
@@ -185,5 +218,3 @@ curl -X POST http://127.0.0.1:8789/api/telegram/send-test
 - `.blip-data/` is ignored by git
 - If port `5173` is already in use, `start-dev.sh` reuses the existing frontend and only manages the local backends it started
 - If `kokoro_env` is missing, the dev stack still starts and warns instead of failing
-- Internal intent parsing now uses a shared command normalizer and parse-result helper so the routing modules stay in sync.
-- Voice routing now has a shared assistant router so Gmail, Telegram, and care-cam parsing are decided from one snapshot.
