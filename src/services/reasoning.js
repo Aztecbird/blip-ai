@@ -309,6 +309,58 @@ export async function reasoningLoop(userInput, apiKey = null, model = null) {
   return steps[steps.length - 1].result;
 }
 
+export async function runKaprekarLoop(userQuery, context = {}) {
+  let state = {
+    query: userQuery,
+    currentPlan: null,
+    loopCount: 0,
+    maxLoops: 3,
+    isStable: false
+  };
+
+  while (state.loopCount < state.maxLoops && !state.isStable) {
+    state.loopCount++;
+
+    const promptText = `
+        Query: "${state.query}"
+        Current Plan: ${state.currentPlan || "None"}
+
+        Apply 6174 Logic:
+        1. STRONG VIEW: What is the most robust, ambitious way to fulfill this?
+        2. WEAK VIEW: What is the most likely failure point, missing context, or danger?
+        3. EXTRACT GAP (Strong - Weak): What specific adjustments fix the Weak View while keeping the Strong View?
+        4. NEW PLAN: Write the revised plan based on the Gap.
+        5. STABILITY: Is the New Plan semantically identical to the Current Plan? (true/false)
+
+        Output strict JSON: { "gap": "...", "newPlan": "...", "isStable": boolean }
+    `;
+
+    try {
+      // askGemini signature is (prompt, history, images, apiKey, model)
+      const res = await askGemini(promptText, [], [], context.apiKey, context.model || 'gemini-2.5-flash');
+      
+      let jsonStr = res.text || res;
+      // Strip markdown code blocks if any
+      if (typeof jsonStr === 'string') {
+        jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+      }
+      
+      const analysis = JSON.parse(jsonStr);
+
+      state.currentPlan = analysis.newPlan;
+      state.isStable = analysis.isStable === true || String(analysis.isStable).toLowerCase() === "true";
+      
+      console.log(`[6174 Loop ${state.loopCount}] Gap Found: ${analysis.gap}`);
+      console.log(`[6174 Loop ${state.loopCount}] Stability: ${state.isStable}`);
+    } catch (e) {
+      console.warn('Kaprekar Loop parsing failed:', e);
+      break; // Exit loop on failure to prevent hanging
+    }
+  }
+
+  return state.currentPlan;
+}
+
 export default {
   buildAudienceStyle,
   classifyReasoningMode,
@@ -316,5 +368,6 @@ export default {
   reasoningLoop,
   runDeepReasoning,
   runFastReasoning,
+  runKaprekarLoop,
   synthesizeAnswer
 };

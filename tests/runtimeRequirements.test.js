@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const mainSource = readFileSync(resolve(root, 'src/main.js'), 'utf8');
 const requirementsSource = readFileSync(resolve(root, 'REQUIREMENTS.md'), 'utf8');
 

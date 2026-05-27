@@ -1,4 +1,5 @@
 import { generateWithPrompt } from '../../services/geminiText.js';
+import { runKaprekarLoop } from '../../../services/reasoning.js';
 import { PLANNING_PROMPT } from './planning_prompt.js';
 import { config } from '../../config.js';
 
@@ -20,22 +21,27 @@ class PlanningAgent {
         entities: capsule.perception.entities
       }, null, 2);
 
-      const response = await generateWithPrompt(
-        PLANNING_PROMPT, 
-        `Generate a plan for this input context:\n${context}`, 
-        apiKey
+      // We pass the full context as the "userQuery" so the Kaprekar loop has everything it needs.
+      const planOutput = await runKaprekarLoop(
+        `Generate an array of step objects for this context:\n${context}\nIMPORTANT: Your 'newPlan' output MUST be a valid JSON array of step objects (e.g., [{"step_id":"s1","action":"...","tool":"...","status":"pending","params":{}}]).`,
+        { apiKey: apiKey }
       );
 
-      // Extract JSON from response
-      const jsonStart = response.indexOf('{');
-      const jsonEnd = response.lastIndexOf('}');
-      if (jsonStart === -1 || jsonEnd === -1) throw new Error("Invalid Gemini response format");
+      // Because Kaprekar returns a string or array, we parse it if it's a string
+      let parsedPlan = [];
+      if (typeof planOutput === 'string') {
+        const jsonStart = planOutput.indexOf('[');
+        const jsonEnd = planOutput.lastIndexOf(']');
+        if (jsonStart !== -1 && jsonEnd !== -1) {
+          parsedPlan = JSON.parse(planOutput.substring(jsonStart, jsonEnd + 1));
+        }
+      } else if (Array.isArray(planOutput)) {
+        parsedPlan = planOutput;
+      }
       
-      const data = JSON.parse(response.substring(jsonStart, jsonEnd + 1));
-      
-      // Update the capsule with the new plan
-      capsule.plan = data.plan || [];
-      console.log(`[PlanningAgent] Generated ${capsule.plan.length} steps.`);
+      // Update the capsule with the new converged plan
+      capsule.plan = parsedPlan || [];
+      console.log(`[PlanningAgent] Converged on ${capsule.plan.length} steps via Kaprekar Logic.`);
 
     } catch (error) {
       console.error("[PlanningAgent] Gemini failure:", error.message);

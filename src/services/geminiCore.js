@@ -17,7 +17,15 @@ export function requireApiKey(inputKey) {
 }
 
 export function buildGeminiUrl(model, inputKey) {
-  const apiKey = requireApiKey(inputKey);
+  const apiKey = resolveApiKey(inputKey);
+  
+  // If no API key is provided directly, route through the local backend proxy
+  if (!apiKey) {
+    const backendPort = process.env.GEMINI_BACKEND_PORT || 8793;
+    console.log(`[GeminiCore] No direct API key. Routing via backend proxy on port ${backendPort}`);
+    return `http://127.0.0.1:${backendPort}/models/${model}:generateContent`;
+  }
+
   return `${GEMINI_API_BASE}/${model}:generateContent?key=${apiKey}`;
 }
 

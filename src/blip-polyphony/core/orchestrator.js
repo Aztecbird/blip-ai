@@ -33,10 +33,10 @@ class Orchestrator {
       await this.runAgent('deterministic', capsule);
 
       // 1. Perception & Planning (Circle: Smart Path)
-      // Only run if the fast path didn't already lock in a high-confidence plan
       if (capsule.plan.length === 0) {
         await this.runAgent('perception', capsule);
-        
+
+        // 2. Planning (Circle: Judgment) - Only if perception succeeded
         if (capsule.status !== 'failed') {
           await this.runAgent('planning', capsule);
         }

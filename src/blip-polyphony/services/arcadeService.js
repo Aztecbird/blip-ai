@@ -10,9 +10,24 @@ import { getArcadeUserId } from './authMapping.js';
 import { config } from '../config.js';
 
 // Initialize the Arcade client
-const client = new Arcade({
-    apiKey: config.ARCADE_API_KEY,
-});
+let client;
+if (config.ARCADE_API_KEY) {
+    client = new Arcade({
+        apiKey: config.ARCADE_API_KEY,
+    });
+} else {
+    console.warn('[ArcadeService] ARCADE_API_KEY missing. Using mock client.');
+    client = {
+        tools: {
+            list: async () => [],
+            execute: async () => ({ status: 'success', output: 'Mock Arcade response' })
+        },
+        auth: {
+            status: async () => ({ authorized: true }),
+            start: async () => ({ url: 'https://example.com/auth' })
+        }
+    };
+}
 
 /**
  * List all available tools from Arcade.
