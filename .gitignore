@@ -58,6 +58,7 @@ typings/
 .env
 .env.local
 .env.*.local
+.blip-auth.htpasswd
 
 # macOS
 .DS_Store

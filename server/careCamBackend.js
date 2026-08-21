@@ -11,7 +11,7 @@ const sessions = new Map();
 function getAllowedOrigin(request) {
     const origin = request.headers.origin || FRONTEND_ORIGIN;
     const allowed = new Set([FRONTEND_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173']);
-    return allowed.has(origin) ? origin : FRONTEND_ORIGIN;
+    return allowed.has(origin) ? origin : '';
 }
 
 function writeJson(request, response, statusCode, payload) {
@@ -203,6 +203,6 @@ const server = http.createServer(async (request, response) => {
     }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.BLIP_BACKEND_HOST || '127.0.0.1', () => {
     console.log(`Care Cam backend listening on http://127.0.0.1:${PORT}`);
 });

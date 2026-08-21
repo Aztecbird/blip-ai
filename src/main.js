@@ -635,6 +635,14 @@ function clampIdleAmbientVolume(value) {
     return Math.min(1, Math.max(0.1, parsed));
 }
 
+// Older builds persisted provider secrets in localStorage. Remove those values
+// once and keep newly entered keys in memory for the current page session only.
+for (const legacySecretKey of ['blip_gemini_key', 'blip_youtube_key', 'blip_weather_key']) {
+    try {
+        localStorage.removeItem(legacySecretKey);
+    } catch (_) {}
+}
+
 const state = {
     isActive: false,
     isThinking: false,
@@ -654,9 +662,9 @@ const state = {
     lastScheduledReminder: null,
     pendingImage: null, // Base64 string
     cameraStream: null,
-    geminiKey: localStorage.getItem('blip_gemini_key') || '',
-    youtubeApiKey: localStorage.getItem('blip_youtube_key') || '', // optional: for in-panel video playback (YouTube Data API v3)
-    weatherApiKey: localStorage.getItem('blip_weather_key') || '',
+    geminiKey: '',
+    youtubeApiKey: '', // optional: for in-panel video playback (YouTube Data API v3)
+    weatherApiKey: '',
     googleCalendarClientId: localStorage.getItem('blip_google_calendar_client_id') || '',
     usageTier: initialUsageTier,
     displayLuma: DISPLAY_LUMA_OPTIONS.includes(localStorage.getItem('blip_display_luma')) ? localStorage.getItem('blip_display_luma') : 'medium',
@@ -3081,20 +3089,17 @@ async function init() {
 
         const saveKey = (e) => {
             state.geminiKey = e.target.value.trim();
-            localStorage.setItem('blip_gemini_key', state.geminiKey);
-            console.log('🔐 Access Key updated');
+            console.log('🔐 Access key loaded for this session only');
         };
         const saveYoutubeKey = (e) => {
             if (!youtubeKeyInput) return;
             state.youtubeApiKey = e.target.value.trim();
-            localStorage.setItem('blip_youtube_key', state.youtubeApiKey);
-            console.log('🔐 YouTube API key updated');
+            console.log('🔐 YouTube API key loaded for this session only');
         };
         const saveWeatherKey = (e) => {
             if (!weatherKeyInput) return;
             state.weatherApiKey = e.target.value.trim();
-            localStorage.setItem('blip_weather_key', state.weatherApiKey);
-            console.log('🔐 Weather API key updated');
+            console.log('🔐 Weather API key loaded for this session only');
         };
         const saveGoogleCalendarClientId = (e) => {
             if (!googleCalendarClientIdInput) return;

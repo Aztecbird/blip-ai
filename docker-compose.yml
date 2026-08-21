@@ -8,7 +8,9 @@ services:
     build: .
     command: npm run dev:gmail-backend
     ports:
-      - "${GOOGLE_GMAIL_BACKEND_PORT:-8788}:${GOOGLE_GMAIL_BACKEND_PORT:-8788}"
+      - "127.0.0.1:${GOOGLE_GMAIL_BACKEND_PORT:-8788}:${GOOGLE_GMAIL_BACKEND_PORT:-8788}"
+    environment:
+      BLIP_BACKEND_HOST: 0.0.0.0
     env_file:
       - .env.local
     volumes:
@@ -19,7 +21,9 @@ services:
     build: .
     command: npm run dev:calendar-backend
     ports:
-      - "${GOOGLE_CALENDAR_BACKEND_PORT:-8787}:${GOOGLE_CALENDAR_BACKEND_PORT:-8787}"
+      - "127.0.0.1:${GOOGLE_CALENDAR_BACKEND_PORT:-8787}:${GOOGLE_CALENDAR_BACKEND_PORT:-8787}"
+    environment:
+      BLIP_BACKEND_HOST: 0.0.0.0
     env_file:
       - .env.local
     volumes:
@@ -30,7 +34,9 @@ services:
     build: .
     command: npm run dev:weather-backend
     ports:
-      - "${WEATHER_BACKEND_PORT:-8792}:${WEATHER_BACKEND_PORT:-8792}"
+      - "127.0.0.1:${WEATHER_BACKEND_PORT:-8792}:${WEATHER_BACKEND_PORT:-8792}"
+    environment:
+      BLIP_BACKEND_HOST: 0.0.0.0
     env_file:
       - .env.local
     volumes:
@@ -41,7 +47,9 @@ services:
     build: .
     command: npm run dev:telegram-backend
     ports:
-      - "${TELEGRAM_BACKEND_PORT:-8789}:${TELEGRAM_BACKEND_PORT:-8789}"
+      - "127.0.0.1:${TELEGRAM_BACKEND_PORT:-8789}:${TELEGRAM_BACKEND_PORT:-8789}"
+    environment:
+      BLIP_BACKEND_HOST: 0.0.0.0
     env_file:
       - .env.local
     volumes:
@@ -52,7 +60,9 @@ services:
     build: .
     command: npm run dev:media-backend
     ports:
-      - "${MEDIA_ACTIONS_BACKEND_PORT:-8791}:${MEDIA_ACTIONS_BACKEND_PORT:-8791}"
+      - "127.0.0.1:${MEDIA_ACTIONS_BACKEND_PORT:-8791}:${MEDIA_ACTIONS_BACKEND_PORT:-8791}"
+    environment:
+      BLIP_BACKEND_HOST: 0.0.0.0
     env_file:
       - .env.local
     restart: unless-stopped
@@ -61,7 +71,9 @@ services:
     build: .
     command: npm run dev:openai-image-backend
     ports:
-      - "${OPENAI_IMAGE_BACKEND_PORT:-8790}:${OPENAI_IMAGE_BACKEND_PORT:-8790}"
+      - "127.0.0.1:${OPENAI_IMAGE_BACKEND_PORT:-8790}:${OPENAI_IMAGE_BACKEND_PORT:-8790}"
+    environment:
+      BLIP_BACKEND_HOST: 0.0.0.0
     env_file:
       - .env.local
     restart: unless-stopped
@@ -70,7 +82,9 @@ services:
     build: .
     command: npm run dev:gemini-backend
     ports:
-      - "${GEMINI_BACKEND_PORT:-8793}:${GEMINI_BACKEND_PORT:-8793}"
+      - "127.0.0.1:${GEMINI_BACKEND_PORT:-8793}:${GEMINI_BACKEND_PORT:-8793}"
+    environment:
+      BLIP_BACKEND_HOST: 0.0.0.0
     env_file:
       - .env.local
     restart: unless-stopped

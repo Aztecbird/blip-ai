@@ -38,7 +38,7 @@ function isConfigured() {
 function getAllowedOrigin(request) {
     const origin = String(request.headers.origin || FRONTEND_ORIGIN).replace(/\/$/, '');
     const allowed = new Set(ALLOWED_ORIGINS);
-    return allowed.has(origin) ? origin : FRONTEND_ORIGIN.replace(/\/$/, '');
+    return allowed.has(origin) ? origin : '';
 }
 
 function sendJson(request, response, statusCode, payload) {
@@ -72,7 +72,8 @@ async function readTokenStore() {
 
 async function writeTokenStore(data) {
     await ensureDataDir();
-    await fs.writeFile(TOKEN_PATH, JSON.stringify(data, null, 2), 'utf8');
+    await fs.writeFile(TOKEN_PATH, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+    await fs.chmod(TOKEN_PATH, 0o600);
 }
 
 async function clearTokenStore() {
@@ -630,7 +631,7 @@ const server = http.createServer(async (request, response) => {
     }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.BLIP_BACKEND_HOST || '127.0.0.1', () => {
     console.log(`Google Gmail backend listening on http://127.0.0.1:${PORT}`);
     console.log(`Allowed frontend origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });

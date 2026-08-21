@@ -8,15 +8,13 @@
 import Arcade from '@arcadeai/arcadejs';
 import { getArcadeUserId } from './authMapping.js';
 
-/** Vite injects `import.meta.env`; Node tests only have `process.env`. */
+/**
+ * Arcade credentials are server secrets. Never read a VITE_ variable here:
+ * Vite would embed it in the downloadable browser bundle.
+ */
 function resolveArcadeApiKey() {
-    const fromVite =
-        typeof import.meta !== 'undefined' && import.meta.env
-            ? String(import.meta.env.VITE_ARCADE_API_KEY || '').trim()
-            : '';
-    if (fromVite) return fromVite;
     if (typeof process !== 'undefined' && process.env) {
-        const k = process.env.VITE_ARCADE_API_KEY || process.env.ARCADE_API_KEY;
+        const k = process.env.ARCADE_API_KEY;
         return String(k || '').trim();
     }
     return '';
