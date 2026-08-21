@@ -25,7 +25,7 @@ const PRICING_PATH = path.join(process.cwd(), 'server', 'pricingConfig.json');
 
 function getAllowedOrigin(request) {
   const origin = String(request.headers.origin || FRONTEND_ORIGIN).replace(/\/$/, '');
-  return ALLOWED_ORIGINS.includes(origin) ? origin : FRONTEND_ORIGIN.replace(/\/$/, '');
+  return ALLOWED_ORIGINS.includes(origin) ? origin : '';
 }
 
 function sendJson(request, response, statusCode, payload) {
@@ -239,6 +239,6 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.BLIP_BACKEND_HOST || '127.0.0.1', () => {
   console.log(`Expense tracker backend listening on http://127.0.0.1:${PORT}`);
 });

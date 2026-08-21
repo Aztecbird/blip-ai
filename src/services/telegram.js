@@ -227,7 +227,7 @@ export function getTelegramBackendConfig() {
     let storedChatAliases = '';
     try {
         storedPort = String(window.localStorage?.getItem('blip_telegram_backend_port') || '').trim();
-        storedBotToken = String(window.localStorage?.getItem('blip_telegram_bot_token') || '').trim();
+        window.localStorage?.removeItem('blip_telegram_bot_token');
         storedChatId = String(window.localStorage?.getItem('blip_telegram_chat_id') || '').trim();
         storedChatAliases = String(window.localStorage?.getItem('blip_telegram_chat_aliases') || '').trim();
     } catch (_) {
@@ -258,7 +258,7 @@ export async function saveTelegramBackendConfig(config = {}) {
     };
 
     try {
-        window.localStorage?.setItem('blip_telegram_bot_token', next.botToken);
+        window.localStorage?.removeItem('blip_telegram_bot_token');
         window.localStorage?.setItem('blip_telegram_chat_id', next.chatId);
         window.localStorage?.setItem('blip_telegram_chat_aliases', next.chatAliases);
         window.localStorage?.setItem('blip_telegram_backend_port', next.backendPort);

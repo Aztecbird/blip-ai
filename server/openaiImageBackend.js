@@ -8,11 +8,12 @@ const PORT = Number(process.env.OPENAI_IMAGE_BACKEND_PORT || 8790);
 const FRONTEND_ORIGIN = process.env.BLIP_FRONTEND_ORIGIN || 'http://localhost:5173';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+const MAX_JSON_BODY_BYTES = 64 * 1024;
 
 function getAllowedOrigin(request) {
   const origin = request.headers.origin || FRONTEND_ORIGIN;
   const allowed = new Set([FRONTEND_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174']);
-  return allowed.has(origin) ? origin : FRONTEND_ORIGIN;
+  return allowed.has(origin) ? origin : '';
 }
 
 function sendJson(request, response, statusCode, payload) {
@@ -26,19 +27,20 @@ function sendJson(request, response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
-function readJsonBody(request) {
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    request.on('data', (chunk) => { raw += chunk; });
-    request.on('end', () => {
-      try {
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch (e) {
-        reject(e);
-      }
-    });
-    request.on('error', reject);
-  });
+async function readJsonBody(request) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of request) {
+    total += chunk.length;
+    if (total > MAX_JSON_BODY_BYTES) {
+      const error = new Error('Request body is too large.');
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+  if (!chunks.length) return {};
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
 async function generateImageOpenAI({ prompt, size = '1024x1024' }) {
@@ -104,13 +106,12 @@ const server = http.createServer(async (req, res) => {
 
     return sendJson(req, res, 404, { error: 'Not found.' });
   } catch (e) {
-    return sendJson(req, res, 500, { error: e?.message || String(e) });
+    return sendJson(req, res, Number(e?.statusCode) || 500, { error: e?.message || String(e) });
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.BLIP_BACKEND_HOST || '127.0.0.1', () => {
   console.log(`OpenAI image backend listening on http://127.0.0.1:${PORT}`);
   console.log(`Frontend origin: ${FRONTEND_ORIGIN}`);
   console.log(`Configured: ${OPENAI_API_KEY ? 'yes' : 'no'}`);
 });
-

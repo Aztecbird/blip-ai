@@ -20,10 +20,17 @@ const server = http.createServer(async (req, res) => {
 
     // Apply strict CORS as defined in existing backends
     const origin = req.headers.origin;
-    const allowedOrigins = (process.env.BLIP_ALLOWED_ORIGINS || process.env.BLIP_FRONTEND_ORIGIN || 'http://localhost:5173').split(',');
+    const allowedOrigins = new Set(
+        String(process.env.BLIP_ALLOWED_ORIGINS || process.env.BLIP_FRONTEND_ORIGIN || 'http://localhost:5173')
+            .split(',')
+            .map((value) => value.trim().replace(/\/$/, ''))
+            .filter(Boolean)
+    );
+    const normalizedOrigin = String(origin || '').trim().replace(/\/$/, '');
     
-    if (allowedOrigins.includes(origin)) {
+    if (origin && allowedOrigins.has(normalizedOrigin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -146,7 +153,7 @@ const server = http.createServer(async (req, res) => {
     }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.BLIP_BACKEND_HOST || '127.0.0.1', () => {
     console.log(`Weather backend listening on http://127.0.0.1:${PORT}`);
     console.log(`Make sure WEATHER_API_KEY is set securely in your .env.local file!`);
 });

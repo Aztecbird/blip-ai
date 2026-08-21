@@ -88,7 +88,7 @@ function getAllowedOrigin(request) {
         'http://localhost:5173',
         'http://127.0.0.1:5173'
     ]);
-    return allowed.has(origin) ? origin : FRONTEND_ORIGIN.replace(/\/$/, '');
+    return allowed.has(origin) ? origin : '';
 }
 
 function sendJson(request, response, statusCode, payload) {
@@ -348,7 +348,7 @@ const server = http.createServer(async (request, response) => {
     }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, process.env.BLIP_BACKEND_HOST || '127.0.0.1', () => {
     console.log(`Telegram backend listening on http://127.0.0.1:${PORT}`);
     console.log(`Configured: ${isConfigured() ? 'yes' : 'no'}`);
 });

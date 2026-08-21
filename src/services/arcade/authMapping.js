@@ -41,10 +41,11 @@ export function getArcadeUserId(blipUserId) {
 }
 
 /**
- * Validates if the current environment is ready for Arcade calls (Vite client bundle).
+ * Browser-side Arcade is intentionally disabled because its API key is a
+ * server secret. Route Arcade operations through a protected backend.
  *
  * @returns {boolean}
  */
 export function isArcadeConfigured() {
-    return Boolean(String(import.meta.env.VITE_ARCADE_API_KEY || '').trim());
+    return false;
 }
